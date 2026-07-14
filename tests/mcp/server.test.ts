@@ -124,7 +124,7 @@ describe('startMcpServer', () => {
         },
       });
     }
-    handle = await startMcpServer(storage, { port: 0, enable_deadlines: false });
+    handle = await startMcpServer(storage, { port: 0 });
 
     const result = (await withClient(handle.url, async (client) =>
       client.callTool({
@@ -159,7 +159,7 @@ describe('startMcpServer', () => {
         git: { branch: 'agent/compact', sha: 'abc' },
       },
     });
-    handle = await startMcpServer(storage, { port: 0, enable_deadlines: false });
+    handle = await startMcpServer(storage, { port: 0 });
 
     const result = (await withClient(handle.url, async (client) =>
       client.callTool({

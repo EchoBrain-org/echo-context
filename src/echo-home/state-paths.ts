@@ -14,8 +14,8 @@ export function resolveEchoStatePaths(
   if (homeOverride !== undefined && !isNonEmptyString(homeOverride)) {
     throw new Error('invalid --home: expected path');
   }
-  const configured = homeOverride ?? env['ECHO_HOME'];
-  const root = isNonEmptyString(configured) ? resolve(configured) : join(homedir(), '.echo');
+  const configured = homeOverride ?? env['ECHO_CONTEXT_HOME'];
+  const root = isNonEmptyString(configured) ? resolve(configured) : join(homedir(), '.echo-context');
   return Object.freeze({ root, state: join(root, 'state') });
 }
 

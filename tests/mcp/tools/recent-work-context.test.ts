@@ -140,24 +140,17 @@ describe('get_recent_work_context (end-to-end via MCP server)', () => {
     expect(found?.description).toContain('Migration:');
   });
 
-  it('all fifteen tools are registered (item 046: +get_role_state, +list_task_states; item 057a: +coord_emit, +coord_status; item 057b: +coord_invoke; item 078: +pending_decisions; item 107: +propose_decision — until the 2026-05-17 follow-up drops recent_work_context)', async () => {
+  it('exactly the eight context tools are registered (item 135: coord/product/loop tools removed from the standalone echo-context roster)', async () => {
     handle = await startMcpServer(store, { port: 0 });
     const tools = await withClient(handle.url, async (c) => c.listTools());
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      'coord_emit',
-      'coord_invoke',
-      'coord_status',
       'echo_ping',
       'echo_resolve_mru',
       'find_clusters',
       'get_atom',
       'get_atoms',
       'get_recent_work_context',
-      'get_role_state',
-      'list_task_states',
-      'pending_decisions',
-      'propose_decision',
       'search_memories',
       'wait_for_new_turns',
     ]);

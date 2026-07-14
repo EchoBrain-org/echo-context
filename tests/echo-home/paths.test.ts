@@ -14,16 +14,16 @@ async function loadPaths(): Promise<PathsModule> {
 
 describe('ECHO home paths', () => {
   beforeEach(() => {
-    originalEchoHome = process.env.ECHO_HOME;
+    originalEchoHome = process.env.ECHO_CONTEXT_HOME;
     cleanupDirs = [];
     vi.resetModules();
   });
 
   afterEach(() => {
     if (originalEchoHome === undefined) {
-      delete process.env.ECHO_HOME;
+      delete process.env.ECHO_CONTEXT_HOME;
     } else {
-      process.env.ECHO_HOME = originalEchoHome;
+      process.env.ECHO_CONTEXT_HOME = originalEchoHome;
     }
     for (const dir of cleanupDirs) {
       rmSync(dir, { recursive: true, force: true });
@@ -31,13 +31,13 @@ describe('ECHO home paths', () => {
     vi.resetModules();
   });
 
-  it('defaults to ~/.echo when ECHO_HOME is unset', async () => {
-    delete process.env.ECHO_HOME;
+  it('defaults to ~/.echo-context when ECHO_CONTEXT_HOME is unset', async () => {
+    delete process.env.ECHO_CONTEXT_HOME;
 
     const { ECHO_HOME_PATHS } = await loadPaths();
 
-    expect(ECHO_HOME_PATHS.root).toBe(join(homedir(), '.echo'));
-    expect(ECHO_HOME_PATHS.root.endsWith(`${sep}.echo`)).toBe(true);
+    expect(ECHO_HOME_PATHS.root).toBe(join(homedir(), '.echo-context'));
+    expect(ECHO_HOME_PATHS.root.endsWith(`${sep}.echo-context`)).toBe(true);
     expect(ECHO_HOME_PATHS.skills).toBe(join(ECHO_HOME_PATHS.root, 'skills'));
     expect(ECHO_HOME_PATHS.roles).toBe(join(ECHO_HOME_PATHS.root, 'roles'));
     expect(ECHO_HOME_PATHS.adapters).toBe(join(ECHO_HOME_PATHS.root, 'adapters'));
@@ -53,11 +53,11 @@ describe('ECHO home paths', () => {
     );
   });
 
-  it('honors ECHO_HOME at module load', async () => {
+  it('honors ECHO_CONTEXT_HOME at module load', async () => {
     const base = mkdtempSync(join(tmpdir(), 'echo-home-paths-'));
     cleanupDirs.push(base);
     const override = join(base, 'custom-home');
-    process.env.ECHO_HOME = override;
+    process.env.ECHO_CONTEXT_HOME = override;
 
     const { ECHO_HOME_PATHS } = await loadPaths();
 

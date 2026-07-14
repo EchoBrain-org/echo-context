@@ -111,7 +111,7 @@ describe('GET /mcp/recent-calls', () => {
   });
 
   it('logs every runtime-registered tool through the wrapper', async () => {
-    handle = await startMcpServer(new MemoryStorage(), { port: 0, enable_deadlines: false });
+    handle = await startMcpServer(new MemoryStorage(), { port: 0 });
     const baseUrl = new URL(handle.url).origin;
     const tools = await withClient(handle.url, async (client) => client.listTools());
     const toolNames = tools.tools.map((tool) => tool.name).sort();
@@ -148,7 +148,7 @@ describe('GET /mcp/recent-calls', () => {
   }, 15_000);
 
   it('filters recent calls by status and keeps HEAD /mcp as method-not-allowed', async () => {
-    handle = await startMcpServer(new MemoryStorage(), { port: 0, enable_deadlines: false });
+    handle = await startMcpServer(new MemoryStorage(), { port: 0 });
     const baseUrl = new URL(handle.url).origin;
 
     const head = await fetch(handle.url, { method: 'HEAD' });
@@ -158,12 +158,16 @@ describe('GET /mcp/recent-calls', () => {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'coord_emit', arguments: minimalArgs('coord_emit') },
+      params: {
+        name: 'search_memories',
+        // conflicting repo_path + metadata_match.repo_root is a documented isError path
+        arguments: { query: 'x', repo_path: '/a', metadata_match: { repo_root: '/b' } },
+      },
     });
 
     const errors = await fetch(`${baseUrl}/mcp/recent-calls?since=0&status=error`);
     expect(errors.status).toBe(200);
     const body = (await errors.json()) as RecentCallsResponse;
-    expect(body.calls.map((call) => call.tool)).toEqual(['coord_emit']);
+    expect(body.calls.map((call) => call.tool)).toEqual(['search_memories']);
   });
 });
