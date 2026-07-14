@@ -1,156 +1,1378 @@
 {
+  "entrypoint_sources": [
+    {
+      "file": "tools/audit-pinned-extraction.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    },
+    {
+      "file": "tools/check-parity.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    },
+    {
+      "file": "tools/check-runtime-inventory.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    },
+    {
+      "file": "tools/emit-source-inventory.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    },
+    {
+      "file": "tools/verify-context-tools.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    },
+    {
+      "file": "tools/verify-service-parity.mjs",
+      "reasons": [
+        "tracked executable tool"
+      ]
+    }
+  ],
   "entrypoints": [
     {
       "edges": [
         {
           "class": "native_or_system_helper",
-          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "from": "tools/audit-pinned-extraction.mjs",
           "target": "/usr/local/bin/git"
         },
         {
           "class": "node_builtin",
+          "from": "tools/audit-pinned-extraction.mjs",
           "target": "node:child_process"
         },
         {
           "class": "node_builtin",
+          "from": "tools/audit-pinned-extraction.mjs",
           "target": "node:crypto"
         },
         {
           "class": "node_builtin",
+          "from": "tools/audit-pinned-extraction.mjs",
           "target": "node:fs"
         },
         {
           "class": "node_builtin",
+          "from": "tools/audit-pinned-extraction.mjs",
           "target": "node:path"
         }
       ],
-      "entrypoint": "tools/audit-pinned-extraction.mjs"
+      "entrypoint": "tools/audit-pinned-extraction.mjs",
+      "modules": [
+        "tools/audit-pinned-extraction.mjs"
+      ]
     },
     {
       "edges": [
         {
           "class": "native_or_system_helper",
-          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "from": "tools/check-parity.mjs",
           "target": "/usr/local/bin/git"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-parity.mjs",
           "target": "node:child_process"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-parity.mjs",
           "target": "node:crypto"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-parity.mjs",
           "target": "node:fs"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-parity.mjs",
           "target": "node:path"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-parity.mjs",
           "target": "node:url"
         }
       ],
-      "entrypoint": "tools/check-parity.mjs"
+      "entrypoint": "tools/check-parity.mjs",
+      "modules": [
+        "tools/check-parity.mjs"
+      ]
     },
     {
       "edges": [
         {
           "class": "native_or_system_helper",
-          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "from": "tools/check-runtime-inventory.mjs",
           "target": "/usr/local/bin/git"
         },
-        {
-          "class": "node_builtin",
-          "target": "node:child_process"
-        },
-        {
-          "class": "node_builtin",
-          "target": "node:fs"
-        }
-      ],
-      "entrypoint": "tools/check-runtime-inventory.mjs"
-    },
-    {
-      "edges": [
         {
           "class": "native_or_system_helper",
-          "note": "variable arg pinned to native helper by an assert-equal guard",
-          "target": "/usr/local/bin/git"
+          "from": "tools/check-runtime-inventory.mjs",
+          "target": "/usr/local/lib/node_modules/npm/bin/npm-cli.js"
         },
         {
           "class": "node_builtin",
+          "from": "tools/check-runtime-inventory.mjs",
           "target": "node:child_process"
         },
         {
           "class": "node_builtin",
-          "target": "node:fs"
-        }
-      ],
-      "entrypoint": "tools/emit-source-inventory.mjs"
-    },
-    {
-      "edges": [
-        {
-          "class": "node_builtin",
-          "target": "node:fs"
-        }
-      ],
-      "entrypoint": "tools/verify-context-tools.mjs"
-    },
-    {
-      "edges": [
-        {
-          "class": "node_builtin",
+          "from": "tools/check-runtime-inventory.mjs",
           "target": "node:fs"
         },
         {
           "class": "node_builtin",
-          "target": "node:http"
-        },
-        {
-          "class": "node_builtin",
+          "from": "tools/check-runtime-inventory.mjs",
           "target": "node:path"
         },
         {
-          "class": "repository_dynamic_literal_import",
+          "class": "npm_package",
+          "from": "tools/check-runtime-inventory.mjs",
+          "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+          "target": "typescript",
+          "version": "5.9.3"
+        }
+      ],
+      "entrypoint": "tools/check-runtime-inventory.mjs",
+      "modules": [
+        "tools/check-runtime-inventory.mjs"
+      ]
+    },
+    {
+      "edges": [
+        {
+          "class": "native_or_system_helper",
+          "from": "tools/emit-source-inventory.mjs",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/emit-source-inventory.mjs",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/emit-source-inventory.mjs",
+          "target": "node:fs"
+        }
+      ],
+      "entrypoint": "tools/emit-source-inventory.mjs",
+      "modules": [
+        "tools/emit-source-inventory.mjs"
+      ]
+    },
+    {
+      "edges": [
+        {
+          "class": "repository_static_import",
+          "from": "src/enrich/granola-signals.ts",
+          "target": "src/capture/granola-source-policy.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/enrich/granola-signals.ts",
+          "target": "src/guards.ts"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "sha256": "289ac2671fc501b275af7ce170ea2ef84e07be7e2a4a403aaa055cef02018557",
+          "target": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:os"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:url"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "integrity": "sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==",
+          "target": "better-sqlite3",
+          "version": "12.11.1"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "src/logging/index.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/wire-shape/caps.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/normalize/index.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/trace/auto-expand.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/trace/index.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/echo-ping.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/echo-resolve-mru.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/echo-resolve-mru.ts",
+          "target": "src/mcp/cursor-workspace-resolver.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/echo-resolve-mru.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/echo-resolve-mru.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/echo-resolve-mru.ts",
+          "target": "src/mcp/util/source-app.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/find-clusters.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/find-clusters.ts",
           "target": "src/mcp/internal/cluster-engine.ts"
         },
         {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/find-clusters.ts",
+          "target": "src/mcp/tools/recent-work-context.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/find-clusters.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/find-clusters.ts",
+          "target": "src/mcp/wire-shape/compact.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/get-atom.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/get-atom.ts",
+          "target": "src/mcp/wire-shape/match.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "target": "src/mcp/wire-shape/compact.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "target": "src/mcp/wire-shape/match.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/recent-work-context.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/recent-work-context.ts",
+          "target": "src/mcp/internal/cluster-engine.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/recent-work-context.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/recent-work-context.ts",
+          "target": "src/mcp/wire-shape/caps.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/search-memories.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/enrich/granola-signals.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/tools/_cursor.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/source-app.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/wire-shape/match.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/storage/interface.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/source-app.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/util/timestamp.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/util/iso8601.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/util/repo-path.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/util/repo-path.ts",
+          "target": "src/mcp/cursor-workspace-resolver.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/util/source-app.ts",
+          "target": "node:os"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/caps.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/clip.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/tool-calls.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "src/normalize/errors.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/claude-code.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/claude-code.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/codex.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/codex.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/cursor.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/cursor.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/git.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/git.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/granola.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/normalize/artifacts.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/claude-code.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/codex.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/cursor.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/git.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/granola.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/dispatch.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/errors.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/memory.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/memory.ts",
+          "target": "src/storage/interface.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/memory.ts",
+          "target": "src/storage/source-match.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/memory.ts",
+          "target": "src/util/timestamp.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/cluster.ts",
+          "target": "src/trace/role.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/trace/index.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/hints.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/labels.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/rank.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/role.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/labels.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/rank.ts",
+          "target": "src/trace/auto-expand.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/rank.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "/usr/bin/sandbox-exec"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "/usr/local/bin/node"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "/usr/local/lib/node_modules/npm/bin/npm-cli.js"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:crypto"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:os"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:path"
+        },
+        {
+          "class": "npm_javascript_cli",
+          "from": "tools/verify-context-tools.mjs",
+          "integrity": "sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==",
+          "target": "vite-node",
+          "version": "3.2.4"
+        },
+        {
+          "class": "npm_package",
+          "from": "tools/verify-context-tools.mjs",
+          "integrity": "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==",
+          "target": "@modelcontextprotocol/sdk",
+          "version": "1.29.0"
+        },
+        {
+          "class": "npm_package",
+          "from": "tools/verify-context-tools.mjs",
+          "integrity": "sha512-GQHnkIfxyx1wYCOS/wonik5MVRZU9hi1TEZmzGZSCJB1y9YgoZ8H6itNE/u4suE+yLmOzuE4E5S4TZ/ZX2wcWQ==",
+          "target": "tsx",
+          "version": "4.23.1"
+        },
+        {
           "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/echo-ping.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/echo-resolve-mru.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/find-clusters.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/get-atom.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/get-atoms.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/mcp/tools/recent-work-context.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
           "target": "src/mcp/tools/search-memories.ts"
         },
         {
           "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-context-tools.mjs",
           "target": "src/mcp/tools/wait-for-new-turns.ts"
         },
         {
           "class": "repository_dynamic_literal_import",
-          "target": "src/storage/sqlite.ts"
+          "from": "tools/verify-context-tools.mjs",
+          "target": "src/storage/memory.ts"
         }
       ],
-      "entrypoint": "tools/verify-service-parity.mjs"
+      "entrypoint": "tools/verify-context-tools.mjs",
+      "modules": [
+        "src/capture/granola-source-policy.ts",
+        "src/enrich/granola-signals.ts",
+        "src/guards.ts",
+        "src/logging/index.ts",
+        "src/mcp/cursor-workspace-resolver.ts",
+        "src/mcp/internal/cluster-engine.ts",
+        "src/mcp/tools/_cursor.ts",
+        "src/mcp/tools/echo-ping.ts",
+        "src/mcp/tools/echo-resolve-mru.ts",
+        "src/mcp/tools/find-clusters.ts",
+        "src/mcp/tools/get-atom.ts",
+        "src/mcp/tools/get-atoms.ts",
+        "src/mcp/tools/recent-work-context.ts",
+        "src/mcp/tools/search-memories.ts",
+        "src/mcp/tools/wait-for-new-turns.ts",
+        "src/mcp/util/fs-exclusion.ts",
+        "src/mcp/util/iso8601.ts",
+        "src/mcp/util/repo-path.ts",
+        "src/mcp/util/source-app.ts",
+        "src/mcp/wire-shape/caps.ts",
+        "src/mcp/wire-shape/clip.ts",
+        "src/mcp/wire-shape/compact.ts",
+        "src/mcp/wire-shape/match.ts",
+        "src/mcp/wire-shape/tool-calls.ts",
+        "src/normalize/adapters/_shared.ts",
+        "src/normalize/adapters/claude-code.ts",
+        "src/normalize/adapters/codex.ts",
+        "src/normalize/adapters/cursor.ts",
+        "src/normalize/adapters/git.ts",
+        "src/normalize/adapters/granola.ts",
+        "src/normalize/artifacts.ts",
+        "src/normalize/dispatch.ts",
+        "src/normalize/errors.ts",
+        "src/normalize/index.ts",
+        "src/storage/interface.ts",
+        "src/storage/memory.ts",
+        "src/storage/source-match.ts",
+        "src/trace/auto-expand.ts",
+        "src/trace/cluster.ts",
+        "src/trace/hints.ts",
+        "src/trace/index.ts",
+        "src/trace/labels.ts",
+        "src/trace/rank.ts",
+        "src/trace/role.ts",
+        "src/util/timestamp.ts",
+        "tools/verify-context-tools.mjs"
+      ]
+    },
+    {
+      "edges": [
+        {
+          "class": "repository_static_import",
+          "from": "src/enrich/granola-signals.ts",
+          "target": "src/capture/granola-source-policy.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/enrich/granola-signals.ts",
+          "target": "src/guards.ts"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "sha256": "289ac2671fc501b275af7ce170ea2ef84e07be7e2a4a403aaa055cef02018557",
+          "target": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:os"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "node:url"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "integrity": "sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==",
+          "target": "better-sqlite3",
+          "version": "12.11.1"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/cursor-workspace-resolver.ts",
+          "target": "src/logging/index.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/mcp/wire-shape/caps.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/normalize/index.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/trace/auto-expand.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/internal/cluster-engine.ts",
+          "target": "src/trace/index.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/search-memories.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/enrich/granola-signals.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/tools/_cursor.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/util/source-app.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/mcp/wire-shape/match.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/search-memories.ts",
+          "target": "src/storage/interface.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/fs-exclusion.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/iso8601.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/repo-path.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/mcp/util/source-app.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/wait-for-new-turns.ts",
+          "target": "src/util/timestamp.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/util/iso8601.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/util/repo-path.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/util/repo-path.ts",
+          "target": "src/mcp/cursor-workspace-resolver.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/mcp/util/source-app.ts",
+          "target": "node:os"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/caps.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/clip.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/wire-shape/match.ts",
+          "target": "src/mcp/wire-shape/tool-calls.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/_shared.ts",
+          "target": "src/normalize/errors.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/claude-code.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/claude-code.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/codex.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/codex.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/cursor.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/cursor.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/git.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/git.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/adapters/granola.ts",
+          "target": "src/normalize/adapters/_shared.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/normalize/artifacts.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/claude-code.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/codex.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/cursor.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/git.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/dispatch.ts",
+          "target": "src/normalize/adapters/granola.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/artifacts.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/dispatch.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/normalize/index.ts",
+          "target": "src/normalize/errors.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/migrate.ts",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/migrate.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "native_or_system_helper",
+          "from": "src/storage/sqlite.ts",
+          "sha256": "289ac2671fc501b275af7ce170ea2ef84e07be7e2a4a403aaa055cef02018557",
+          "target": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/sqlite.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/sqlite.ts",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/sqlite.ts",
+          "target": "node:path"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/storage/sqlite.ts",
+          "target": "node:url"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/storage/sqlite.ts",
+          "integrity": "sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==",
+          "target": "better-sqlite3",
+          "version": "12.11.1"
+        },
+        {
+          "class": "repository_literal_read",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/storage/migrations/0001_initial.sql"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/logging/index.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/storage/interface.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/storage/migrate.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/storage/source-match.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/storage/sqlite.ts",
+          "target": "src/util/timestamp.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/cluster.ts",
+          "target": "src/trace/role.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "src/trace/index.ts",
+          "target": "node:crypto"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/hints.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/labels.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/rank.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/index.ts",
+          "target": "src/trace/role.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/labels.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/rank.ts",
+          "target": "src/trace/auto-expand.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/trace/rank.ts",
+          "target": "src/trace/cluster.ts"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "node:http"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "node:path"
+        },
+        {
+          "class": "npm_package",
+          "from": "tools/verify-service-parity.mjs",
+          "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
+          "target": "ajv",
+          "version": "8.20.0"
+        },
+        {
+          "class": "npm_package",
+          "from": "tools/verify-service-parity.mjs",
+          "integrity": "sha512-GQHnkIfxyx1wYCOS/wonik5MVRZU9hi1TEZmzGZSCJB1y9YgoZ8H6itNE/u4suE+yLmOzuE4E5S4TZ/ZX2wcWQ==",
+          "target": "tsx",
+          "version": "4.23.1"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "src/mcp/internal/cluster-engine.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "src/mcp/tools/search-memories.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "src/mcp/tools/wait-for-new-turns.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "src/storage/sqlite.ts"
+        },
+        {
+          "class": "repository_literal_read",
+          "from": "tools/verify-service-parity.mjs",
+          "target": "schemas/service-api.v1.json"
+        }
+      ],
+      "entrypoint": "tools/verify-service-parity.mjs",
+      "modules": [
+        "src/capture/granola-source-policy.ts",
+        "src/enrich/granola-signals.ts",
+        "src/guards.ts",
+        "src/logging/index.ts",
+        "src/mcp/cursor-workspace-resolver.ts",
+        "src/mcp/internal/cluster-engine.ts",
+        "src/mcp/tools/_cursor.ts",
+        "src/mcp/tools/search-memories.ts",
+        "src/mcp/tools/wait-for-new-turns.ts",
+        "src/mcp/util/fs-exclusion.ts",
+        "src/mcp/util/iso8601.ts",
+        "src/mcp/util/repo-path.ts",
+        "src/mcp/util/source-app.ts",
+        "src/mcp/wire-shape/caps.ts",
+        "src/mcp/wire-shape/clip.ts",
+        "src/mcp/wire-shape/match.ts",
+        "src/mcp/wire-shape/tool-calls.ts",
+        "src/normalize/adapters/_shared.ts",
+        "src/normalize/adapters/claude-code.ts",
+        "src/normalize/adapters/codex.ts",
+        "src/normalize/adapters/cursor.ts",
+        "src/normalize/adapters/git.ts",
+        "src/normalize/adapters/granola.ts",
+        "src/normalize/artifacts.ts",
+        "src/normalize/dispatch.ts",
+        "src/normalize/errors.ts",
+        "src/normalize/index.ts",
+        "src/storage/interface.ts",
+        "src/storage/migrate.ts",
+        "src/storage/source-match.ts",
+        "src/storage/sqlite.ts",
+        "src/trace/auto-expand.ts",
+        "src/trace/cluster.ts",
+        "src/trace/hints.ts",
+        "src/trace/index.ts",
+        "src/trace/labels.ts",
+        "src/trace/rank.ts",
+        "src/trace/role.ts",
+        "src/util/timestamp.ts",
+        "tools/verify-service-parity.mjs"
+      ]
     }
   ],
   "schema": "runtime-inventory.v1",
   "script_clis": [
     {
       "class": "npm_javascript_cli",
-      "script": "typecheck",
-      "target": "typescript"
-    },
-    {
-      "class": "npm_javascript_cli",
-      "script": "test",
-      "target": "vitest"
-    },
-    {
-      "class": "npm_javascript_cli",
+      "integrity": "sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==",
       "script": "lint",
-      "target": "eslint"
+      "target": "eslint",
+      "version": "9.39.5"
+    },
+    {
+      "class": "npm_javascript_cli",
+      "integrity": "sha512-xejya+bT/j/+R/AGa1XOfRxLmNUlLtlwjRsFUILF+xHfzElmGcmFydy2gqqIrd62ptIEfwVMofd19uNWD9L7Nw==",
+      "script": "test",
+      "target": "vitest",
+      "version": "3.2.6"
+    },
+    {
+      "class": "npm_javascript_cli",
+      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+      "script": "typecheck",
+      "target": "typescript",
+      "version": "5.9.3"
     }
   ]
 }
