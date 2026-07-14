@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "parity-matrix.v1"
+    },
+    "source_commit": {
+      "type": "string"
+    },
+    "counts": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ported": {
+          "type": "integer"
+        },
+        "rewritten": {
+          "type": "integer"
+        },
+        "excluded": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ported",
+        "rewritten",
+        "excluded",
+        "total"
+      ],
+      "additionalProperties": true
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "disposition": {
+            "enum": [
+              "ported",
+              "rewritten",
+              "excluded"
+            ]
+          },
+          "source_blob_oid": {
+            "type": "string"
+          },
+          "source_content_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "disposition",
+          "source_blob_oid",
+          "source_content_sha256"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "source_commit",
+    "counts",
+    "rows"
+  ],
+  "additionalProperties": true
+}

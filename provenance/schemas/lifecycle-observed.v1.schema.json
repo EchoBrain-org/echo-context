@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "lifecycle-observed.v1"
+    },
+    "ci": {
+      "type": "object"
+    },
+    "rebuild": {
+      "type": "object"
+    },
+    "scripts_executed_total": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "network_denial": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "ci",
+    "rebuild",
+    "scripts_executed_total",
+    "network_denial"
+  ],
+  "additionalProperties": true
+}

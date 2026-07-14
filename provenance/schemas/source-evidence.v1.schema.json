@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "source-evidence.v1"
+    },
+    "source_commit": {
+      "type": "string"
+    },
+    "inventory_sha256": {
+      "type": "string"
+    },
+    "path_count": {
+      "type": "integer"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "blob_oid": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "mode",
+          "blob_oid",
+          "content_sha256"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "source_commit",
+    "inventory_sha256",
+    "path_count",
+    "entries"
+  ],
+  "additionalProperties": true
+}

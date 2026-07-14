@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "source-extraction.v1"
+    },
+    "source_commit": {
+      "type": "string"
+    },
+    "counts": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ported": {
+          "type": "integer"
+        },
+        "rewritten": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ported",
+        "rewritten",
+        "total"
+      ],
+      "additionalProperties": true
+    },
+    "target_only_count": {
+      "const": 38
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "disposition": {
+            "enum": [
+              "ported",
+              "rewritten"
+            ]
+          },
+          "source_blob_oid": {
+            "type": "string"
+          },
+          "source_content_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "disposition",
+          "source_blob_oid",
+          "source_content_sha256"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "source_commit",
+    "counts",
+    "target_only_count",
+    "rows"
+  ],
+  "additionalProperties": true
+}

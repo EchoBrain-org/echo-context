@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "context-tool-parity.v1"
+    },
+    "projected_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "case_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "per_case": {
+      "type": "array",
+      "items": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string"
+          },
+          "response_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "response_sha256"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "aggregate_sha256": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "case_order",
+    "per_case",
+    "aggregate_sha256"
+  ],
+  "additionalProperties": true
+}

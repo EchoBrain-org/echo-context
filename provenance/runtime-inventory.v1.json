@@ -13,6 +13,58 @@
         },
         {
           "class": "node_builtin",
+          "target": "node:crypto"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:path"
+        }
+      ],
+      "entrypoint": "tools/audit-pinned-extraction.mjs"
+    },
+    {
+      "edges": [
+        {
+          "class": "native_or_system_helper",
+          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:crypto"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:path"
+        }
+      ],
+      "entrypoint": "tools/check-parity.mjs"
+    },
+    {
+      "edges": [
+        {
+          "class": "native_or_system_helper",
+          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
           "target": "node:fs"
         }
       ],

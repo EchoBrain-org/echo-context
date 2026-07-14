@@ -1,0 +1,932 @@
+{
+  "counts": {
+    "ported": 144,
+    "rewritten": 8,
+    "total": 152
+  },
+  "rows": [
+    {
+      "disposition": "ported",
+      "path": "src/capture/extractors/_shared.ts",
+      "source_blob_oid": "8b4f418686bab4393b2e76c324d904a26a9f7672",
+      "source_content_sha256": "8516dadaca3b234291aedd32b5ee273df43bc17346eaafd96aa8b8b7cd9ab7da"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/extractors/_turn_meta.ts",
+      "source_blob_oid": "9cfacb226d5e48d234f64e33593e0e3a5cd92c85",
+      "source_content_sha256": "a03a3f7f25bc2eb56653d97b92f9bfb29feebb7813313d04983be01b56ed95ed"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/extractors/claude-code.ts",
+      "source_blob_oid": "765738abd3d717ce7ab4c77019e0d171f5db9f3b",
+      "source_content_sha256": "2cc487f9c73aa50c00f0ff446b50e694b0d9f4628207bc1839a5d9bffabbd503"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/extractors/codex.ts",
+      "source_blob_oid": "e3c09e5df27cb1e77429f79f86c077f794135ffa",
+      "source_content_sha256": "80628c0b422b0d4ea006a64da0a874307ef8a29c74c9ef6eaee23a1078fa7755"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/extractors/cursor.ts",
+      "source_blob_oid": "7e1fd9bba47c643701e93d26674262906fbbe548",
+      "source_content_sha256": "cccb31853b8f70e357a96741eceffe42d89ff443ca8013e86d31ac838df4a835"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/gate.ts",
+      "source_blob_oid": "4b54ca9f625715f4a55123718e589f5d0e33203e",
+      "source_content_sha256": "fedbf25838dc8ba9348e8b28c4fe4edb862175919fbf87f7693e9d65f620ca88"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/git-state.ts",
+      "source_blob_oid": "9a1babc973dee13cec416bb70ac2f5e384c64f91",
+      "source_content_sha256": "4498f85ca9ea6267158e93a1b50c64300c513294816a4a26d30ea975e818df2e"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/granola-source-policy.ts",
+      "source_blob_oid": "8664706bde86785fad87f525a6cfbc6bafb9610b",
+      "source_content_sha256": "a2d2ad902920f21ab52a41c3f895aa82efeab7488a5d4e6ffdfcb06e44ea1990"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/pipeline-core.ts",
+      "source_blob_oid": "dfa2bb254be7924bcd4cd66ad1111095494fe577",
+      "source_content_sha256": "796d4552723ad1c9e09efa6de9c01716ec2eac810056eb0e47eb306d94fdfa06"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/pipeline.ts",
+      "source_blob_oid": "ba588cf54ae132e5de8dfcc4668e0281e4ac0da8",
+      "source_content_sha256": "5f5b340847d70c3b126c3e73084674fa1b92ab303b7e71104c9b03ea44cfeb87"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/sources.ts",
+      "source_blob_oid": "f2af9a18271f470beed4c09fd2b425947c455f08",
+      "source_content_sha256": "2e86eb8dfe57399308b646d3b12c1e2b8f8ece132389821b9a56499ccf027826"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/surfaces/fs-watcher.ts",
+      "source_blob_oid": "fb648e121f573e3a121618bb38b347e4d82b4442",
+      "source_content_sha256": "f6e8ab8f23becf3b8b5808020f1dd0c774ae05fbe7733a57d14ad32a0bbb2c7b"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/surfaces/git-watcher.ts",
+      "source_blob_oid": "31ddb70edafae82ee277552a3107b0316fc0caa9",
+      "source_content_sha256": "67d1ff5304d5e9d09ebbb71bb34227cffebf266d00b9a25ec17312e713d7827f"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/surfaces/granola-poller.ts",
+      "source_blob_oid": "ffd7b15f0d4d1bc36f06d37ae344ae2e793343f3",
+      "source_content_sha256": "7d1ac043256510cd194613d7aaedf59c6875cf9e93d126383b34bd4ec816f713"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/capture/workspace-root.ts",
+      "source_blob_oid": "0fd16f664ab5d0506ea9944890d059b837850560",
+      "source_content_sha256": "6e1e64ce24104fa806696a0c7e2a9492bba8e5daba902204a150bc684af4546f"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/echo-home/adapters/atomic-write.ts",
+      "source_blob_oid": "6f1d0dedc983a52ed6d328a26b0724e1b3cc2daa",
+      "source_content_sha256": "f0f8db5e3d80843cc50c82af8a88e55054c546e2343364009e6817903ce4b45e"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/echo-home/paths.ts",
+      "source_blob_oid": "c0acd2f8286d423f263388911391a05787da91d6",
+      "source_content_sha256": "81e71cf739120566305c4e2cebeca07b8f60ddef55013c6883abbc66f7a5b607"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "src/echo-home/state-paths.ts",
+      "source_blob_oid": "bcf30e93c9648868e6ff2c8271059797e9d44773",
+      "source_content_sha256": "d1c44e79d28e1d67de07ac7e349def697667d9b53a9472be7cadfaedf74bfd58",
+      "target_content_sha256": "786211dd11792df6a905a0778e22a7e625c21803a0234666a4a5bbdcc9822d71"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "src/enrich/granola-signals.ts",
+      "source_blob_oid": "1dc78fbc0dc0f435e7d9131dece18107c4cdf2ae",
+      "source_content_sha256": "f67d1220ed8ad20e8d8d56a74e15fb28d81ee287c52cda90bbede8c6d01fd9d4",
+      "target_content_sha256": "104aa2d72ecd3566a11d542a2d2fb30e2e520550acc1c8e39e447e164f0ebfc4"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/guards.ts",
+      "source_blob_oid": "251a4bfface223c1401441115b55f4e9b9410699",
+      "source_content_sha256": "e6099d1aced802ba6125946ad7555b1b2e3ae12d89ea0034decc323410a485be"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/logging/index.ts",
+      "source_blob_oid": "6570d49a44c72d6e23c4bf35d6c0cd1570e89b8f",
+      "source_content_sha256": "a6d36e7d58662ca032320d6ebdec1a2db574a7dafa4715855b2bdd2acc7e0367"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/cursor-workspace-resolver.ts",
+      "source_blob_oid": "54d368c9429954cf3497e9af28fbd1386d2a5818",
+      "source_content_sha256": "32aaa4f006bf493fb461f4a8651d5a3922e81bd525e2e61fd58e20a5fbcadeee"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/internal/cluster-engine.ts",
+      "source_blob_oid": "4841fa8c83487d8210889e657c96034c6fca1911",
+      "source_content_sha256": "77f6b1a761aa33465902cba86f6968dff950c4465f0d052f586e4df73bec6d63"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/parse-anchors.ts",
+      "source_blob_oid": "da009ade3593b64209a74ce1bab223dc9c542036",
+      "source_content_sha256": "1e86b87083f7ec99bb93c5a33cb72a17ed16bbcc172212c7fe9b11c3ec558aae"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/request-log.ts",
+      "source_blob_oid": "785c4b2eb0eb4aef78899e58c2a68f794eae0f2e",
+      "source_content_sha256": "a9ae2021c868f98e0c56f58559be75f6ee11ee40b4a28496b7713f55d4087e65"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "src/mcp/server.ts",
+      "source_blob_oid": "324c80146f0a7cda224fb8930804b23dd0dd1362",
+      "source_content_sha256": "8bfa27ee1ea9ce227e984fb64786e2bd16d1cb3fb027c2b3235dd86bfb6fc074",
+      "target_content_sha256": "ba35001a8d8db99bb17daeff7763920066424669ba07dfd5dca9251d96675efa"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/_cursor.ts",
+      "source_blob_oid": "9c7245c322cf1252ac4fdb496c2a9cce13f2d70d",
+      "source_content_sha256": "82e74123dde6d96245b33389818c2a7856b7cdb6742fbe4fa079d0aaf7cc5376"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/echo-ping.ts",
+      "source_blob_oid": "f851537761da17f5f919168c00d0dca901ec0822",
+      "source_content_sha256": "0124eb723b362ff4277ad916d1b4d556be0a2e9fa07928ed8d1a6d386edf95a1"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/echo-resolve-mru.ts",
+      "source_blob_oid": "e5cf0b85ffc99f8b683e07454b14cd28f632f4a1",
+      "source_content_sha256": "af1e5d61932cdbf9de4620046b67926211faeb1086a2507683938ee01e5ff32d"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/find-clusters.ts",
+      "source_blob_oid": "e20ede77d938b1a658afc4b01a2ea5331c6337b5",
+      "source_content_sha256": "19b704db2cbe4d7aea3aab6047a0335be6e35597793ea27796d465988f125748"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/get-atom.ts",
+      "source_blob_oid": "88bad7dabba0844cc8419132cd4e9cc621aa23cb",
+      "source_content_sha256": "ad831336b7809c781593a52430351407a62085d4989404b5c13ea4fe2a233c57"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/get-atoms.ts",
+      "source_blob_oid": "8b58922a4c6b65705dd2dee6ab315b7d4aca61e0",
+      "source_content_sha256": "0ff3ef6191b0254da9b49cca7e5b0355a90f48e15f0017caf5ec7e04467bee8f"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/recent-work-context.ts",
+      "source_blob_oid": "4c3ace6fac88bd16c59c3350faab1e2e492c5fe2",
+      "source_content_sha256": "91a825eb9cac05f7755450f560a8d4e789fd9e6006348ebeb5719f2444cc7d74"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/search-memories.ts",
+      "source_blob_oid": "9b6e9e4fcc1fb5e6d6744ce83a4a2ac0a63556c2",
+      "source_content_sha256": "31f317040f60255a9fc8bcb4b85808f477096501cf8d76718e6a54cc8be20a3e"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/tools/wait-for-new-turns.ts",
+      "source_blob_oid": "48a43fb9648e6a0248b0ca2e57db4938342c2af0",
+      "source_content_sha256": "aa8298b8dbb4fbdbaa164f76247b332013016e8518b2fa2746f055f2c9d6dd54"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/util/fs-exclusion.ts",
+      "source_blob_oid": "0a935a5b82fa3e0f1d54a65ba28dece3d371a08e",
+      "source_content_sha256": "4b1ea7cd8227a12652887ec79c9f6bf315a9751a56722487bd6a29422a15e584"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/util/iso8601.ts",
+      "source_blob_oid": "fab0828bab9f16ac8a8efd2980e4db7eafee8c63",
+      "source_content_sha256": "932ec405684ecd5d3c35682c34b608acb9d6ad7f60970e4bc39a8e23fe2d40d0"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/util/repo-path.ts",
+      "source_blob_oid": "adad197d675c480ac42959e3d7a2d19bba5a4041",
+      "source_content_sha256": "2e53fbc1a7827a0bbd1c7d272af43370e8575abf26dc1661ce47ad91af365473"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/util/role-state-git.ts",
+      "source_blob_oid": "4b2bb1e515e7bc548c24692e4d16fa90ab939284",
+      "source_content_sha256": "27f491ee67493f4043bf66015e23f462b7477229140ef8895d86a50a96f212e5"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/util/source-app.ts",
+      "source_blob_oid": "53fed49179f7e30ed6fd7e6a1556ae16da23f4a4",
+      "source_content_sha256": "260d87179699b657b6a9d27f1e54049fc9d3863554b2d904759fb7ac6eb64ebe"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/wire-shape/caps.ts",
+      "source_blob_oid": "fb04752650e4949854256978da2b1169377d6343",
+      "source_content_sha256": "7fdcb2c5738b7481c7fd9b478f67eac6cc8d3747255b0ba5496a0c63260bf369"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/wire-shape/clip.ts",
+      "source_blob_oid": "14e08801c574ede9ca806448595ac01c2358da32",
+      "source_content_sha256": "42ba33c9b43270476b596c8b2caf749bbdb853c15d755a925a875c05d81cbe6d"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/wire-shape/compact.ts",
+      "source_blob_oid": "eff30b136b4730a010c7fb4fc834cdfe6eda8287",
+      "source_content_sha256": "eef474781fd846cf0adbf0e547cf730c6d2742b3a423ebfdfa4ea1589df530cc"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/wire-shape/match.ts",
+      "source_blob_oid": "9278325d7af3bf7f34395a1594f9f9339f7c95c9",
+      "source_content_sha256": "9441c8888b907dd66f16a45474b1408d7bcd02120c43ab01d7b3cd84c86a115e"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/mcp/wire-shape/tool-calls.ts",
+      "source_blob_oid": "b1282da6577825d980904baa813912f673f80d8b",
+      "source_content_sha256": "30d2069731ea33e5b293783016b8d3888062ae3e96a889a0a05c670098469037"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/_shared.ts",
+      "source_blob_oid": "eea16ac74fc25ff5fea5ed010d4bafb6ec385ef4",
+      "source_content_sha256": "8141b96cc04ef55ee59dcec8c67f5b36bbc2baf6b440a12cd6f8e9fa711bc276"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/claude-code.ts",
+      "source_blob_oid": "b0bfd811e3bd74aa6cefb0d0f1602cf0c6359af4",
+      "source_content_sha256": "687568375047eb29350e984852c052a5665496b3023c098ce24378e0d433d25f"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/codex.ts",
+      "source_blob_oid": "cf1b15eb5d04087bbe485dfe2a92cb709ff46d0d",
+      "source_content_sha256": "b97fb40359e123b972a2623dba85c2f3a1494a2774d11ce93dcc54a60ff73ec7"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/cursor.ts",
+      "source_blob_oid": "c60ec0102bf2e3ed35e93d184bba50d8cee7aae2",
+      "source_content_sha256": "4e1b9fa3170dcd7a915190ffbd1e4e569b31aaa42837b9e1a2c3ab6bed4162b3"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/git.ts",
+      "source_blob_oid": "12ba13d1a321272bf32b0bec165bd6391e41ba89",
+      "source_content_sha256": "eaa2a2a54b932af06eaf2202e39e0742cd2a1bd881c54115269bbef3f6d8f394"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/adapters/granola.ts",
+      "source_blob_oid": "7f16f45208592e282c1b1ce69b22d184b1d3fbe4",
+      "source_content_sha256": "bc0d99a99cf2708b462086b1341d0e64330d2c5fa6aafe16436b7659d739896e"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/artifacts.ts",
+      "source_blob_oid": "d1c816fdbb53e330070ff65b32cdc38e16dcf015",
+      "source_content_sha256": "f4ebc848851d70d92ab910d3cbc54643f41366518dadb7aa1a4e280f0b2d1862"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/dispatch.ts",
+      "source_blob_oid": "0fc7d8eca6bf3abf6c8062db40cfd2ff4296ae1a",
+      "source_content_sha256": "33c406eaa8d55d461537b3be5f9bf371a4561e83b452d704ebbb2b220366f547"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/errors.ts",
+      "source_blob_oid": "1a420e23d99a26b230842bd0d124f3fdacaa2b7e",
+      "source_content_sha256": "5b7c12720d0674be5db850a93d006d0c95187e69cd0efc7d4e9179accfad125a"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/index.ts",
+      "source_blob_oid": "9877c0809919fb859730772469fee54645ae5039",
+      "source_content_sha256": "369023ef5b9c290a90246c405b42f40d0c0bac1ed23c2e0e2544e7164d25642d"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/normalize/types.ts",
+      "source_blob_oid": "c341705957bdc6651275ecaf99aed70065ce3f05",
+      "source_content_sha256": "b9a3aff313d947b25a9eab551c1da355109190d15cb76f5504587660e4873562"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/interface.ts",
+      "source_blob_oid": "ba954577736841e47ef1dd27e050455ee097867b",
+      "source_content_sha256": "01d57b0742e2dd601de0de23abe4905b7cd1df82fd724fad394d35888af945f5"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/memory.ts",
+      "source_blob_oid": "ae7bacf1bba424c53c4fb37fa8bfcd5ad8ba1a9b",
+      "source_content_sha256": "c8f65cb9fc5b1e82baa7de0e6c1ff6f4dfb57a68dec753379e6556dd12ae2590"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/migrate.ts",
+      "source_blob_oid": "27c1e20dd5058ad524b7ce7661e7783d4119d896",
+      "source_content_sha256": "e21466f7fa56c5e872599110d16054bea229b3589d0dfa81d650e85c5ec5cf7c"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/migrations/0001_initial.sql",
+      "source_blob_oid": "98cf5ab2321a615ffcb09e0acb3492da95773bf6",
+      "source_content_sha256": "e8e96abe792ec8a601633977102705fc8aae005f7b2adba36966d295f2c824b3"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/source-match.ts",
+      "source_blob_oid": "1f5c9228976bdc5a324934a0150e9ef672708b03",
+      "source_content_sha256": "dc01582037e2e6bca906b223c273bd9687fb97965d1260ac85367ec5c9067069"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/storage/sqlite.ts",
+      "source_blob_oid": "add66d86545ae96ecb2ba486a8e447dc29ffbbc0",
+      "source_content_sha256": "d5559dd1a092e26536790a7832d8ee4c64d957fd0fd343d19336f0fddbf60878"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/auto-expand.ts",
+      "source_blob_oid": "812a52e5321ee24d28e66d5bb9469a6f1554e200",
+      "source_content_sha256": "e431eaf831afcfdfb135670850161aff1c1558856fd42a1500b9e5d9e31c89a5"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/cluster.ts",
+      "source_blob_oid": "8f4706f3bbb2b1b546060a196bce79776f308188",
+      "source_content_sha256": "77b7d2b681715ffeb74b848128fbd572c1f66583f0270073cd92250a9f9d9e1b"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/hints.ts",
+      "source_blob_oid": "e1631733e6c5134cc2f352e3c5bdba40cfc96a71",
+      "source_content_sha256": "1332b0d2a4f17520f18cfc1592721136cdc7140f2f8453a574882700b22a8f60"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/index.ts",
+      "source_blob_oid": "408cd516558b5dca9585817e4285247989d1a1f9",
+      "source_content_sha256": "f245faa6735c5f1707bc01a512663210e3d379cbd0a09cdc5f370b20fd24d69c"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/labels.ts",
+      "source_blob_oid": "f6ba5bae9d092c067cbfbb16ace5f70d629499b3",
+      "source_content_sha256": "59a2b655f3dc4ff23965e4a90dbff80238c699d9677c1bd9bc0440add00da88b"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/rank.ts",
+      "source_blob_oid": "178eeb08b4ed6e377f932f90701b62847c622982",
+      "source_content_sha256": "299bd5f4918812821a4cca338abc1dafa1bd7dcff6e186c47b0be239684ee9f3"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/role.ts",
+      "source_blob_oid": "b33a3a1648133a60a852c9f846269f87749b2c56",
+      "source_content_sha256": "3c88cd22129f188a1634e1e475a53efc8b0ff8183c6895642e23df328d012f5f"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/signal-window.ts",
+      "source_blob_oid": "06cbdf6d0473ea416c48d2b6976a9e61c1c5226e",
+      "source_content_sha256": "52c6008c3be23e99802e2d61583efd1be0b1e7c6f5def6cef76ebdce07370604"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/trace/types.ts",
+      "source_blob_oid": "29b072d65c46f3044be110197b4f2540d278fe82",
+      "source_content_sha256": "2f493078d2a5942e0331a2df53946dfc0e9cbdb73b505c79cfb95a224efdeb90"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/util/json.ts",
+      "source_blob_oid": "d354247f42c1b49dcef26e54732c648224fcaa5f",
+      "source_content_sha256": "e39d9255f557e388d352bd73933b05cc30082d19525720c099e0949fb2656751"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/util/subject.ts",
+      "source_blob_oid": "ca9b8d08b3fb9c14da5464223ed58609c0cb8ae3",
+      "source_content_sha256": "85d70f78278b7d27e949d7e9b898744432c18cd29b2bf88c44dc137a57fd6f7a"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/util/subprocess.ts",
+      "source_blob_oid": "d902cc7a8d18fc646fd862f29988fb206322e9ab",
+      "source_content_sha256": "21d4b29bf4e7524af175e314275c7f4ac15dc1b888353d21ead2441706cb7227"
+    },
+    {
+      "disposition": "ported",
+      "path": "src/util/timestamp.ts",
+      "source_blob_oid": "cea84e51ef6357a44bf8efa1aa3562feffdd4f32",
+      "source_content_sha256": "c8e65b810e4ee5ab7b8b896e4ef15a1438d44bfa43c34b072cec170a58aca2ee"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/canonical-root-capture.test.ts",
+      "source_blob_oid": "fb43836036e86e7848d5f811307a9615bb61d95e",
+      "source_content_sha256": "0c6cbb4a990603c05d52e0aa5db908bd1fda517fc53b617ec26cd747e3595b8f"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/extractors/claude-code.test.ts",
+      "source_blob_oid": "7eafae0646794a6effd1657336ea15ef4b2a6933",
+      "source_content_sha256": "c99112588640823e2da2f4de16e010b57ac67d6334d4a57f945811d82c365a31"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/extractors/codex.test.ts",
+      "source_blob_oid": "77c69c8415939aa3072483bd759030559386ada0",
+      "source_content_sha256": "7f5ef37d6ea7873fe298579e59a21193162758412b679ce48b3e4e7c3baaece6"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/extractors/cursor.test.ts",
+      "source_blob_oid": "2b4757c9134ac82a84f20d45a9b4e0b524014925",
+      "source_content_sha256": "b8ab0601292d2343703cc748f1859819be820cbd1e2100612acd8762efbb125d"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/gate.test.ts",
+      "source_blob_oid": "fa933cb52dfe81850b07bcd6029b718e9fe45132",
+      "source_content_sha256": "6a07e0fcf1009b45f9672e3778c6dd36db157ce5ffd15f9657cc8cd85192649b"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/granola-poller.test.ts",
+      "source_blob_oid": "d56be9623df0c9c85c8c5d0d4d22da71b3ee4ba7",
+      "source_content_sha256": "4bc89706975efc778c3453442d6af8deeadc527b04ee53a7123116d86487a66d"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/origin-url-capture.test.ts",
+      "source_blob_oid": "b5731b18348f20b6fa9bc9a40079d6e3f2adee89",
+      "source_content_sha256": "b47a7df4313301a27431b1626f449590a2b85cd952b8a044bbc10434fd959537"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/pipeline.test.ts",
+      "source_blob_oid": "a58edb6f31d1bfff765bdf244aea9f93bcb2985c",
+      "source_content_sha256": "7767c4a738444eb802412d698523629d2f753169c24e336130665706066830eb"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/sources.test.ts",
+      "source_blob_oid": "0d4b90bc3679b603733a9771b86c871d3ac9d274",
+      "source_content_sha256": "7b714c158ecfa57c99651685b1dd8db02a0ca278f349c5b6f4fd507bc64f63b3"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/surfaces/fs-watcher.test.ts",
+      "source_blob_oid": "caf82e3c4d2fc75c210e5b46fcfa440801a54291",
+      "source_content_sha256": "f34d8f1feda22933d0d7c28cd283a3f48e5792ff4262684c0907020fa162c63a"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/surfaces/git-watcher.test.ts",
+      "source_blob_oid": "34e676b854c5385ee8a232db88f51b965c752204",
+      "source_content_sha256": "51dfcb47e013f96cc1b61342eda669bb7d76c250b9fad822223193f7277056ca"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/capture/workspace-root.test.ts",
+      "source_blob_oid": "c6c6f36bb75e321d8a224bf68b157dc044bfe493",
+      "source_content_sha256": "32ec8432544dd3ce05daf1494858c493598224f15b5dd173dfcdc518115c38a2"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/echo-home/adapters/atomic-write.test.ts",
+      "source_blob_oid": "28dd0ef7abe77a9c540bbc2d47f55580f695469c",
+      "source_content_sha256": "661b1c3a77c9969abfa004cb82b347426bde6aae6d9263cb1aa267a1a37b5480"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "tests/echo-home/paths.test.ts",
+      "source_blob_oid": "b3f4f6acd0e820d1848325bc89b01633f5972828",
+      "source_content_sha256": "af6f419f70fd5ec03fb76880eb749bae1f8bd80d977f878e173da0b88cdab7a5",
+      "target_content_sha256": "a92ba904e87137020ad1389d31df4b02fa96dacc899ba401ef40f1de7a3432df"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/fixtures/allowlist.ts",
+      "source_blob_oid": "da6bac1edc3009c68309a04c935fcb5ed0353f80",
+      "source_content_sha256": "6a21223c3467ea64f057b719cb8687a72b39222fda91f2fe387da71fd996d92b"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/fixtures/claude-code-session.jsonl",
+      "source_blob_oid": "d9e8bcd369af996fed35655a7b08068377dc41b1",
+      "source_content_sha256": "7c4de2006766eb74965e4e1e420bdcf094d037937d0a186366729f5732df7437"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/fixtures/cursor-globalstorage.ts",
+      "source_blob_oid": "724893e596757bc6d0991a0f37e15457d92099d4",
+      "source_content_sha256": "be5fbf2ed8fd9abc609abc04492c29e30daefca1d4e22cfde98bdff4615ef2a6"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/fixtures/jsonl.ts",
+      "source_blob_oid": "afe3c8a1bae716a045e63e22d5fc38c4d48a358f",
+      "source_content_sha256": "d34f800293bbaa452ba7b6ac398fa94656a7760179e2cb8e672801a1a70c533e"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/fixtures/stdout.ts",
+      "source_blob_oid": "c76c632f0caea1584a145e9b468880c4b7bd92fd",
+      "source_content_sha256": "000fe74978833ca343265ccdb6589e1581abf467b23fbd966e3dbc898a21bd6e"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/logging/index.test.ts",
+      "source_blob_oid": "0d9a091eb5a36065c3dca759db2c3ce3f065d4f6",
+      "source_content_sha256": "752ebcfee0d7b264bd376256c3edc4825dcc0d2278e49ebe30528c512b75e5bf"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/cursor-workspace-resolver.test.ts",
+      "source_blob_oid": "d31b569aa590a25985547cca1dfb448d85a8ab32",
+      "source_content_sha256": "d1d5fdb83c66f0fbbfd82cc04ec624db797c6817a617c08600330b72ba65f309"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/envelope-find-get-chain.test.ts",
+      "source_blob_oid": "224a23261baf8de287f0d999c1d57e2beb8025e7",
+      "source_content_sha256": "ff69147c864ba129520f38df9fb5ca10ddfd8013d9239238352de3348fdc50dd"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/find-clusters.test.ts",
+      "source_blob_oid": "d700c37e8ba9880f331efaff54d52ee1f79ce1a2",
+      "source_content_sha256": "a7b95a9510c1c73cfd488a96bc5599b3421474152df9b6042db537708c2d088f"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/fixtures/recent-work-context-realistic-claude-code.json",
+      "source_blob_oid": "8a6619b5a4efe20de3062a6cb4388790065f8d9f",
+      "source_content_sha256": "e901fb67cfdb0d9fdf8318b7a7a3bbcefdc77655ed9bd1df7055f96c5a0dafad"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/get-atom.test.ts",
+      "source_blob_oid": "859bdbc21564f36bbb982a82a505783f4729adc8",
+      "source_content_sha256": "76a951f31286cc70e4954990a8b14396c9b8ec2934baaadd302dd8dd74a1cc0f"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/get-atoms.test.ts",
+      "source_blob_oid": "1e8e3a8d8cf7af3aac682ecaae4282419ee56476",
+      "source_content_sha256": "04209e056ab44cb212a9a74205ada8b6a14ea917535ba949f85b9092e47891c9"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "tests/mcp/recent-calls-endpoint.test.ts",
+      "source_blob_oid": "d4538161ad6600605c8730f67dd46f7460f0f66f",
+      "source_content_sha256": "6a230c35697649025f1a7e5ce59f7f77d1e28a1a00e83cf2d9894a72375a0fb6",
+      "target_content_sha256": "c3e2dfa2873aa69c571a0c44c0bb52863d8432a73b417ef110d871cb267fb279"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/request-log.test.ts",
+      "source_blob_oid": "e52828d1e47dbfb4710480f27acd426d9c245ea2",
+      "source_content_sha256": "6a52e56cdc61e5d9e141fb3cdbf8d7f4c44afd73e6e2c6737881400c267565d8"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "tests/mcp/server.test.ts",
+      "source_blob_oid": "d364ef656f38c087a6ed85225267006ec7d57852",
+      "source_content_sha256": "c513689c7b564e18386734c45c8fc30dda435efc9874175d5422e528ec9ca814",
+      "target_content_sha256": "0869a201904d87a22c3c1a957f64b8c9caefbddc51c5de1f91f7a01bd6eafb0d"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/tools/echo-ping.test.ts",
+      "source_blob_oid": "b4a4db03b417cd2e0f11b1b3ef92f0c4a952acf3",
+      "source_content_sha256": "55ee61f28a737da4544471de3288b152d2f5a956e905b4c9c79b10b9b3031efb"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/tools/echo-resolve-mru.test.ts",
+      "source_blob_oid": "5cea0aa287534149ac85b492fe7629ea030191a0",
+      "source_content_sha256": "66a914b7243d5106dc7da15f06e583cb70b13689a3b10e2fb2aa8acc9bd020e5"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/tools/fixtures/build-list-task-states-fixture.ts",
+      "source_blob_oid": "fccac49265be4499ee55a7b82f32b22890f18092",
+      "source_content_sha256": "cfcdaf01f33025c255907b129fa56d987454d89c3cd23d939310834cb6120d4e"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/tools/fixtures/list-task-states-baseline.json",
+      "source_blob_oid": "864d63d47fd0e5512fd6d1d38779538215f7b563",
+      "source_content_sha256": "a9e6d274d4d238ccc463a2794d8da3cffcd0649bbbc154b3a14bda83a0a184a9"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "tests/mcp/tools/recent-work-context.test.ts",
+      "source_blob_oid": "06f34c180d5251c3200260e03d1f135302a3637b",
+      "source_content_sha256": "76c890b30aafbb1150cf620725864087b6141da7e0017b54252161398f5c9d9f",
+      "target_content_sha256": "290c9b32ecebd1b973e7a526ebfd07396e3671abbbfdbbf63289955b22b641f4"
+    },
+    {
+      "disposition": "rewritten",
+      "path": "tests/mcp/tools/search-memories.test.ts",
+      "source_blob_oid": "bb8a63d41bfe55b72ed9e1e66979263638a3f567",
+      "source_content_sha256": "584f0e02f16a5074cefa717144b6bb4f00e16e07876ffc6e092ead358658386b",
+      "target_content_sha256": "e26fa5ba16c3788df08960506e6e330405241eab2cc1d2996747be84b154ded8"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/util/fs-exclusion.test.ts",
+      "source_blob_oid": "7d3023ba7de428972b616eb81668b85d3349fede",
+      "source_content_sha256": "d2a8310196450033a9a24c76e6dde4e3cc30af2fb8fd4b47d96804e257c3f941"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/wait-for-new-turns.test.ts",
+      "source_blob_oid": "a3d2ef1a15fd76b815917831f8940cba7ceaa194",
+      "source_content_sha256": "c74b378c1e78af0028cf1c11fdc280d94d4be98969d584a898bc95862dc0d685"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/wire-shape/compact-rank-reason.test.ts",
+      "source_blob_oid": "c9bc749d28baf92c8021375894fbf68c6f7a109f",
+      "source_content_sha256": "9df9bf0b246a914039c201253abb1c0a3b0d35ccbb79dfdf6efe94597c75b092"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/wire-shape/compact.test.ts",
+      "source_blob_oid": "563fdc04d0515a8bd50f03e65a06c6cd8a3ac06a",
+      "source_content_sha256": "a5c4fd5bb540c20889c5369a84de36f4084eedf5a7c792ac4d0ef226e4e69904"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/wire-shape/match.test.ts",
+      "source_blob_oid": "e9a8804f129a07782c301e6cfc8f4fe1444a5819",
+      "source_content_sha256": "94d06be97db306e1cd83b012f8d0d50e9757e598e65a76c5f98042a1ee08916d"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/mcp/wire-shape/tool-calls.test.ts",
+      "source_blob_oid": "62bfa8c71c70b4c4456a62cf7cf1cc763a374426",
+      "source_content_sha256": "3b8d8883facecc7f7ffc1a46a14049a356283be9c0fe97ab51159f6e0be3d291"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/adapters/claude-code.test.ts",
+      "source_blob_oid": "6f1d72038402075b287a446ba3347d72eb0cc2d6",
+      "source_content_sha256": "b2404b943bba2b8aef22f057d69e9fab59f21a69fe824b12242982f69be8fa0c"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/adapters/codex.test.ts",
+      "source_blob_oid": "3ac0e468c150e3ebb49264c28f857ca3c0e470b8",
+      "source_content_sha256": "a6d24ff2ecfa8ac8d71227c52e54e4c72ecd2f15e177265b99c2baadf3ef2ca8"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/adapters/cursor.test.ts",
+      "source_blob_oid": "a5cfeb0ff210e8eec29019ccb9a1875733b3e4bc",
+      "source_content_sha256": "24f2f949fb9c8df5c8dc56c87a7d4e7aaff102c428b5e9d1c7d3c3efbfddc42b"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/adapters/git.test.ts",
+      "source_blob_oid": "f59160141cad8581dfbd7020eb77802817035419",
+      "source_content_sha256": "61fd3e43b2bfe0e02289a08ef870043d44dd0aa8c572242ee25f231f52f8d025"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/adapters/granola.test.ts",
+      "source_blob_oid": "273aa129be501af28eff4052c3b199bbf3a8a523",
+      "source_content_sha256": "b6cedb16455a3ecdd73b2d3210dc137a284967ebee59ef8721fa0a9ee86cf294"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/artifacts.test.ts",
+      "source_blob_oid": "c9ef12a46208499fe23c774551ba6e6acf5783aa",
+      "source_content_sha256": "2793a50409df74a1366dfa45bb8f0f172065331b031c472d2bd3ef59b257b844"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/dispatch.test.ts",
+      "source_blob_oid": "4a2f05ef4d2bb5381daed78b95700d1ef8fd9f3a",
+      "source_content_sha256": "6e7d3cf5c8851439e69e7e582b72657a3fd64a1ee09ada70ea551e78f4032823"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/fixtures/claude-code.ts",
+      "source_blob_oid": "390b3bca73e049f2ba37c8922ba1e20aeffe24db",
+      "source_content_sha256": "e3a249351b3e84a0e1e0b1a81faed3762627b800fc2f969baf78a52175f34579"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/fixtures/codex.ts",
+      "source_blob_oid": "0462cab748451b46fc299efbb09a6ce43f9a06a2",
+      "source_content_sha256": "78aa8d74c4710e66b3d1968d70663fca07c6c177b841f4df95270a32a7e42d18"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/fixtures/cursor.ts",
+      "source_blob_oid": "7a9f7c184a04563b6a94e345632eed986d25b988",
+      "source_content_sha256": "90c03994f0695b5bd529db1a6d47cff51dfc583048c35fd227d6fae71d29dab9"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/fixtures/git.ts",
+      "source_blob_oid": "c02be3876d1e64d165072fa962018b71e9ef06ff",
+      "source_content_sha256": "cd2f784f59f1d40370a3d525ed180c951acc8c6e8b0267ddf0b7665682421a41"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/repo-identity-convergence.test.ts",
+      "source_blob_oid": "c947d80f3d47bc0c649649e25a5f0f2da6fe6e4b",
+      "source_content_sha256": "c5d602489a59ff57efb77548511de692d53466e74da5e0a14698fbaac75e714f"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/roundtrip.test.ts",
+      "source_blob_oid": "8351b66b65771f97e4d07e9f5de67e73620b2024",
+      "source_content_sha256": "5cdb067aa1c402f005a065258cdb7deb6569a8e3eb56e4afcb5496f1d5484c13"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/normalize/workspace-identity.test.ts",
+      "source_blob_oid": "0225760562a1647b09bdacc97b7ffc754d603c30",
+      "source_content_sha256": "bcca6a95d27b169c73c9e0c2e01f904db06d7a6cce55d6f5fd2dd891bdcea791"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/get-by-ids.test.ts",
+      "source_blob_oid": "0f5618fab8cf103b373a40a8f37f4214e4932dab",
+      "source_content_sha256": "f7cfc8b9d63ef9e345c9232594067289c8899a5c7a276332dd3b7d03221b1b14"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/iterate-coord-by-append-order.test.ts",
+      "source_blob_oid": "744b7b49ca48c7396afa37661991b326540f52ba",
+      "source_content_sha256": "6cba2d73e47212bb1285fda5db3e381addbe2833622a4d20dcfad97edebd76e6"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/memory.test.ts",
+      "source_blob_oid": "e407acdf1fa51b3cd6eada18c4b413fc66130e36",
+      "source_content_sha256": "b387bcbc83edb474ccb68ed40e45c744d6a56a0db9975fb6f1619efa80ae2712"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/metadata-match.test.ts",
+      "source_blob_oid": "9f41780c42c177a427e2e6f7cf6d96f195db228f",
+      "source_content_sha256": "594ae1d43d0846e23e664a031258e0d711891d99cd98d03f24acf823a19c0b66"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/migrate.test.ts",
+      "source_blob_oid": "75c62e241cc09bf98433ddd78b783b2f7d662d11",
+      "source_content_sha256": "318eeb8f7282b6cd4f9102c183960263ec71182eab4311ed41e87d62a8bac42e"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/signal-window-append-order.test.ts",
+      "source_blob_oid": "bd8f987294796cd576673c2fddba1fc22d9d0a9d",
+      "source_content_sha256": "df1dfcfe1b6ba2682b099802408e074eeb402faef16baa3c4b3b7c5e60cd8a8e"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/source-match-conformance.test.ts",
+      "source_blob_oid": "2b83d4433e98e63e9a49a286370445a74be2474d",
+      "source_content_sha256": "01c6d855acf16c658020cdd02f4dcf0fafd63c935f49e234c3e3c96fc8943ba8"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/storage/sqlite.test.ts",
+      "source_blob_oid": "8f3a64ca0d7457c6078860e22c165f75a161b575",
+      "source_content_sha256": "7d54950e1de35d0095d35123549f5ce9beefc08873c63891933953cc0ea318ed"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/auto-expand.test.ts",
+      "source_blob_oid": "7ccd6bcad17d2a7398505f40d2dd00a96a1f5284",
+      "source_content_sha256": "12ab9c2db4761f0feffaed38afc2836435e9d5a54cc569d4da68e81f1dd1cb0a"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/build.test.ts",
+      "source_blob_oid": "c1ff2573dbc928386bc768960e5766c161da21a3",
+      "source_content_sha256": "520ca6580cdb6f7e5ed604d6dec7690d840a2447159bf7c7b2b5331b8cca5c69"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/cluster.test.ts",
+      "source_blob_oid": "9b626d2301a319d3f1d1bf6b56a76912287766de",
+      "source_content_sha256": "c033e7978b98b428a287a21b637d15f17e22a31dddaf96e1300826a1f36fab2b"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/fixtures/atoms.ts",
+      "source_blob_oid": "93159295bef69460830a318042307d7b133fb6a2",
+      "source_content_sha256": "c2a45a6023db74974b564801c086bbd6266592cc43d70180c8f4de2830230d7a"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/hints.test.ts",
+      "source_blob_oid": "65b53c7d82ef90ac1b964c8d4a62ab31a81a34ba",
+      "source_content_sha256": "16da033432a75434de350d5c8c71decf9a4612c358f34228b9595dfd6dbf620a"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/labels.test.ts",
+      "source_blob_oid": "314d2512d17ad261a87bc0f81071f55bf50ee09d",
+      "source_content_sha256": "c441ea0af325a7ffe75172c5c5317752bdbf6c6d2dfed3cfd04d81d8b6965847"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/rank.test.ts",
+      "source_blob_oid": "405e5ec970a1aa052ff79f4970b2f97197d9a2bc",
+      "source_content_sha256": "af0e061159da7b4481209f5358cdcaa8f067467ad9f65f13c89d8a6e74f68cdf"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/repo-identity-cross-adapter.test.ts",
+      "source_blob_oid": "cf4e96ebff63acc113fbb74a4341b882a8823c41",
+      "source_content_sha256": "77c1fe68e31a88d309e7aebc627e29adff1f8d83e9f5cd07ceb86a565ac857e6"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/role.test.ts",
+      "source_blob_oid": "fdbeba0a3061b95f8cdd4be34fc530983e98b006",
+      "source_content_sha256": "35d71cdea423580e25a323497025ac02f1da5be65c3dc136ac6ed1ca707c4dd5"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/signal-window-import-closure.test.ts",
+      "source_blob_oid": "eb1ae633c585035992d02d550f160e9c76344fa3",
+      "source_content_sha256": "291c488294c3d37071d29731e12115415f5f1e76814b3f79bbb4983671f5560c"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/trace/signal-window.test.ts",
+      "source_blob_oid": "e80823cf909fbd61737bbe57d2348bd1372dd5a1",
+      "source_content_sha256": "1564a31fdc8bbbca70912fbc361bb317b78dbbfe6e197e726327def6278cb778"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/util/json.test.ts",
+      "source_blob_oid": "64a638f5e6aa5211fccfab073ce72973f12ddff6",
+      "source_content_sha256": "984e04b5aee25546cc93fc3fcea5c8136a9b33cd45548ad55d307a4613968161"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/util/subject.test.ts",
+      "source_blob_oid": "32186c6ebe47eee90d7b012bdc6486c2dfaf83f3",
+      "source_content_sha256": "5477d4081f9793855de2eb0a7728d63de88a5813229ed9ebefa221d351bfaa1f"
+    },
+    {
+      "disposition": "ported",
+      "path": "tests/util/subprocess.test.ts",
+      "source_blob_oid": "36489e25e498859c3d4d3f2fae9b5cf0ad8a4a1e",
+      "source_content_sha256": "50dcb70ea38ae03b37597bc5458a7e70e3cfcc885b023f42ef3b9266fdf6d0c1"
+    }
+  ],
+  "schema": "source-extraction.v1",
+  "source_commit": "2971310441b69735cbe759293abd8c4d044bf347",
+  "target_only_count": 38
+}

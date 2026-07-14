@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "native-toolchain.v1"
+    },
+    "node": {
+      "type": "string"
+    },
+    "npm": {
+      "type": "string"
+    },
+    "compiler": {
+      "type": "string"
+    },
+    "python": {
+      "type": "string"
+    },
+    "npm_config_nodedir": {
+      "type": "string"
+    },
+    "native_artifact": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "schema",
+    "node",
+    "npm",
+    "native_artifact"
+  ],
+  "additionalProperties": true
+}
