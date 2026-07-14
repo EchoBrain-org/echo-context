@@ -326,6 +326,14 @@ function analyzeEntrypoint(entrypoint) {
             if (value?.kind === 'string') {
               const nested = SYSTEM_HELPERS.get(value.value);
               if (nested) add(file, 'native_or_system_helper', nested);
+            } else if (
+              helper === NODE &&
+              (value?.kind === 'repo-file' || value?.kind === 'repo-path') &&
+              TRACKED.has(value.value) &&
+              /\.(?:[cm]?js|ts)$/.test(value.value)
+            ) {
+              add(file, 'repository_literal_process_launch', value.value);
+              visitModule(value.value);
             }
             ts.forEachChild(candidate, collectNestedHelpers);
           };
