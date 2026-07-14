@@ -1,0 +1,68 @@
+{
+  "commit": "92e7ae1d4e5e2456046d1c2aed0b607cdc77c984",
+  "entrypoints": [
+    {
+      "edges": [
+        {
+          "class": "native_or_system_helper",
+          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        }
+      ],
+      "entrypoint": "tools/check-runtime-inventory.mjs"
+    },
+    {
+      "edges": [
+        {
+          "class": "native_or_system_helper",
+          "note": "variable arg pinned to native helper by an assert-equal guard",
+          "target": "/usr/local/bin/git"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:child_process"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        }
+      ],
+      "entrypoint": "tools/emit-source-inventory.mjs"
+    },
+    {
+      "edges": [
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        }
+      ],
+      "entrypoint": "tools/verify-context-tools.mjs"
+    }
+  ],
+  "schema": "runtime-inventory.v1",
+  "script_clis": [
+    {
+      "class": "npm_javascript_cli",
+      "script": "typecheck",
+      "target": "typescript"
+    },
+    {
+      "class": "npm_javascript_cli",
+      "script": "test",
+      "target": "vitest"
+    },
+    {
+      "class": "npm_javascript_cli",
+      "script": "lint",
+      "target": "eslint"
+    }
+  ]
+}
