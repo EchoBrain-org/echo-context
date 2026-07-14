@@ -306,13 +306,13 @@ function timeoutPromise(ms, label) {
 }
 
 class StdioPeer {
-  constructor(label, command, args, options) {
+  constructor(label, args, options) {
     this.label = label;
     this.nextId = 1;
     this.pending = new Map();
     this.stderr = '';
     this.stdoutBuffer = '';
-    this.child = spawn(command, args, { ...options, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = spawn(NODE, args, { ...options, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
     this.child.stderr.on('data', (chunk) => {
       this.stderr += chunk.toString('utf8');
       if (Buffer.byteLength(this.stderr) > STDERR_LIMIT) {
@@ -504,8 +504,8 @@ async function runParity() {
     });
     const sourceViteNode = join(sourceRoot, 'node_modules/vite-node/vite-node.mjs');
     if (!existsSync(sourceViteNode)) fail('pinned source install lacks vite-node CLI');
-    sourcePeer = new StdioPeer('source', NODE, [sourceViteNode, '--script', harnessPath], { cwd: sourceRoot, env: sourceEnv });
-    targetPeer = new StdioPeer('target', NODE, ['--import', 'tsx', harnessPath], { cwd: targetRoot, env: targetEnv });
+    sourcePeer = new StdioPeer('source', [sourceViteNode, '--script', harnessPath], { cwd: sourceRoot, env: sourceEnv });
+    targetPeer = new StdioPeer('target', ['--import', 'tsx', harnessPath], { cwd: targetRoot, env: targetEnv });
     const work = (async () => {
       const [source, target] = await Promise.all([
         exercise(sourcePeer, fixture, 'source'),
