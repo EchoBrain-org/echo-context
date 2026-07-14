@@ -38,7 +38,7 @@ state is read by the synthetic verification paths.
   the source's full 15-tool roster, seven classified ignored IDs, the projected
   eight descriptors, ten ordered full-result cases, fixture/config/harness
   bytes, and aggregate
-  `2f0b28f6b62d31682db30b63139e21cc42977713500a1655f65213f69d7f427e`.
+  `6569b0472372ad666404aa22bcf5b1e0e0c716b573dec35c4b9212864420bba2`.
   The wait case maps the source's integer `timeout: 1` to a literal 10 ms wall
   budget by advancing the identical harness's virtual clock 1000 ms.
 - The loopback service compiles and enforces `schemas/service-api.v1.json` for
