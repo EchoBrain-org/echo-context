@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -52,15 +52,44 @@ function git(cwd: string, args: string[]): string {
   return execFileSync(GIT, ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
 }
 
-function runChecker(gitDir: string, commit: string, manifest: string, emit = false) {
-  return spawnSync(
-    NODE,
-    [CHECKER, '--git-dir', gitDir, '--commit', commit, '--manifest', manifest, ...(emit ? ['--emit'] : [])],
-    { encoding: 'utf8', timeout: 120_000, maxBuffer: 32 * 1024 * 1024 },
-  );
+type CheckerResult = {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+  error?: Error;
+};
+
+function checkerArgs(gitDir: string, commit: string, manifest: string, emit = false): string[] {
+  return [CHECKER, '--git-dir', gitDir, '--commit', commit, '--manifest', manifest, ...(emit ? ['--emit'] : [])];
 }
 
-function expectRejected(result: ReturnType<typeof runChecker>, pattern: RegExp) {
+function runChecker(gitDir: string, commit: string, manifest: string, emit = false): CheckerResult {
+  return spawnSync(
+    NODE,
+    checkerArgs(gitDir, commit, manifest, emit),
+    { encoding: 'utf8', timeout: 120_000, maxBuffer: 32 * 1024 * 1024 },
+  ) as CheckerResult;
+}
+
+function runCheckerAsync(gitDir: string, commit: string, manifest: string): Promise<CheckerResult> {
+  return new Promise((resolveResult) => {
+    const child = spawn(NODE, checkerArgs(gitDir, commit, manifest), { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let error: Error | undefined;
+    const timer = setTimeout(() => child.kill('SIGKILL'), 120_000);
+    child.stdout.on('data', (bytes) => { stdout += bytes.toString('utf8'); });
+    child.stderr.on('data', (bytes) => { stderr += bytes.toString('utf8'); });
+    child.once('error', (childError) => { error = childError; });
+    child.once('close', (status, signal) => {
+      clearTimeout(timer);
+      resolveResult({ status, signal, stdout, stderr, ...(error ? { error } : {}) });
+    });
+  });
+}
+
+function expectRejected(result: CheckerResult, pattern: RegExp) {
   if (result.error) throw result.error;
   expect(result.signal).toBeNull();
   expect(result.status).not.toBe(0);
@@ -71,7 +100,7 @@ function writeJson(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function withNoLocalClone(run: (clone: string) => void) {
+async function withNoLocalClone(run: (clone: string) => void | Promise<void>) {
   const clone = mkdtempSync(join(tmpdir(), 'echo-context-ac2-'));
   try {
     execFileSync(GIT, ['clone', '--no-local', '--no-hardlinks', '--no-checkout', ROOT, clone], { stdio: 'ignore' });
@@ -81,7 +110,7 @@ function withNoLocalClone(run: (clone: string) => void) {
     execFileSync(GIT, ['-C', clone, 'remote', 'remove', 'origin']);
     git(clone, ['config', 'user.name', 'AC2 fixture']);
     git(clone, ['config', 'user.email', 'ac2-fixture@example.invalid']);
-    run(clone);
+    await run(clone);
   } finally {
     rmSync(clone, { recursive: true, force: true });
   }
@@ -167,8 +196,8 @@ describe('AC2 — runtime dependency set', () => {
     for (const edge of manifest.script_clis) expect(GRAMMAR.has(edge.class)).toBe(true);
   });
 
-  it('rejects an omitted entrypoint, every omitted edge class, and an unknown class through the real CLI', () => {
-    withNoLocalClone((clone) => {
+  it('rejects an omitted entrypoint, every omitted edge class, and an unknown class through the real CLI', async () => {
+    await withNoLocalClone(async (clone) => {
       writeFileSync(join(clone, 'tools', 'ac2-fixture-child.cjs'), 'module.exports = { ok: true };\n', 'utf8');
       const commit = commitFixture(
         clone,
@@ -201,7 +230,7 @@ spawnSync('/usr/local/bin/node', [child]);
       withoutEntrypoint.entrypoint_sources.splice(0, 1);
       const omittedEntrypointPath = join(clone, 'omitted-entrypoint.json');
       writeJson(omittedEntrypointPath, withoutEntrypoint);
-      expectRejected(runChecker(join(clone, '.git'), amended, omittedEntrypointPath), /manifest differs/);
+      const mutationPaths = [omittedEntrypointPath];
 
       for (const klass of GRAMMAR) {
         const mutation = structuredClone(complete);
@@ -213,19 +242,25 @@ spawnSync('/usr/local/bin/node', [child]);
         );
         const mutationPath = join(clone, `omitted-${klass}.json`);
         writeJson(mutationPath, mutation);
-        expectRejected(runChecker(join(clone, '.git'), amended, mutationPath), /manifest differs/);
+        mutationPaths.push(mutationPath);
       }
 
       const unknown = structuredClone(complete);
       unknown.entrypoints[0].edges[0].class = 'unknown_edge_class';
       const unknownPath = join(clone, 'unknown-class.json');
       writeJson(unknownPath, unknown);
-      expectRejected(runChecker(join(clone, '.git'), amended, unknownPath), /manifest differs/);
+      mutationPaths.push(unknownPath);
+      for (let index = 0; index < mutationPaths.length; index += 3) {
+        const results = await Promise.all(
+          mutationPaths.slice(index, index + 3).map((path) => runCheckerAsync(join(clone, '.git'), amended, path)),
+        );
+        for (const result of results) expectRejected(result, /manifest differs/);
+      }
     });
   }, 120_000);
 
-  it('fails closed on computed imports, module-root reads, and process launches in committed objects', () => {
-    withNoLocalClone((clone) => {
+  it('fails closed on computed imports, module-root reads, and process launches in committed objects', async () => {
+    await withNoLocalClone(async (clone) => {
       const cases = [
         {
           label: 'dynamic import',
@@ -295,7 +330,7 @@ load(join(dirname(fileURLToPath(import.meta.url)), process.env.AC2_FILE));
         },
         {
           label: 'rootImport comment spoof',
-          pattern: /computed rootImport/,
+          pattern: /computed (?:rootImport|dynamic import)/,
           source: `#!/usr/bin/env node
 // rootImport('src/storage/memory.ts') must not satisfy the object scanner.
 const rootImport = (value) => import(value);
@@ -305,14 +340,14 @@ await rootImport(process.env.AC2_IMPORT);
       ];
       for (const fixture of cases) {
         const commit = commitFixture(clone, 'tools/ac2-computed-fixture.mjs', fixture.source);
-        const result = runChecker(join(clone, '.git'), commit, MANIFEST);
+        const result = await runCheckerAsync(join(clone, '.git'), commit, MANIFEST);
         expectRejected(result, fixture.pattern);
       }
     });
   }, 120_000);
 
-  it('traverses a tsx script entrypoint and rejects a transitive lock row without integrity', () => {
-    withNoLocalClone((clone) => {
+  it('traverses a tsx script entrypoint and rejects a transitive lock row without integrity', async () => {
+    await withNoLocalClone(async (clone) => {
       commitFixture(clone, 'src/ac2-script-fixture.ts', "export const reachedFromTsxScript = true;\n");
       const packageJson = JSON.parse(readFileSync(join(clone, 'package.json'), 'utf8')) as {
         scripts: Record<string, string>;
@@ -335,7 +370,7 @@ await rootImport(process.env.AC2_IMPORT);
       delete lock.packages['node_modules/esbuild'].integrity;
       const brokenLockCommit = commitFixture(clone, 'package-lock.json', `${JSON.stringify(lock, null, 2)}\n`);
       expectRejected(
-        runChecker(join(clone, '.git'), brokenLockCommit, MANIFEST),
+        await runCheckerAsync(join(clone, '.git'), brokenLockCommit, MANIFEST),
         /npm closure row lacks version\/integrity: node_modules\/esbuild/,
       );
     });
