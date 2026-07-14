@@ -96,6 +96,39 @@
         }
       ],
       "entrypoint": "tools/verify-context-tools.mjs"
+    },
+    {
+      "edges": [
+        {
+          "class": "node_builtin",
+          "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:http"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:path"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "target": "src/mcp/internal/cluster-engine.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "target": "src/mcp/tools/search-memories.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "target": "src/mcp/tools/wait-for-new-turns.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "target": "src/storage/sqlite.ts"
+        }
+      ],
+      "entrypoint": "tools/verify-service-parity.mjs"
     }
   ],
   "schema": "runtime-inventory.v1",

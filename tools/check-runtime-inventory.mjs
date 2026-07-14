@@ -99,27 +99,46 @@ function resolveLocal(fromFile, spec) {
   }
   const base = stack.join('/');
   const cands = [base, base + '.mjs', base + '.js', base + '.json', base + '.ts'];
+  // NodeNext: a './x.js' specifier maps to the x.ts source at HEAD.
+  if (/\.js$/.test(base)) cands.push(base.replace(/\.js$/, '.ts'));
   for (const c of cands) if (TRACKED.has(c)) return c;
   return null;
 }
 
 function edgesOf(entry) {
   const src = blob(entry);
-  // Guard: the echo-context tool surface is pure static ESM. A dynamic
-  // import()/require() would be a repository-capable computed edge; detect one
-  // on comment/string-stripped source and fail closed. `check-runtime-inventory`
-  // is exempt from this token scan because its own body defines those tokens as
-  // detection patterns (self-reference); it is verified static-ESM by inspection.
-  if (!/check-runtime-inventory\.mjs$/.test(entry)) {
-    const stripped = stripNonCode(src).replace(/\/(?:\\.|\[[^\]]*\]|[^/\\\n])+\/[gimsuy]*/g, ' ');
-    if (/\bimport\s*\(/.test(stripped) || /\brequire\s*\(/.test(stripped)) {
-      fail(`dynamic import()/require() in ${entry} — closed grammar requires a literal target; add explicit support`);
-    }
-  }
   const edges = [];
   let m;
   importRe.lastIndex = 0;
   while ((m = importRe.exec(src))) edges.push({ ...classifyImport(entry, m[1]) });
+
+  // Dynamic import()/require() handling. Literal calls become an edge
+  // (repository_dynamic_literal_import / repository_commonjs_literal_require,
+  // resolving to one tracked blob, or an npm row); a COMPUTED call (non-string
+  // argument) fails closed. This checker is EXEMPT from its own dynamic-edge
+  // scan: its body defines those tokens as detection patterns / comments
+  // (self-reference), and it is verified static-ESM by inspection.
+  if (!/check-runtime-inventory\.mjs$/.test(entry)) {
+    const litDyn = /\b(import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    while ((m = litDyn.exec(src))) {
+      const cls = m[1] === 'import' ? 'repository_dynamic_literal_import' : 'repository_commonjs_literal_require';
+      const spec = m[2];
+      if (spec.startsWith('.')) {
+        const t = resolveLocal(entry, spec);
+        if (!t) fail(`${cls} does not resolve to a tracked blob in ${entry}: ${spec}`);
+        edges.push({ class: cls, target: t });
+      } else edges.push({ ...classifyBare(spec, entry) });
+    }
+    // stripNonCode empties string contents; a handled literal call collapses to
+    // an empty-argument form, which we drop. Anything still showing a call token
+    // has a non-string (computed) argument and fails closed.
+    const residual = stripNonCode(src)
+      .replace(/\/(?:\\.|\[[^\]]*\]|[^/\\\n])+\/[gimsuy]*/g, ' ')
+      .replace(/\b(import|require)\s*\(\s*(?:''|"")\s*\)/g, ' ');
+    if (/\b(import|require)\s*\(/.test(residual)) {
+      fail(`computed dynamic import()/require() in ${entry} — closed grammar requires a literal target`);
+    }
+  }
   // literal reads
   readRe.lastIndex = 0;
   while ((m = readRe.exec(src))) {

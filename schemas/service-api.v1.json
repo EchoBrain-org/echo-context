@@ -1,0 +1,205 @@
+{
+  "schema": "service-api.v1",
+  "transport": "HTTP/1.1 over loopback (127.0.0.1) only; JSON request/response; unknown request fields rejected with 400.",
+  "endpoints": {
+    "GET /v1/ping": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pong": {
+            "const": true
+          },
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pong",
+          "ts"
+        ]
+      }
+    },
+    "POST /v1/capture": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "source",
+          "timestamp",
+          "content"
+        ]
+      },
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "POST /v1/search": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "source_app": {
+            "type": "string"
+          },
+          "source_prefix": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "repo_path": {
+            "type": "string"
+          },
+          "metadata_match": {
+            "type": "object"
+          },
+          "since": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "response": {
+        "type": "object"
+      }
+    },
+    "POST /v1/clusters": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "since": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "format": {
+            "type": "string"
+          },
+          "window_hours": {
+            "type": "number"
+          },
+          "repo_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "response": {
+        "type": "object"
+      }
+    },
+    "POST /v1/atoms": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "atom_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "format": {
+            "type": "string"
+          },
+          "prefer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "atom_ids"
+        ]
+      },
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "atoms": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "atoms"
+        ]
+      }
+    },
+    "POST /v1/wait": {
+      "request": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_prefix": {
+            "type": "string"
+          },
+          "since": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "repo_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "response": {
+        "type": "object"
+      }
+    }
+  },
+  "notes": "The eight MCP tools remain read-only retrieval; capture is a service-only POST /v1/capture operation, never a ninth MCP tool. The service exercises the real TS retrieval stack (SqliteStorage + searchMemories + getRecentWorkContext + waitForNewTurns)."
+}
