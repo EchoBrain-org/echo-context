@@ -2,7 +2,8 @@
   "ci": {
     "command": "npm ci --offline --ignore-scripts --no-audit --no-fund",
     "exit": 0,
-    "packages_added": 290,
+    "note": "tsx (Founder adjudication #3) added to the tree; it carries no install script (esbuild binaries ship as optional-dep packages), so the executed-script set is unchanged.",
+    "packages_added": 291,
     "scripts_executed": []
   },
   "network_denial": {
