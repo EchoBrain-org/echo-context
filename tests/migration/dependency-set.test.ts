@@ -109,11 +109,11 @@ describe('AC2 — runtime dependency set', () => {
     for (const required of [
       'src/mcp/tools/search-memories.ts',
       'src/mcp/tools/wait-for-new-turns.ts',
-      'src/storage/sqlite.ts',
-      'src/storage/migrate.ts',
+      'src/storage/memory.ts',
     ]) {
       expect(context?.modules).toContain(required);
     }
+    expect(service?.modules).toContain('src/storage/sqlite.ts');
     expect(service?.modules).toContain('src/storage/migrate.ts');
 
     const edges = manifest.entrypoints.flatMap((entry) => entry.edges);
