@@ -312,6 +312,31 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     }
   });
 
+  it('kills an uncooperative process group but rejects any graceful-success claim', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'echo-ctx-uncooperative-'));
+    scratchRoots.add(home);
+    const child = spawn(
+      NODE,
+      ['-e', "process.on('SIGTERM',()=>{});process.stdout.write('ready\\n');setInterval(()=>{},1000)"],
+      {
+        detached: true,
+        env: sanitizedEnvironment(home),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    await new Promise<void>((resolveReady, reject) => {
+      const timer = setTimeout(() => reject(new Error('uncooperative child did not become ready')), 1_000);
+      child.stdout?.once('data', (bytes) => {
+        clearTimeout(timer);
+        if (bytes.toString('utf8') !== 'ready\n') reject(new Error('invalid uncooperative-child readiness bytes'));
+        else resolveReady();
+      });
+      child.once('error', reject);
+    });
+    await expect(terminateGroup(child, true)).rejects.toThrow('required SIGKILL after graceful-shutdown deadline');
+    expect(groupExists(child.pid!)).toBe(false);
+  }, 7_000);
+
   it('tears down via SIGTERM only; SIGKILL fallback can never resolve success', async () => {
     await terminateGroup(running!.child, true);
     expect(groupExists(running!.child.pid!)).toBe(false);
