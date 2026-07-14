@@ -224,6 +224,34 @@ function analyzeEntrypoint(entrypoint) {
         if (/\.(?:[cm]?js|ts)$/.test(target)) visitModule(target);
       } else addBare(file, specifier);
     };
+    // Scratch launchers are byte-embedded in their tracked orchestrator. Derive
+    // their literal rootImport() closure from those actual bytes, rather than a
+    // parallel hardcoded manifest. Source-only paths are bound by AC3 source
+    // evidence; every target-existing module is traversed recursively here.
+    for (const match of source.matchAll(/rootImport\('([^']+)'\)/g)) {
+      const specifier = match[1];
+      if (specifier.startsWith('node_modules/')) {
+        addBare(file, specifier.slice('node_modules/'.length));
+      } else if (TRACKED.has(specifier)) {
+        add(file, 'repository_dynamic_literal_import', specifier);
+        if (/\.(?:[cm]?js|ts)$/.test(specifier)) visitModule(specifier);
+      }
+    }
+    for (const match of source.matchAll(/node_modules\/((?:@[^/'"]+\/)?[^/'"]+)\/([^'"\s]+)/g)) {
+      if (NPM_CLI.endsWith(`/${match[0]}`)) {
+        add(file, 'native_or_system_helper', NPM_CLI);
+        continue;
+      }
+      const locked = lockedPackage(match[1]);
+      const lockedRow = LOCK_PACKAGES.get(locked.name);
+      const bins = typeof lockedRow?.bin === 'string' ? [lockedRow.bin] : Object.values(lockedRow?.bin ?? {});
+      if (!bins.some((bin) => String(bin).replace(/^\.\//, '') === match[2])) continue;
+      add(file, 'npm_javascript_cli', locked.name, {
+        version: locked.version,
+        ...(locked.integrity ? { integrity: locked.integrity } : {}),
+      });
+    }
+    for (const match of source.matchAll(/['"]--import['"]\s*,\s*['"]([^'"]+)['"]/g)) addBare(file, match[1]);
     const visit = (node) => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
         if (ts.isImportDeclaration(node)) {
@@ -293,6 +321,15 @@ function analyzeEntrypoint(entrypoint) {
           ) helper = GIT;
           if (!helper) die(`computed or unpinned process launch in ${file}: ${nodeText(node, sourceFile)}`);
           add(file, 'native_or_system_helper', helper);
+          const collectNestedHelpers = (candidate) => {
+            const value = evaluate(candidate);
+            if (value?.kind === 'string') {
+              const nested = SYSTEM_HELPERS.get(value.value);
+              if (nested) add(file, 'native_or_system_helper', nested);
+            }
+            ts.forEachChild(candidate, collectNestedHelpers);
+          };
+          for (const processArgument of node.arguments.slice(1)) collectNestedHelpers(processArgument);
         }
       }
       ts.forEachChild(node, visit);
