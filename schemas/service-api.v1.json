@@ -1,29 +1,21 @@
 {
   "schema": "service-api.v1",
-  "transport": "HTTP/1.1 over loopback (127.0.0.1) only; JSON request/response; unknown request fields rejected with 400.",
+  "transport": "HTTP/1.1 over 127.0.0.1 only; JSON; committed request and response schemas are enforced.",
+  "limits": {
+    "request_body_bytes": 65536,
+    "response_body_bytes": 262144,
+    "request_deadline_ms": 5000,
+    "graceful_shutdown_ms": 5000,
+    "max_atom_ids": 100
+  },
   "endpoints": {
     "GET /v1/ping": {
-      "request": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {},
-        "required": []
-      },
+      "request": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] },
       "response": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-          "pong": {
-            "const": true
-          },
-          "ts": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pong",
-          "ts"
-        ]
+        "properties": { "pong": { "const": true }, "ts": { "type": "string", "minLength": 1, "maxLength": 64 } },
+        "required": ["pong", "ts"]
       }
     },
     "POST /v1/capture": {
@@ -31,36 +23,18 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "source": {
-            "type": "string"
-          },
-          "timestamp": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "metadata": {
-            "type": "object"
-          }
+          "source": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "timestamp": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "content": { "type": "string", "maxLength": 60000 },
+          "metadata": { "type": "object", "maxProperties": 64 }
         },
-        "required": [
-          "source",
-          "timestamp",
-          "content"
-        ]
+        "required": ["source", "timestamp", "content"]
       },
       "response": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ]
+        "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 } },
+        "required": ["id"]
       }
     },
     "POST /v1/search": {
@@ -68,106 +42,53 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string"
-          },
-          "source_app": {
-            "type": "string"
-          },
-          "source_prefix": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer"
-          },
-          "cursor": {
-            "type": "string"
-          },
-          "repo_path": {
-            "type": "string"
-          },
-          "metadata_match": {
-            "type": "object"
-          },
-          "since": {
-            "type": "string"
-          },
-          "until": {
-            "type": "string"
-          }
+          "query": { "type": "string", "maxLength": 4096 },
+          "source_app": { "type": "string", "maxLength": 128 },
+          "source_prefix": { "type": "string", "maxLength": 4096 },
+          "source": { "type": "string", "maxLength": 4096 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "cursor": { "type": "string", "maxLength": 4096 },
+          "repo_path": { "type": "string", "maxLength": 4096 },
+          "metadata_match": { "type": "object", "maxProperties": 16 },
+          "since": { "type": "string", "maxLength": 64 },
+          "until": { "type": "string", "maxLength": 64 }
         },
         "required": []
       },
-      "response": {
-        "type": "object"
-      }
+      "response": { "type": "object", "maxProperties": 64 }
     },
     "POST /v1/clusters": {
       "request": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "since": {
-            "type": "string"
-          },
-          "until": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer"
-          },
-          "format": {
-            "type": "string"
-          },
-          "window_hours": {
-            "type": "number"
-          },
-          "repo_path": {
-            "type": "string"
-          }
+          "since": { "type": "string", "maxLength": 64 },
+          "until": { "type": "string", "maxLength": 64 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "format": { "type": "string", "enum": ["minimal", "skeleton", "full"] },
+          "window_hours": { "type": "number", "exclusiveMinimum": 0, "maximum": 8760 },
+          "repo_path": { "type": "string", "maxLength": 4096 }
         },
         "required": []
       },
-      "response": {
-        "type": "object"
-      }
+      "response": { "type": "object", "maxProperties": 64 }
     },
     "POST /v1/atoms": {
       "request": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "atom_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "format": {
-            "type": "string"
-          },
-          "prefer": {
-            "type": "string"
-          }
+          "atom_ids": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+          "format": { "type": "string", "enum": ["minimal", "full"] },
+          "prefer": { "type": "string", "maxLength": 64 }
         },
-        "required": [
-          "atom_ids"
-        ]
+        "required": ["atom_ids"]
       },
       "response": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-          "atoms": {
-            "type": "array"
-          }
-        },
-        "required": [
-          "atoms"
-        ]
+        "properties": { "atoms": { "type": "array", "maxItems": 100 } },
+        "required": ["atoms"]
       }
     },
     "POST /v1/wait": {
@@ -175,31 +96,17 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "sources": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "source_prefix": {
-            "type": "string"
-          },
-          "since": {
-            "type": "string"
-          },
-          "timeout": {
-            "type": "integer"
-          },
-          "repo_path": {
-            "type": "string"
-          }
+          "sources": { "type": "array", "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+          "source_prefix": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "since": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "timeout": { "type": "number", "minimum": 0, "maximum": 60 },
+          "repo_path": { "type": "string", "maxLength": 4096 }
         },
-        "required": []
+        "required": ["since"],
+        "anyOf": [{ "required": ["sources"] }, { "required": ["source_prefix"] }]
       },
-      "response": {
-        "type": "object"
-      }
+      "response": { "type": "object", "maxProperties": 64 }
     }
   },
-  "notes": "The eight MCP tools remain read-only retrieval; capture is a service-only POST /v1/capture operation, never a ninth MCP tool. The service exercises the real TS retrieval stack (SqliteStorage + searchMemories + getRecentWorkContext + waitForNewTurns)."
+  "notes": "Capture is service-only. Request bodies, result bytes, atom IDs, and deadlines are bounded; atoms use Storage.getByIds rather than whole-store scans."
 }

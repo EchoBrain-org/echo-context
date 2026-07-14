@@ -1,86 +1,77 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "entrypoint_sources", "script_clis", "entrypoints"],
   "properties": {
-    "schema": {
-      "const": "runtime-inventory.v1"
+    "schema": { "const": "runtime-inventory.v1" },
+    "entrypoint_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "reasons"],
+        "properties": {
+          "file": { "type": "string" },
+          "reasons": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
     },
     "script_clis": {
       "type": "array",
-      "items": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "properties": {
-          "script": {
-            "type": "string"
-          },
-          "class": {
-            "const": "npm_javascript_cli"
-          },
-          "target": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "script",
-          "class",
-          "target"
-        ],
-        "additionalProperties": true
-      }
+      "items": { "$ref": "#/definitions/scriptEdge" }
     },
     "entrypoints": {
       "type": "array",
       "items": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
+        "additionalProperties": false,
+        "required": ["entrypoint", "modules", "edges"],
         "properties": {
-          "entrypoint": {
-            "type": "string"
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "$schema": "http://json-schema.org/draft-07/schema#",
-              "type": "object",
-              "properties": {
-                "class": {
-                  "enum": [
-                    "repository_static_import",
-                    "repository_dynamic_literal_import",
-                    "repository_commonjs_literal_require",
-                    "repository_literal_read",
-                    "repository_literal_process_launch",
-                    "node_builtin",
-                    "npm_package",
-                    "npm_javascript_cli",
-                    "native_or_system_helper"
-                  ]
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "class",
-                "target"
-              ],
-              "additionalProperties": true
-            }
-          }
-        },
-        "required": [
-          "entrypoint",
-          "edges"
-        ],
-        "additionalProperties": true
+          "entrypoint": { "type": "string" },
+          "modules": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "edges": { "type": "array", "items": { "$ref": "#/definitions/edge" } }
+        }
       }
     }
   },
-  "required": [
-    "schema",
-    "script_clis",
-    "entrypoints"
-  ],
-  "additionalProperties": true
+  "definitions": {
+    "scriptEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["script", "class", "target"],
+      "properties": {
+        "script": { "type": "string" },
+        "class": { "enum": ["npm_javascript_cli", "npm_package", "native_or_system_helper"] },
+        "target": { "type": "string" },
+        "version": { "type": "string" },
+        "integrity": { "type": "string" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "class", "target"],
+      "properties": {
+        "from": { "type": "string" },
+        "class": {
+          "enum": [
+            "repository_static_import",
+            "repository_dynamic_literal_import",
+            "repository_commonjs_literal_require",
+            "repository_literal_read",
+            "repository_literal_process_launch",
+            "node_builtin",
+            "npm_package",
+            "npm_javascript_cli",
+            "native_or_system_helper"
+          ]
+        },
+        "target": { "type": "string" },
+        "version": { "type": "string" },
+        "integrity": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
 }

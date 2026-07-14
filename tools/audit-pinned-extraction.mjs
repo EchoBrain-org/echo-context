@@ -31,6 +31,8 @@ function arg(n) { const i = process.argv.indexOf(n); return i >= 0 ? process.arg
 const SRC_GIT = arg('--source-git-dir') || fail('--source-git-dir required');
 const SRC_SHA = arg('--source-sha') || fail('--source-sha required');
 const TARGET = arg('--target') || fail('--target required');
+const EVIDENCE_PATH = arg('--evidence') || join(TARGET, 'provenance/source-evidence.v1.json');
+const PARITY_PATH = arg('--parity') || join(TARGET, 'provenance/parity-matrix.v1.json');
 const ENV = { PATH: '/usr/bin:/bin:/usr/local/bin', HOME: process.env.HOME ?? '/tmp', GIT_CONFIG_NOSYSTEM: '1', GIT_ATTR_NOSYSTEM: '1', GIT_NO_REPLACE_OBJECTS: '1' };
 function git(a) { return execFileSync(GIT, ['--git-dir', SRC_GIT, ...a], { env: ENV, maxBuffer: 512 * 1024 * 1024 }); }
 
@@ -53,8 +55,10 @@ const testCount = invPaths.filter((p) => p.startsWith('tests/')).length;
 if (srcCount !== 110 || testCount !== 107) fail(`split ${srcCount}/${testCount} != 110/107`);
 
 // Cross-check against provenance.
-const evidence = JSON.parse(readFileSync(join(TARGET, 'provenance/source-evidence.v1.json'), 'utf8'));
-const parity = JSON.parse(readFileSync(join(TARGET, 'provenance/parity-matrix.v1.json'), 'utf8'));
+const evidence = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8'));
+const parity = JSON.parse(readFileSync(PARITY_PATH, 'utf8'));
+if (evidence.source_commit !== SRC_SHA) fail(`source-evidence source_commit ${evidence.source_commit} != ${SRC_SHA}`);
+if (parity.source_commit !== SRC_SHA) fail(`parity source_commit ${parity.source_commit} != ${SRC_SHA}`);
 const invSet = new Set(invPaths);
 const evSet = new Set(evidence.entries.map((e) => e.path));
 const pmSet = new Set(parity.rows.map((r) => r.path));
@@ -64,6 +68,18 @@ for (const p of invPaths) {
   if (!pmSet.has(p)) fail(`inventory path missing from parity-matrix: ${p}`);
 }
 for (const p of evSet) if (!invSet.has(p)) fail(`source-evidence has a path not in the recomputed closure: ${p}`);
+
+const evidenceByPath = new Map(evidence.entries.map((entry) => [entry.path, entry]));
+for (const row of parity.rows) {
+  const source = evidenceByPath.get(row.path);
+  if (!source) fail(`parity path missing same-path source-evidence row: ${row.path}`);
+  if (row.source_blob_oid !== source.blob_oid) {
+    fail(`parity/source-evidence blob OID mismatch for ${row.path}: ${row.source_blob_oid} != ${source.blob_oid}`);
+  }
+  if (row.source_content_sha256 !== source.content_sha256) {
+    fail(`parity/source-evidence content hash mismatch for ${row.path}: ${row.source_content_sha256} != ${source.content_sha256}`);
+  }
+}
 
 const c = parity.counts;
 const dup = c.duplicated ?? 0;

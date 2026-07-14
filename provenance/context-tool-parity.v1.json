@@ -1,5 +1,12 @@
 {
-  "aggregate_sha256": "632a7b2f2515a68d92e819fcedfa5d26f3960bb631995046ccf3d23de245da90",
+  "schema": "context-tool-parity.v1",
+  "source_commit": "2971310441b69735cbe759293abd8c4d044bf347",
+  "fixture_sha256": "e7a5d95f96533ba41483a959b1f3f578f5e78f6c51d2e203991b12d16e0b3080",
+  "fixture_bytes_base64": "ewogICJzY2hlbWEiOiAiY29udGV4dC10b29sLXBhcml0eS52MSIsCiAgInRvb2xzIjogWwogICAgImVjaG9fcGluZyIsCiAgICAiZWNob19yZXNvbHZlX21ydSIsCiAgICAiZmluZF9jbHVzdGVycyIsCiAgICAiZ2V0X2F0b20iLAogICAgImdldF9hdG9tcyIsCiAgICAiZ2V0X3JlY2VudF93b3JrX2NvbnRleHQiLAogICAgInNlYXJjaF9tZW1vcmllcyIsCiAgICAid2FpdF9mb3JfbmV3X3R1cm5zIgogIF0sCiAgImZpeGVkX25vdyI6ICIyMDI2LTA3LTAxVDAwOjA1OjAwLjAwMFoiLAogICJyZXBvX3BhdGgiOiAiL2ZpeHR1cmUvcmVwbyIsCiAgInNlZWQiOiBbCiAgICB7CiAgICAgICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICAgICAic291cmNlIjogImNsYXVkZV9jb2RlOi9maXh0dXJlL3JlcG8iLAogICAgICAidGltZXN0YW1wIjogIjIwMjYtMDctMDFUMDA6MDA6MDAuMDAwWiIsCiAgICAgICJjb250ZW50IjogImFscGhhIHdvcmsgb24gdGhlIGZpeHR1cmUgcmVwbyIsCiAgICAgICJtZXRhZGF0YSI6IHsgInJlcG9fcm9vdCI6ICIvZml4dHVyZS9yZXBvIiwgInNlc3Npb25faWQiOiAiczEiIH0KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDIiLAogICAgICAic291cmNlIjogImNvZGV4Oi9maXh0dXJlL3JlcG8iLAogICAgICAidGltZXN0YW1wIjogIjIwMjYtMDctMDFUMDA6MDE6MDAuMDAwWiIsCiAgICAgICJjb250ZW50IjogImFscGhhIGZvbGxvdy11cCBpbiBjb2RleCIsCiAgICAgICJtZXRhZGF0YSI6IHsgInJlcG9fcm9vdCI6ICIvZml4dHVyZS9yZXBvIiwgInNlc3Npb25faWQiOiAiczIiIH0KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDMiLAogICAgICAic291cmNlIjogImFwaTpncmFub2xhIiwKICAgICAgInRpbWVzdGFtcCI6ICIyMDI2LTA3LTAxVDAwOjAyOjAwLjAwMFoiLAogICAgICAiY29udGVudCI6ICJhbHBoYSBtZWV0aW5nIG5vdGUiLAogICAgICAibWV0YWRhdGEiOiB7fQogICAgfQogIF0sCiAgImNhc2VzIjogWwogICAgeyAiaWQiOiAicGluZy1lbXB0eSIsICJ0b29sIjogImVjaG9fcGluZyIsICJhcmdzIjogeyAibWVzc2FnZSI6ICIiIH0gfSwKICAgIHsgImlkIjogInJlc29sdmUtbXJ1LWdyYW5vbGEiLCAidG9vbCI6ICJlY2hvX3Jlc29sdmVfbXJ1IiwgImFyZ3MiOiB7ICJzb3VyY2VzIjogWyJncmFub2xhIl0gfSB9LAogICAgeyAiaWQiOiAiZmluZC1lbXB0eSIsICJ0b29sIjogImZpbmRfY2x1c3RlcnMiLCAiYXJncyI6IHsgInNpbmNlIjogIjIwMjAtMDEtMDFUMDA6MDA6MDAiLCAidW50aWwiOiAiMjAyMC0wMS0wMlQwMDowMDowMCIgfSB9LAogICAgeyAiaWQiOiAiZmluZC1zZWVkZWQiLCAidG9vbCI6ICJmaW5kX2NsdXN0ZXJzIiwgImFyZ3MiOiB7ICJzaW5jZSI6ICIyMDI2LTA3LTAxVDAwOjAwOjAwIiwgInVudGlsIjogIjIwMjYtMDctMDFUMDA6MDU6MDAiIH0gfSwKICAgIHsgImlkIjogImdldC1hdG9tLXByZXNlbnQiLCAidG9vbCI6ICJnZXRfYXRvbSIsICJhcmdzIjogeyAiaWQiOiAiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiB9IH0sCiAgICB7ICJpZCI6ICJnZXQtYXRvbS1taXNzaW5nIiwgInRvb2wiOiAiZ2V0X2F0b20iLCAiYXJncyI6IHsgImlkIjogIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwOSIgfSB9LAogICAgeyAiaWQiOiAiZ2V0LWF0b21zLW1peGVkIiwgInRvb2wiOiAiZ2V0X2F0b21zIiwgImFyZ3MiOiB7ICJhdG9tX2lkcyI6IFsiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwgIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwOSIsICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDIiXSwgImZvcm1hdCI6ICJtaW5pbWFsIiB9IH0sCiAgICB7ICJpZCI6ICJyZWNlbnQtc2VlZGVkIiwgInRvb2wiOiAiZ2V0X3JlY2VudF93b3JrX2NvbnRleHQiLCAiYXJncyI6IHsgImxpbWl0IjogMTAsICJmb3JtYXQiOiAibWluaW1hbCIgfSB9LAogICAgeyAiaWQiOiAic2VhcmNoLXNlZWRlZCIsICJ0b29sIjogInNlYXJjaF9tZW1vcmllcyIsICJhcmdzIjogeyAicXVlcnkiOiAiYWxwaGEiLCAibGltaXQiOiAxMCB9IH0sCiAgICB7CiAgICAgICJpZCI6ICJ3YWl0LXRpbWVvdXQiLAogICAgICAidG9vbCI6ICJ3YWl0X2Zvcl9uZXdfdHVybnMiLAogICAgICAiYXJncyI6IHsgInNvdXJjZV9wcmVmaXgiOiAibm9wZToiLCAic2luY2UiOiAiMjAyNi0wNy0wMVQwMDowNTowMC4wMDBaIiwgInRpbWVvdXQiOiAxIH0sCiAgICAgICJ0aW1lb3V0X2J1ZGdldF9tcyI6IDEwLAogICAgICAidmlydHVhbF9jbG9ja19hZHZhbmNlX21zIjogMTAwMAogICAgfQogIF0KfQo=",
+  "harness_sha256": "7c3b03333fb2e183ab1146ca16b5c3f0d90d9549c157791eb94518c14d2f8e22",
+  "harness_bytes_base64": "aW1wb3J0IHsgcGF0aFRvRmlsZVVSTCB9IGZyb20gJ25vZGU6dXJsJzsKaW1wb3J0IHsgam9pbiB9IGZyb20gJ25vZGU6cGF0aCc7Cgpjb25zdCBST09UID0gcHJvY2Vzcy5lbnYuRUNIT19QQVJJVFlfUk9PVDsKY29uc3QgTU9ERSA9IHByb2Nlc3MuZW52LkVDSE9fUEFSSVRZX01PREU7CmNvbnN0IEZJWFRVUkUgPSBKU09OLnBhcnNlKEJ1ZmZlci5mcm9tKHByb2Nlc3MuZW52LkVDSE9fUEFSSVRZX0ZJWFRVUkVfQjY0LCAnYmFzZTY0JykudG9TdHJpbmcoJ3V0ZjgnKSk7CmlmICghUk9PVCB8fCAoTU9ERSAhPT0gJ3NvdXJjZScgJiYgTU9ERSAhPT0gJ3RhcmdldCcpKSB0aHJvdyBuZXcgRXJyb3IoJ2ludmFsaWQgcGFyaXR5IGhhcm5lc3MgZW52aXJvbm1lbnQnKTsKY29uc3Qgcm9vdEltcG9ydCA9IChyZWxhdGl2ZVBhdGgpID0+IGltcG9ydChwYXRoVG9GaWxlVVJMKGpvaW4oUk9PVCwgcmVsYXRpdmVQYXRoKSkuaHJlZik7Cgpjb25zdCBSZWFsRGF0ZSA9IERhdGU7CmNvbnN0IHJlYWxTZXRUaW1lb3V0ID0gZ2xvYmFsVGhpcy5zZXRUaW1lb3V0OwpsZXQgbG9naWNhbE9mZnNldE1zID0gMDsKY2xhc3MgRml4ZWREYXRlIGV4dGVuZHMgUmVhbERhdGUgewogIGNvbnN0cnVjdG9yKC4uLmFyZ3MpIHsgc3VwZXIoYXJncy5sZW5ndGggPT09IDAgPyBSZWFsRGF0ZS5wYXJzZShGSVhUVVJFLmZpeGVkX25vdykgKyBsb2dpY2FsT2Zmc2V0TXMgOiBhcmdzWzBdKTsgfQogIHN0YXRpYyBub3coKSB7IHJldHVybiBSZWFsRGF0ZS5wYXJzZShGSVhUVVJFLmZpeGVkX25vdykgKyBsb2dpY2FsT2Zmc2V0TXM7IH0KfQpnbG9iYWxUaGlzLkRhdGUgPSBGaXhlZERhdGU7Ck1hdGgucmFuZG9tID0gKCkgPT4gMC41OwpnbG9iYWxUaGlzLnNldFRpbWVvdXQgPSAoY2FsbGJhY2ssIGRlbGF5ID0gMCwgLi4uYXJncykgPT4gewogIGlmIChOdW1iZXIoZGVsYXkpID49IDEwMDApIHsKICAgIHJldHVybiByZWFsU2V0VGltZW91dCgoKSA9PiB7IGxvZ2ljYWxPZmZzZXRNcyArPSBOdW1iZXIoZGVsYXkpOyBjYWxsYmFjayguLi5hcmdzKTsgfSwgMSk7CiAgfQogIHJldHVybiByZWFsU2V0VGltZW91dChjYWxsYmFjaywgZGVsYXksIC4uLmFyZ3MpOwp9OwoKY29uc3QgeyBNY3BTZXJ2ZXIgfSA9IGF3YWl0IHJvb3RJbXBvcnQoJ25vZGVfbW9kdWxlcy9AbW9kZWxjb250ZXh0cHJvdG9jb2wvc2RrL2Rpc3QvZXNtL3NlcnZlci9tY3AuanMnKTsKY29uc3QgeyBTdGRpb1NlcnZlclRyYW5zcG9ydCB9ID0gYXdhaXQgcm9vdEltcG9ydCgnbm9kZV9tb2R1bGVzL0Btb2RlbGNvbnRleHRwcm90b2NvbC9zZGsvZGlzdC9lc20vc2VydmVyL3N0ZGlvLmpzJyk7CmNvbnN0IHsgTWVtb3J5U3RvcmFnZSB9ID0gYXdhaXQgcm9vdEltcG9ydCgnc3JjL3N0b3JhZ2UvbWVtb3J5LnRzJyk7CmNvbnN0IHN0b3JlID0gbmV3IE1lbW9yeVN0b3JhZ2UoKTsKc3RvcmUuZXZlbnRzID0gRklYVFVSRS5zZWVkLm1hcCgoZXZlbnQsIGluZGV4KSA9PiAoeyAuLi5ldmVudCwgX3NlcTogaW5kZXggKyAxIH0pKTsKc3RvcmUuc2VxQ291bnRlciA9IEZJWFRVUkUuc2VlZC5sZW5ndGg7CmNvbnN0IHNlcnZlciA9IG5ldyBNY3BTZXJ2ZXIoeyBuYW1lOiBNT0RFID09PSAnc291cmNlJyA/ICdlY2hvLXNvdXJjZS1wYXJpdHknIDogJ2VjaG8tdGFyZ2V0LXBhcml0eScsIHZlcnNpb246ICcwLjAuMCcgfSk7Cgpjb25zdCByZWdpc3RyYXJzID0gewogIGVjaG9QaW5nOiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9lY2hvLXBpbmcudHMnKSkucmVnaXN0ZXJFY2hvUGluZywKICByZXNvbHZlTXJ1OiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9lY2hvLXJlc29sdmUtbXJ1LnRzJykpLnJlZ2lzdGVyRWNob1Jlc29sdmVNcnUsCiAgZmluZENsdXN0ZXJzOiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9maW5kLWNsdXN0ZXJzLnRzJykpLnJlZ2lzdGVyRmluZENsdXN0ZXJzLAogIGdldEF0b206IChhd2FpdCByb290SW1wb3J0KCdzcmMvbWNwL3Rvb2xzL2dldC1hdG9tLnRzJykpLnJlZ2lzdGVyR2V0QXRvbSwKICBnZXRBdG9tczogKGF3YWl0IHJvb3RJbXBvcnQoJ3NyYy9tY3AvdG9vbHMvZ2V0LWF0b21zLnRzJykpLnJlZ2lzdGVyR2V0QXRvbXMsCiAgcmVjZW50OiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9yZWNlbnQtd29yay1jb250ZXh0LnRzJykpLnJlZ2lzdGVyUmVjZW50V29ya0NvbnRleHQsCiAgc2VhcmNoOiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9zZWFyY2gtbWVtb3JpZXMudHMnKSkucmVnaXN0ZXJTZWFyY2hNZW1vcmllcywKICB3YWl0OiAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy93YWl0LWZvci1uZXctdHVybnMudHMnKSkucmVnaXN0ZXJXYWl0Rm9yTmV3VHVybnMsCn07CnJlZ2lzdHJhcnMuZWNob1Bpbmcoc2VydmVyKTsKaWYgKE1PREUgPT09ICdzb3VyY2UnKSAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL3N1cmZhY2VzL2Nlby1zbGFjay1yZXNwb25kZXIvcHJvcG9zZS1kZWNpc2lvbi10b29sLnRzJykpLnJlZ2lzdGVyUHJvcG9zZURlY2lzaW9uKHNlcnZlcik7CnJlZ2lzdHJhcnMuc2VhcmNoKHNlcnZlciwgc3RvcmUpOwpyZWdpc3RyYXJzLnJlY2VudChzZXJ2ZXIsIHN0b3JlKTsKcmVnaXN0cmFycy5maW5kQ2x1c3RlcnMoc2VydmVyLCBzdG9yZSk7CmlmIChNT0RFID09PSAnc291cmNlJykgKGF3YWl0IHJvb3RJbXBvcnQoJ3NyYy9tY3AvdG9vbHMvcGVuZGluZy1kZWNpc2lvbnMudHMnKSkucmVnaXN0ZXJQZW5kaW5nRGVjaXNpb25zKHNlcnZlcik7CnJlZ2lzdHJhcnMuZ2V0QXRvbXMoc2VydmVyLCBzdG9yZSk7CnJlZ2lzdHJhcnMud2FpdChzZXJ2ZXIsIHN0b3JlKTsKcmVnaXN0cmFycy5nZXRBdG9tKHNlcnZlciwgc3RvcmUpOwpyZWdpc3RyYXJzLnJlc29sdmVNcnUoc2VydmVyLCBzdG9yZSk7CmlmIChNT0RFID09PSAnc291cmNlJykgewogIChhd2FpdCByb290SW1wb3J0KCdzcmMvbWNwL3Rvb2xzL2dldC1yb2xlLXN0YXRlLnRzJykpLnJlZ2lzdGVyR2V0Um9sZVN0YXRlKHNlcnZlciwgUk9PVCk7CiAgKGF3YWl0IHJvb3RJbXBvcnQoJ3NyYy9tY3AvdG9vbHMvbGlzdC10YXNrLXN0YXRlcy50cycpKS5yZWdpc3Rlckxpc3RUYXNrU3RhdGVzKHNlcnZlciwgUk9PVCk7CiAgY29uc3QgY29vcmRSb2xlcyA9IHsgc2NoZW1hX3ZlcnNpb246IDEsIHJvbGVzOiBbXSB9OwogIGNvbnN0IGRlYWRsaW5lcyA9IHsgY3VycmVudFNuYXBzaG90OiAoKSA9PiAoeyBvcGVuOiBbXSB9KSwgbGFzdEZ1bGxSZXBsYXlXYXRlcm1hcms6IDAgfTsKICAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9jb29yZC1lbWl0LnRzJykpLnJlZ2lzdGVyQ29vcmRFbWl0KHNlcnZlciwgeyBzdG9yYWdlOiBzdG9yZSwgY29vcmRSb2xlcywgeEVjaG9Sb2xlSGVhZGVyOiBudWxsLCBkZWFkbGluZXMgfSk7CiAgKGF3YWl0IHJvb3RJbXBvcnQoJ3NyYy9tY3AvdG9vbHMvY29vcmQtc3RhdHVzLnRzJykpLnJlZ2lzdGVyQ29vcmRTdGF0dXMoc2VydmVyLCB7IHN0b3JhZ2U6IHN0b3JlLCBjb29yZFJvbGVzLCBkZWFkbGluZXMsIHNlcnZlclN0YXJ0ZWRBdDogbmV3IERhdGUoKSB9KTsKICAoYXdhaXQgcm9vdEltcG9ydCgnc3JjL21jcC90b29scy9jb29yZC1pbnZva2UudHMnKSkucmVnaXN0ZXJDb29yZEludm9rZShzZXJ2ZXIsIHsgc3RvcmFnZTogc3RvcmUsIGNvb3JkUm9sZXMsIGRlYWRsaW5lcyB9KTsKfQpjb25zdCB0cmFuc3BvcnQgPSBuZXcgU3RkaW9TZXJ2ZXJUcmFuc3BvcnQoKTsKYXdhaXQgc2VydmVyLmNvbm5lY3QodHJhbnNwb3J0KTsKcHJvY2Vzcy5zdGRpbi5vbmNlKCdlbmQnLCBhc3luYyAoKSA9PiB7CiAgdHJ5IHsgYXdhaXQgdHJhbnNwb3J0LmNsb3NlKCk7IH0gZmluYWxseSB7IHByb2Nlc3MuZXhpdCgwKTsgfQp9KTsK",
+  "context_tools_config_sha256": "db6eab7d3046f6925ac9a58bf4ff13bf321547c2b74903acde71821f4c09ce37",
+  "context_tools_config_bytes_base64": "ewogICJjb3VudCI6IDgsCiAgIm5vdGUiOiAiRXhhY3RseSB0aGUgZWlnaHQgcmVhZC1vbmx5IGNvbnRleHQgcmV0cmlldmFsIHRvb2xzIHJlZ2lzdGVyZWQgYnkgc3JjL21jcC9zZXJ2ZXIudHMuIE5vIGNvb3JkL3Byb2R1Y3QvbG9vcCB0b29scy4gQ2FwdHVyZSBpcyBzZXJ2aWNlLW9ubHkgKFBPU1QgL3YxL2NhcHR1cmUpLCBuZXZlciBhIG5pbnRoIE1DUCB0b29sLiIsCiAgInNjaGVtYSI6ICJjb250ZXh0LXRvb2xzLnYxIiwKICAidG9vbHMiOiBbCiAgICAiZWNob19waW5nIiwKICAgICJlY2hvX3Jlc29sdmVfbXJ1IiwKICAgICJmaW5kX2NsdXN0ZXJzIiwKICAgICJnZXRfYXRvbSIsCiAgICAiZ2V0X2F0b21zIiwKICAgICJnZXRfcmVjZW50X3dvcmtfY29udGV4dCIsCiAgICAic2VhcmNoX21lbW9yaWVzIiwKICAgICJ3YWl0X2Zvcl9uZXdfdHVybnMiCiAgXQp9Cg==",
   "case_order": [
     "ping-empty",
     "resolve-mru-granola",
@@ -12,57 +19,2901 @@
     "search-seeded",
     "wait-timeout"
   ],
-  "per_case": [
-    {
-      "case_id": "ping-empty",
-      "response_sha256": "29eb8a51cc0796d3c28c7ed063f1f460bef1d22ad38e21ba8da2aa8f9849c5e7"
-    },
-    {
-      "case_id": "resolve-mru-granola",
-      "response_sha256": "4d133dcbcfcd3cae98d1a0961e665ca5288f781ddeb8bea83271aea827022933"
-    },
-    {
-      "case_id": "find-empty",
-      "response_sha256": "c15078426d6ffc2a9f0dff18a83cf45a935e809bfab8c3869491ccad6b1ad6fb"
-    },
-    {
-      "case_id": "find-seeded",
-      "response_sha256": "cede93ec68bd6feeb098deea0c6eafdc50f852c04d7992d8f5602bc41f9d7ba1"
-    },
-    {
-      "case_id": "get-atom-present",
-      "response_sha256": "1075d0ed53e28f62251c038717e4a50458c54f2143f6956683a668f784c76201"
-    },
-    {
-      "case_id": "get-atom-missing",
-      "response_sha256": "a29246589adee2484e45db781a51bf77409de8e519f3a0c5ffd4272dba773726"
-    },
-    {
-      "case_id": "get-atoms-mixed",
-      "response_sha256": "d26f161ddb17334ab0f473972d047b12d32d62df2b6465f05dd088d99c526caf"
-    },
-    {
-      "case_id": "recent-seeded",
-      "response_sha256": "6f3ca0a49bba0d50d6f7a3d3e4d4f12084352d2b8d5dca04da1230c5038d9297"
-    },
-    {
-      "case_id": "search-seeded",
-      "response_sha256": "31a20cf802dc4de923fa7ca6785f96de01c442545bca03f0e059ca0487ae6375"
-    },
-    {
-      "case_id": "wait-timeout",
-      "response_sha256": "cf6efa6a9433305e9b6a6d7116a5a37f2315104f858f9d578059649cce05668b"
-    }
-  ],
-  "projected_tools": [
-    "echo_ping",
-    "echo_resolve_mru",
-    "find_clusters",
-    "get_atom",
-    "get_atoms",
-    "get_recent_work_context",
-    "search_memories",
-    "wait_for_new_turns"
-  ],
-  "schema": "context-tool-parity.v1"
+  "timeout_contract": {
+    "source_api_timeout_seconds": 1,
+    "timeout_budget_ms": 10,
+    "virtual_clock_advance_ms": 1000,
+    "note": "Pinned source schema accepts integer seconds only. The fixture sends timeout:1 and the identical hash-bound harness advances one logical second within the literal 10ms wall budget; timeout:0 is forbidden."
+  },
+  "source": {
+    "full_roster_descriptors": [
+      {
+        "name": "echo_ping",
+        "description": "Connectivity check: returns pong with the received message and a timestamp.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "pong": {
+              "type": "boolean"
+            },
+            "received": {
+              "type": "string"
+            },
+            "ts": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pong",
+            "ts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "propose_decision",
+        "description": "Draft a code-session team decision and post it to the configured Slack confirm target. Nothing is shared until a human confirms the draft.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "decision": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_app": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex"
+              ]
+            }
+          },
+          "required": [
+            "subject",
+            "decision",
+            "source_app"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "propose_decision"
+            },
+            "status": {
+              "type": "string",
+              "const": "draft_posted"
+            },
+            "draft_id": {
+              "type": "string"
+            },
+            "confirm_target": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "status",
+            "draft_id",
+            "confirm_target"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "search_memories",
+        "description": "Search the user's captured ECHO memories (Cursor + Claude Code + Codex conversations, git commits, Granola meeting notes, and derived Granola signal atoms) by free-text query, app, source prefix, or time range. Returns the most recent matching events. Three-way source selection (more-specific wins): `source` (exact match — single session JSONL, git repo encoding, or API surface) > `source_prefix` (LIKE — path-precise filter, e.g. a single workspaceStorage subdir) > `source_app` (`cursor` | `claude_code` | `codex` | `git` | `granola`, expands to the canonical encoded prefix). All three are independently optional and may co-occur; the most-specific wins. Free-text `query` is matched as a case-insensitive literal substring against event content and `metadata.canonical_subject`; this is NOT a semantic / KNN search. Use exact tokens (file paths, SHAs, error codes) rather than paraphrased questions. Pass `repo_path=<absolute repo root>` (item 037) to scope results to atoms whose capture-side `metadata.repo_root` matches — works across source_apps with repo metadata; Granola normally has no repo_root and is resolved without repo_path. For `source_app='git'`, `repo_path` matches `metadata.repo_root` only; legacy git atoms without that metadata are reachable via `source_prefix='git:<path>'`. For `source_app='granola'`, the canonical prefix is `api:granola`. Pass `metadata_match={key: value, ...}` (item 038 + Granola signals) for an arbitrary AND-joined filter; a scalar value means equality and an array value means membership. Storage-forwarded keys remain `workspace_id`, `composer_id`, `session_id`, and `repo_root`; signal filters (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied in the tool before pagination. Passing BOTH `repo_path` and `metadata_match.repo_root` with conflicting values is rejected (isError). Derived Granola signal retrieval returns only the current manifest run for each note. For result sets exceeding `limit`, the response carries an opaque `next_cursor` string — pass it back verbatim as `cursor` on the next call to page through; do not construct one client-side. `next_cursor` is `null` when there are no more rows.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "source_app": {
+              "type": "string",
+              "enum": [
+                "cursor",
+                "claude_code",
+                "codex",
+                "git",
+                "granola"
+              ]
+            },
+            "source_prefix": {
+              "type": "string"
+            },
+            "source": {
+              "description": "Item 038 / AC0: exact-source filter. 3-way precedence — `source` (exact) > `source_prefix` (LIKE) > `source_app` (canonical app prefix); the most-specific wins. The losing axes are ignored, NOT errored.",
+              "type": "string"
+            },
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "cursor": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "number"
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the result set to atoms whose `metadata.repo_root` (written at capture time for claude_code, codex, and cursor; reachable across repo-aware source_apps) equals the normalised path. For `source_app=git`, matches `metadata.repo_root` only — legacy git atoms without that metadata are reachable via `source_prefix=git:<path>`. Granola atoms normally have no repo_root, so search them without repo_path. Conflicts on `repo_root` with an explicit `metadata_match` entry → isError.",
+              "type": "string"
+            },
+            "metadata_match": {
+              "description": "Item 038 / AC0 + Granola signals: arbitrary AND-joined filter. Scalar value means equality; array value means membership. Storage-forwarded keys are `workspace_id`, `composer_id`, `session_id`, `repo_root`; signal/source keys (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied before pagination.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "metadata_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata_keys_elided": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "metadata_keys_projected": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "truncations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "timestamp",
+                  "content",
+                  "truncations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "total_returned": {
+              "type": "number"
+            },
+            "limit_applied": {
+              "type": "number"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "query_echo": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_app": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "cursor",
+                        "claude_code",
+                        "codex",
+                        "git",
+                        "granola"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_prefix": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "limit": {
+                  "type": "number"
+                },
+                "repo_path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "metadata_match": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "query",
+                "source_app",
+                "source_prefix",
+                "source",
+                "since",
+                "until",
+                "cursor",
+                "limit",
+                "repo_path",
+                "metadata_match"
+              ],
+              "additionalProperties": false
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "matches",
+            "total_returned",
+            "limit_applied",
+            "next_cursor",
+            "query_echo",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_recent_work_context",
+        "description": "**[DEPRECATED 2026-05-09 — use `find_clusters` + `get_atoms` instead. This tool will be removed in item 031 after a 1-2 week dogfooding period. Migration recipe in description below.]**\n\nMigration:\n  OLD: get_recent_work_context(window_hours=24, format='minimal')\n       // window_hours=24 in the OLD shape was being misused as lookback —\n       // it actually controls cluster-gap (the temporal gap allowed between\n       // atoms in a single cluster). The default lookback was 4h via the\n       // V1.5.7 auto-expand path. Migration uses since= for explicit\n       // lookback, NOT window_hours=.\n\n  NEW: c = find_clusters(since=now-24h)        // explicit 24h lookback\n       // (omit since= to get find_clusters' V1.5.7-equivalent no-args\n       // semantics: 4h default, auto-expand to 24h if the 4h pass\n       // returns 0 clusters OR only single-source-recent clusters (the\n       // calling session's own ≤5-min activity); in the single-source-\n       // recent case, the noise cluster is demoted in rank so prior\n       // multi-source work surfaces at clusters[0].)\n       //\n       // Inspect c.clusters[]: each has rank, label, source_breakdown,\n       // time_range, atom_ids[]. Pick the cluster matching your intent\n       // (typically rank-1 for \"where did I leave off\", but read label +\n       // source_breakdown before picking — the resume target may be a\n       // sibling).\n       picked = c.clusters[0]                   // or whichever matches intent\n       //\n       // get_atoms accepts ≤50 ids per call. If picked.atom_ids.length > 50,\n       // partition into chunks and concat results:\n       //   chunks = chunk(picked.atom_ids, 50)\n       //   a = flatMap(chunks, ids => get_atoms(ids, format='minimal'))\n       a = get_atoms(picked.atom_ids, format='minimal')   // single call if ≤50\n\n  RESUME-STYLE QUERIES (item 032): for \"where did I leave off after a gap\":\n       - Pass `prefer='newest_first'` to `get_atoms` so the prefix-drop on\n         envelope overflow drops the OLDEST atom (and missing IDs) first,\n         not the freshest — the freshest is exactly what the resume caller\n         needs.\n       - No-args `find_clusters()` now auto-expands to 24h when the only\n         returned cluster is the calling session's own recent activity\n         (single-source-recent), AND demotes that cluster so prior\n         multi-source work surfaces at clusters[0].\n\n---\n\nRetrieve clusters of related events from the user's captured ECHO memories — joined by shared artifacts (files, repos, conversations) within a recent time window. Use when the user asks open-ended questions about recent work across their tools — their own activity, or another agent/app on the same machine (\"what is Codex/Claude Code working on?\" — answered via `cluster.source_breakdown`, which counts atoms per app inside each cluster). Also: where they left off, or to bring prior context (Cursor + Claude Code + Codex + git) into the current conversation. Returns one cluster per coherent work thread; the AI client decides which to attend to. `cluster.edges[]` is signal-bearing — pairs joined only by scope (repo/workspace) or session (conversation/thread) artifacts are omitted, so `edges.length` is no longer guaranteed to equal C(N, 2); use `cluster.atom_ids[]` for membership. `cluster.open_loop_hints[].resolved` indicates whether the hint has a downstream closure signal in the same window (heuristic — treat as a hint, not a guarantee). DEFAULTS (cost-safer): `limit=20`, `format=\"minimal\"` — every retrieval pays twice through tool-result budgets (the AI client's, then the user's chat), so minimal is the right starting point. Three-format ladder by cost ordering: `format:\"skeleton\"` (cheapest — ids + label + counts only, drops artifacts/actors/provenance/cluster-edges/open-loop-hint-bodies; typical < 10k chars even on full-day windows; use for low-budget context-pull / \"where did I leave off\" / resume calls), `format:\"minimal\"` (default — atom heads with action.input/output clipped to 500 chars; uncapped sub-collections still pass through, so realistic claude_code days can exceed the consumer 25k budget), `format:\"full\"` (debug — verbatim atom envelopes, only for offline inspection). `limit` may be raised up to MAX_LIMIT=500 for offline/batch consumers but is rarely the right choice for interactive AI-client paths. Pass `window_hours` to control the maximum temporal gap between atoms in a single cluster; when omitted it is inferred from the (since, until) span (equal to span when ≤ 4h, otherwise min(span, 24h)) — for \"where did I leave off after a break\" queries, span-equal inference lets a single cluster bridge an overnight gap. `since` and `until` should always carry an explicit timezone (`Z` for UTC or `+HH:MM` offset); naive ISO strings are parsed as local server time, which is rarely what an AI client intends. NO-ARGS RESUME: when called with neither `since` nor `until`, the default 4h window auto-expands to 24h on a single retry if the 4h pass returns 0 clusters OR only single-source-recent clusters (the calling session's own ≤5-min activity) — covers \"where did I leave off after a quiet stretch\" or \"the calling session's own noise is the only thing in 4h\" without forcing the caller to pre-pick a span. When the single-source-recent trigger fires AND prior multi-source work exists in 24h, the noise cluster is demoted below the prior work via a strict-partition rank rule so clusters[0] is the resume target, not the calling session. Auto-expand fires a `[AUTO_EXPAND]`-prefixed warning (`empty` or `single-source-recent` trigger) so the implicit widen is visible.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "artifact_hint": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ]
+            },
+            "limit": {
+              "type": "number"
+            },
+            "window_hours": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 168
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "full",
+                "minimal",
+                "skeleton"
+              ]
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the candidate event set to atoms whose `metadata.repo_root` matches (cross-source). Legacy git atoms without that metadata are out of scope when this is passed; reach them via `source_prefix=git:<path>` on `search_memories` or `echo_resolve_mru(sources=['git'], repo_path=...)` for the two-path OR fallback.",
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_recent_work_context"
+            },
+            "query": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "clusters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "atoms": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "truncation": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "query",
+            "clusters",
+            "atoms",
+            "truncation",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "find_clusters",
+        "description": "Use when you need cross-source DISCOVERY of recent work threads — clusters of related events grouped by shared artifacts (files, repos, conversations) — but NOT the atom bodies. Pair with `get_atoms` to materialise bodies for any returned cluster's `atom_ids[]`.\n\nCost: cheap. Typical < 10k chars even on full-day windows; the discovery counterpart to the targeted `get_atoms` body fetch. Hard envelope ceiling: 25k chars.\n\nPARAMETERS — IMPORTANT distinction (most-common foot-gun):\n  • `window_hours` controls the **maximum cluster-gap** (the temporal gap allowed between atoms in a single cluster), NOT lookback. Default 4h cluster-gap.\n  • `since` / `until` control the **lookback window** (which atoms are considered).\n  Pass `since=now-24h` for a 24h LOOKBACK; passing `window_hours=24` widens the cluster-gap, which is rarely what you want.\n\nNO-ARGS RESUME: when called with neither `since` nor `until`, the default 4h lookback auto-expands to 24h on a single retry if the 4h pass returned 0 clusters OR only single-source-recent clusters (the calling session's own activity from the last 5 minutes); when the single-source-recent expand fires AND prior multi-source work exists in 24h, the single-source-recent cluster is demoted in rank so the prior work appears as clusters[0]. Auto-expand fires a `[AUTO_EXPAND] <trigger>`-prefixed warning (trigger: `empty` or `single-source-recent`) so the implicit widen is visible.\n\nRETURNS: per-cluster {cluster_id, rank, rank_reason, atom_ids[] (FULL, un-capped — feed straight to `get_atoms`), source_breakdown ({source_app: count}), time_range, label?, open_loop_hints? (capped at 30)}. No atom bodies. `result_caps` describes response-level budget application; per-cluster `atom_ids_truncated: true` + `atom_ids_total: N` fires if a single cluster's atom_ids[] would dominate the ceiling.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "window_hours": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 168
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "skeleton"
+              ]
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "compact",
+                "rich"
+              ]
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the cluster candidate set to atoms whose `metadata.repo_root` matches (cross-source — find_clusters has no source_app gate). Legacy git atoms without that metadata are out of scope when passed; reach them via `source_prefix=git:<path>` on `search_memories`/`wait_for_new_turns`, or `echo_resolve_mru(sources=['git'], repo_path=...)` which has the two-path OR fallback.",
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "find_clusters"
+            },
+            "query": {
+              "type": "object",
+              "properties": {
+                "since": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                },
+                "window_hours": {
+                  "type": "number"
+                },
+                "format": {
+                  "type": "string",
+                  "const": "skeleton"
+                },
+                "repo_path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "since",
+                "until",
+                "window_hours",
+                "format",
+                "repo_path"
+              ],
+              "additionalProperties": false
+            },
+            "clusters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "result_caps": {
+              "type": "object",
+              "properties": {
+                "clusters_returned": {
+                  "type": "number"
+                },
+                "clusters_total": {
+                  "type": "number"
+                },
+                "atoms_returned": {
+                  "type": "number"
+                },
+                "atoms_total_in_window": {
+                  "type": "number"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "clusters_returned",
+                "clusters_total",
+                "atoms_returned",
+                "atoms_total_in_window",
+                "truncated"
+              ],
+              "additionalProperties": false
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "clusters",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "pending_decisions",
+        "description": "Read-only DecisionCard projection for delegated agent work awaiting the founder. v0 requires repo_path and reads the ECHO review-playbook files in that repo; returns deterministic cards plus freshness state. Zero LLM, zero backlog writes.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "repo_path": {
+              "type": "string",
+              "description": "Absolute filesystem path to the repo whose active backlog/review rounds should be projected."
+            }
+          },
+          "required": [
+            "repo_path"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "pending_decisions"
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "source_breakdown": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "source_state": {
+              "type": "object",
+              "properties": {
+                "local_head": {
+                  "type": "string"
+                },
+                "upstream_head": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "behind": {
+                  "type": "number"
+                },
+                "upstream_checked_at": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "upstream_stale": {
+                  "type": "boolean"
+                },
+                "dirty": {
+                  "type": "boolean"
+                },
+                "scanned_items": {
+                  "type": "number"
+                },
+                "partial": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "local_head",
+                "upstream_head",
+                "behind",
+                "upstream_checked_at",
+                "upstream_stale",
+                "dirty",
+                "scanned_items",
+                "partial"
+              ],
+              "additionalProperties": false
+            },
+            "result_caps": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "decisions",
+            "source_breakdown",
+            "source_state"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_atoms",
+        "description": "Use when you have a specific list of atom IDs (from `find_clusters.clusters[].atom_ids[]` or `search_memories.matches[].id`) and want their bodies. The targeted body-fetch counterpart to `find_clusters`' cheap discovery.\n\nCost: medium. Each returned atom passes through the same wire-shape projector as `search_memories` (per-content cap, per-key metadata cap, projector reshapes). Hard envelope ceiling: 25k chars; deterministic prefix-drop on overflow (see below).\n\nPARAMETERS:\n  • `atom_ids: string[]` — required. Non-empty, ≤ 50. Atoms are returned in REQUESTED ORDER by default.\n  • `fields?: string[]` — optional projection. When present, only the listed top-level fields are returned per atom (always-on: `id`, `source`, `timestamp`, `truncations`). Useful for cost reduction.\n  • `format?: \"minimal\"` — V1.6 only ships \"minimal\" (applies WIRE_SHAPE_CAPS to content + per-key metadata). A future debug-only \"full\" mode is a separate item if real demand surfaces.\n  • `prefer?: \"as_requested\" | \"newest_first\"` — default `\"as_requested\"` preserves the existing contract (atoms returned in input order; duplicate input IDs returned as repeated entries). Pass `\"newest_first\"` for resume-style queries: atoms are sorted by `CaptureEvent.timestamp` DESCENDING (newest first; ties resolve in input order), duplicate IDs are de-duplicated to first occurrence BEFORE sorting (NEW behavior — opt-in only), and missing IDs (not in storage) land at the END of the iteration order. Under the deterministic prefix-drop budget, that END is the FIRST thing dropped — so the freshest atoms survive overflow, matching the resume-call intent. If you have already ordered `atom_ids` intentionally, pass `\"as_requested\"` (or omit `prefer`) — `\"newest_first\"` will override your order.\n\nTRUST SIGNAL — `truncations: string[]` is on EVERY returned atom. `[]` ⟺ everything verbatim. `[\"content\"]` ⟺ content was clipped to the wire-shape cap. `[\"metadata.<key>\"]` ⟺ per-key cap fired (LOSSY — opaqued out). `[\"metadata.<key>:projected\"]` ⟺ projector reshaped (REFORMATTED, not clipped — e.g. tool_calls → trajectory). `[\"fields_omitted\"]` ⟺ caller passed `fields[]` excluding some.\n\nDROP RULE — when the response would exceed 25k chars: deterministic prefix-drop. Atoms are appended in PROCESS ORDER (= requested order under `prefer=\"as_requested\"` (default); = newest-first-then-missing under `prefer=\"newest_first\"`) until the next atom would push the envelope over the ceiling; that atom AND every remaining ID in process order are dropped (NOT a hole in the middle). `atoms_dropped: N` + `atoms_dropped_ids: string[]` carry the omitted IDs in that same process order. Missing IDs (not in storage) are also reported in `atoms_dropped_ids`; under `prefer=\"newest_first\"` they sort to the END of the process order so they are dropped first when the budget tightens.\n\nIf even a single projected atom alone would exceed 25k, the response is `{atoms: [], atoms_dropped: input_count, atoms_dropped_ids: [all]}` plus a warning telling the caller to retry with a narrower `fields[]` projection. We do NOT raise WIRE_SHAPE_CAPS to make this pass.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "atom_ids": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "minimal"
+              ]
+            },
+            "prefer": {
+              "type": "string",
+              "enum": [
+                "as_requested",
+                "newest_first"
+              ]
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "compact",
+                "rich"
+              ]
+            }
+          },
+          "required": [
+            "atom_ids"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_atoms"
+            },
+            "atoms": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "truncations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "content_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "timestamp",
+                  "truncations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "atoms_dropped": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "atoms_dropped_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "atoms",
+            "atoms_dropped",
+            "atoms_dropped_ids",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "wait_for_new_turns",
+        "description": "Use when you want to BLOCK until new captured atoms land at any of N sources — the missing primitive for group session A (synchronized human-driven multi-agent conversation). Pair with `echo_resolve_mru` / `search_memories` / `find_clusters` for the discovery side.\n\nCost: medium-blocking (server holds the request open up to `timeout` seconds, polling storage every 1s; cheap on the daemon, but the call duration is the latency cost). Stateless: no subscriber registry, no per-client state, every call is independent (per item 027).\n\nPARAMETERS:\n  • `sources: string[]` — required. Non-empty, ≤ 8. Mixed entry types accepted:\n      • Literal source path (e.g. `fs:/Users/.../state.vscdb`, `git:/Users/.../repo`) → EXACT match.\n      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH (matches ALL sessions/atoms of that app — explicitly DIFFERENT from `echo_resolve_mru(sources=[<app>])` which resolves to the MRU exact source). Group session A wants \"wake on any session of these apps.\"\n  • `since: string` — required. ISO 8601 timestamp; only return turns with timestamp STRICTLY AFTER this (`> since`, not `>=`). Pass the previous call's `next_since` to chain.\n  • `timeout?: number` — seconds; default 30, max 60.\n\nBEHAVIOR: polls echo.db every 1s. Returns immediately on any non-empty result; returns at `timeout` with empty `turn_ids[]`.\n\nCHAINING (lossless — `next_since` is NEVER the server wall clock): when turns are returned, `next_since` = the max timestamp among the RETURNED turns (canonical Z form, as stored); when the call times out empty, `next_since` = your own `since` (canonicalized) echoed back. Always chain with `since = next_since` — safe unconditionally, even after a timeout. Atom timestamps are event times that land in storage with ingest lag (Cursor re-poll ~15s; CC/codex/git seconds), so a wall-clock watermark would permanently skip late-ingested turns; anchoring `next_since` to delivered data makes the chain lossless.\n\nOVERFLOW PAGING: at most 20 turns per call. When more match, the call returns the OLDEST page (ascending by timestamp, id) plus a warning in `warnings[]` — chain immediately with `next_since` to page through the backlog. A same-timestamp group is never split across the page boundary: either the page carries the WHOLE group (it may exceed the cap by the tie count), or — when the group cannot be proven complete because a window-full fetch ends at its timestamp — the group is held back entirely and the chained call re-fetches it whole. The one lossy case left: a single same-millisecond group in one source larger than the per-source fetch window ships flagged with an explicit warning. `turn_ids` are ordered oldest→newest.\n\nRESPONSE (item 038 / AC4 — IDs-only): the response now carries `turn_ids: string[]` instead of body-projected `turns[]`. The envelope shrinks dramatically (no body projection in the wait response); the caller composes one extra MCP call per wake (`get_atoms(turn_ids)` for cost-bounded summaries, or `get_atom(turn_ids[i])` for verbatim of one atom) to fetch bodies. No parallel-vocabulary deprecation window — the bodies-bundled shape is removed in the same release that ships the IDs-only shape.\n\nCANONICAL COMPOSITION:\n  const w = await wait_for_new_turns({sources: [...], since: last});\n  last = w.next_since;  // safe unconditionally — echoes `since` back on timeout\n  if (!w.timed_out) {\n    const atoms = await get_atoms(w.turn_ids);  // summary bodies\n  }\n\nPOLLING FALLBACK: if your MCP client has issues with long-running calls (timeout limits, no streaming), poll instead — works on any MCP client:\n\n  last_ts = now\n  while monitoring:\n      result = find_clusters(since=last_ts, format=\"skeleton\")\n      if result.clusters:\n          process(result.clusters)\n          last_ts = max_timestamp(result)\n      sleep(2)\n\nCost trade-off: polling = N calls/min (poll frequency). Long-poll = 1 call per wake event. Polling adds wake-latency (≤ poll interval) but works on any client.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source_prefix": {
+              "description": "AC4 (057a): optional prefix filter, sibling of `sources[]`. Matches any captured atom whose `source` string starts with this prefix. When supplied alongside `sources[]`, the returned `turn_ids` are the UNION of the two filters. At least one of `sources[]` (non-empty) or `source_prefix` (non-empty) MUST be present.",
+              "type": "string"
+            },
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, each per-source poll is AND-filtered by `metadata.repo_root = normalize(repo_path)`. For `sources` containing `git` or a `git:` prefix entry, matches `metadata.repo_root` only — legacy git atoms without that metadata are out of scope (omit `repo_path` to widen).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "since"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "wait_for_new_turns"
+            },
+            "turn_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "next_since": {
+              "type": "string"
+            },
+            "timed_out": {
+              "type": "boolean"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "turn_ids",
+            "next_since",
+            "timed_out",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_atom",
+        "description": "Use ONLY when you observed non-empty `truncations` (especially `[\"content\"]`) on a prior `search_memories` / `get_atoms` response AND you need the verbatim content for that specific atom. The content-recovery escape hatch — bypasses `WIRE_SHAPE_CAPS.match_content` clipping for `content`, while keeping the existing metadata projection (per-key cap + `tool_calls` reshape) and excluding `embedding`. Pair this with the other retrieval tools (which clip content + metadata for budget reasons): use `find_clusters` + `get_atoms` for routine discovery, and reach for `get_atom` only when you need verbatim content for a specific atom.\n\nCost: HIGH. Typical Codex long-turn content is 5-15KB; with metadata projected to ~2KB, response fits the 25k ceiling. If the atom's content alone exceeds ~24KB (rare), the tool returns `{atom: null, error_code: \"atom_too_large_for_wire\", source: \"...\"}` so you can read the source path directly. If the atom ID doesn't exist in storage, returns `{atom: null, error_code: \"atom_not_found\"}` — do NOT retry, the ID is wrong or stale. Do NOT call `get_atom` in a tight loop — it's the escape hatch, not the discovery primitive.\n\nPATTERN:\n  const r = await get_atom(id);\n  if (r.error_code === \"atom_too_large_for_wire\") { /* read r.source directly */ }\n  else if (r.error_code === \"atom_not_found\") { /* ID is stale; abort */ }\n  else { /* r.atom is the content-verbatim recovery */ }",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_atom"
+            },
+            "atom": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "truncations": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "source",
+                    "timestamp",
+                    "content",
+                    "truncations"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "atom_size_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "error_code": {
+              "type": "string",
+              "enum": [
+                "atom_too_large_for_wire",
+                "atom_not_found"
+              ]
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "atom",
+            "atom_size_bytes",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "echo_resolve_mru",
+        "description": "Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source (NOT bare paths — bare source loses cross-repo scoping for Cursor). IDs-only / source-only; no atom bodies fetched here.\n\nPARAMETERS:\n  • `sources: string[]` — required. Non-empty, ≤ 8. Mixed entry types accepted (same shape as `wait_for_new_turns`):\n      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH on the canonical app prefix; resolves to the newest non-fs source under that prefix.\n      • Literal source path (e.g. `fs:/Users/.../session.jsonl`, `git:/Users/.../repo`) → EXACT match; descriptor returned only if the source has at least one non-fs atom.\n  • `repo_path?: string` — optional absolute repo root. When set, only sources whose newest non-fs atom matches the repo are eligible. Source-app entries: `claude_code` / `codex` filter via `metadata.repo_root`; `cursor` uses a two-phase fallback (Phase 1 metadata.repo_root, Phase 2 legacy composer↔workspace resolver — descriptor encodes `phase: 'cursor_legacy'` when Phase 2 fires); `git` uses a two-path OR (metadata.repo_root OR `source=git:<repo_path>`) to recover legacy git atoms by path; `granola` normally resolves only when repo_path is omitted because meeting-note atoms have no repo_root.\n\nRETURNS: `{ sources: Record<string, ResolvedSourceDescriptor | null>, repo_path?: string, warnings: string[] }`. Each descriptor has shape `{ source, filter: { metadata_match?, repo_path? }, phase?: 'cursor_legacy' }`. The descriptor is `search_memories`-ready ONLY — `filter.metadata_match` is NOT a `wait_for_new_turns` parameter, so the canonical live-watch path uses `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})` and ignores `metadata_match`. Legacy Cursor atoms via wait are out of scope (wait is for NEW turns; legacy = already-captured).\n\nCANONICAL COMPOSITIONS:\n  • Tail (search_memories): `r = echo_resolve_mru({sources: ['cursor'], repo_path: X})` → if `r.sources['cursor'] !== null`, `search_memories({source: desc.source, ...desc.filter, limit: N})`. The `...desc.filter` spread carries through repo_path or metadata_match cleanly without the caller needing to know which Cursor phase fired.\n  • Live watch (wait_for_new_turns): `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})`.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repo_path": {
+              "description": "Absolute filesystem path to a repo root. When set, only sources whose newest non-fs atom matches the repo (per the source-app-specific rules above) are eligible.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sources"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string"
+                      },
+                      "filter": {
+                        "type": "object",
+                        "properties": {
+                          "metadata_match": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "repo_path": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "phase": {
+                        "type": "string",
+                        "const": "cursor_legacy"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "filter"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "repo_path": {
+              "type": "string"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "sources",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_role_state",
+        "description": "Read a role-typed task-state pointer file at a pinned commit SHA. `role` ∈ {strategist, builder, round-state}. `ref` accepts any git-resolvable ref (SHA, branch, tag); when omitted, resolves to HEAD at call entry. The response echoes the resolved commit SHA in `ref` so callers can pin follow-up reads to byte-identical content. Working-tree state is NOT readable — V1 contract is committed blobs only.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "strategist",
+                "builder",
+                "round-state"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "role"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "last_updated": {
+              "type": "string"
+            },
+            "source_path": {
+              "type": "string"
+            },
+            "line_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "last_updated",
+            "source_path",
+            "line_count",
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "list_task_states",
+        "description": "List role-typed task-state pointers under backlog/task-state/ at a pinned commit SHA. Optional filters: `role` (narrows roles_present), `binding` (V1: reserved, no-op), `stage` (cross-references backlog/<stage>/<id>.md at the same SHA). `ref` accepts any git-resolvable ref; when omitted, resolves to HEAD at call entry and echoes the resolved SHA in the response. Empty `task_states: []` is valid (not isError). Malformed canonical_anchors degrades to `{ spec?: <best-effort>, _parse_error }` — the listing still succeeds so MCP-only cold-start consumers can discover.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "strategist",
+                "builder",
+                "round-state"
+              ]
+            },
+            "binding": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "claimed",
+                "pending_review",
+                "complete"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "task_states": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "ready",
+                          "claimed",
+                          "pending_review",
+                          "complete"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "roles_present": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "strategist",
+                        "builder",
+                        "round-state"
+                      ]
+                    }
+                  },
+                  "task_state_ref_path": {
+                    "type": "string"
+                  },
+                  "last_updated": {
+                    "type": "string"
+                  },
+                  "canonical_anchors": {
+                    "type": "object",
+                    "properties": {
+                      "spec": {
+                        "type": "string"
+                      },
+                      "reviews": {
+                        "type": "string"
+                      },
+                      "_parse_error": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "task_id",
+                  "stage",
+                  "roles_present",
+                  "task_state_ref_path",
+                  "last_updated",
+                  "canonical_anchors"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_states",
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "coord_emit",
+        "description": "INTERNAL: coord-substrate append seam. Reviewers and the orchestrator emit coord events (`tick_start`, `tick_end`, `reviewer_invoked`, `scheduler_health`, etc.) via this tool to populate the daemon-side deadline tracker. Identity is server-derived from the `X-Echo-Role` HTTP header (V1: scoped to wrapper paths — native MCP clients without header access cannot emit). Caller-supplied `source` is ignored; the daemon derives `source = coord:<role>` from the validated identity. Coord atoms bypass normalization, embedding, and clustering — they default-exclude from `search_memories` and `find_clusters`. Use `wait_for_new_turns(source_prefix=\"coord:\")` (AC4) to subscribe live, or `search_memories(source_prefix=\"coord:\")` for forensic retrieval.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "schema_version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "subject_role": {
+              "type": "string",
+              "minLength": 1
+            },
+            "correlation_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tick_run_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "emitted_at": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expected_by": {
+              "type": "string",
+              "minLength": 1
+            },
+            "payload": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_type",
+            "schema_version",
+            "subject_role",
+            "emitted_at"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "coord_emit"
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "id",
+            "source"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "coord_status",
+        "description": "Operator status for the coord substrate. Returns open deadlines (per tier), recent missed deadlines (last 200 within max(role.max_deadline_sec) horizon ≥24h), per-(role, expected_event_type) last-miss slots that haven't been cleared by a successful close, per-role last-tick aggregation, daemon uptime, and last full-replay watermark. Read-only — no mutate operations exposed via observability tools. Cost: one full scan over coord atoms (O(coord-atom-count)) per call; V1 perf budget <300ms at 100k atoms.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "coord_status"
+            },
+            "generated_at": {
+              "type": "string"
+            },
+            "open_deadlines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "recent_missed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "last_miss_per_role_per_event_type": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "per_role_last_tick": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "daemon_uptime_sec": {
+              "type": "number"
+            },
+            "last_reconstruction_watermark": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "generated_at",
+            "open_deadlines",
+            "recent_missed",
+            "last_miss_per_role_per_event_type",
+            "per_role_last_tick",
+            "daemon_uptime_sec",
+            "last_reconstruction_watermark"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "coord_invoke",
+        "description": "INTERNAL: strategist-side active-trigger seam. Spawns the reviewer wrapper for `role` to review the request file at `request_path`, after synchronously appending `coord:reviewer_invoked` so the daemon-side deadline tracker opens the pre-spawn deadline BEFORE the child can emit `tick_start`. Inputs: `role` (canonical reviewer slug — lowercase, `[a-z][a-z0-9-]*`, must be present in coord-roles.json with headless:true); `request_path` (must live under the configured reviews_root and match `<reviews_root>/<slug>/r<N>/request.md` after realpath containment validation); `correlation_id` (canonical uuid4 — version-4 nibble + variant byte enforced). The wrapper is spawned fire-and-forget (detached, stdio ignored, cwd=REPO_ROOT) with env vars ECHO_REVIEW_QUEUE_REPO_ROOT, ECHO_COORD_REQUEST_PATH, ECHO_COORD_CORRELATION_ID — the wrapper reads these to bind to the exact request rather than scan-picking, then resolves the vendor child argv from tools/review-queue/reviewer-bindings.json. Async spawn failures (EMFILE, missing executable, bad shebang) are logged structured and DO NOT crash the daemon; the pre-spawn deadline still fires `coord:deadline_missed` naturally if the child never emits `tick_start`.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "minLength": 1
+            },
+            "request_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "correlation_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "role",
+            "request_path",
+            "correlation_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "coord_invoke"
+            },
+            "reviewer_invoked_id": {
+              "type": "string"
+            },
+            "wrapper_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "reviewer_invoked_id",
+            "wrapper_path"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ],
+    "full_roster_sha256": "2eaed4889a1943c518f6675d6570fedeafa5eb5dd074ae2ac85dd03de093db29",
+    "projected_descriptor_sha256": "ee476c2b78e1112083ac1d8c3c3e93483370184d7afe51a68c8b9b3d0dbd7935",
+    "ignored_ids": [
+      {
+        "id": "coord_emit",
+        "classification": "loop_write"
+      },
+      {
+        "id": "coord_invoke",
+        "classification": "loop_write"
+      },
+      {
+        "id": "coord_status",
+        "classification": "loop_read"
+      },
+      {
+        "id": "get_role_state",
+        "classification": "task_state_read"
+      },
+      {
+        "id": "list_task_states",
+        "classification": "task_state_read"
+      },
+      {
+        "id": "pending_decisions",
+        "classification": "product_read"
+      },
+      {
+        "id": "propose_decision",
+        "classification": "product_write"
+      }
+    ],
+    "per_case": [
+      {
+        "case_id": "ping-empty",
+        "response_sha256": "7d4cb76d253c5edf3091be5a3316ceab9f1b72d1e034f3b1bf2cc094ec0cbb22"
+      },
+      {
+        "case_id": "resolve-mru-granola",
+        "response_sha256": "8d48a6d72528b9401720397544c7432b59944eb8b0d2916de99b533941ac972d"
+      },
+      {
+        "case_id": "find-empty",
+        "response_sha256": "c475c646a4f3b31ac320957d854a472a8aaef06cd3aecbc79362f399e0bb8c9c"
+      },
+      {
+        "case_id": "find-seeded",
+        "response_sha256": "2e72480d47e1a0b1ffeef622b0b86594d7ba5d6dbe19792a4417c6df462ebe72"
+      },
+      {
+        "case_id": "get-atom-present",
+        "response_sha256": "4c488561f657228bb65754ddb545d9607bbae660e423d051772f1d7e5d90d10e"
+      },
+      {
+        "case_id": "get-atom-missing",
+        "response_sha256": "8df0bfdc90a0e817b88281fb1a3b58fb4a1be44b3b0c086a35dc6b71a7958ff6"
+      },
+      {
+        "case_id": "get-atoms-mixed",
+        "response_sha256": "a6f378a8dcafa97ef047bde5f22d841cd8c1007c4841ff43b6a407b68d9d6520"
+      },
+      {
+        "case_id": "recent-seeded",
+        "response_sha256": "1afc4c774d71f6fa5f2be3702cc83f457b701774abc1712fe85b9d34443414d6"
+      },
+      {
+        "case_id": "search-seeded",
+        "response_sha256": "bdcd7b937d63bff408681d08d81d2de34db082ed9d79bdb1e4760818252c1e97"
+      },
+      {
+        "case_id": "wait-timeout",
+        "response_sha256": "b3798839d0f724f1e1351d8c350249f66fe1e4c1a460015a2dc6dc1799a49b66"
+      }
+    ],
+    "aggregate_sha256": "2f0b28f6b62d31682db30b63139e21cc42977713500a1655f65213f69d7f427e"
+  },
+  "target": {
+    "full_roster_descriptors": [
+      {
+        "name": "echo_ping",
+        "description": "Connectivity check: returns pong with the received message and a timestamp.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "pong": {
+              "type": "boolean"
+            },
+            "received": {
+              "type": "string"
+            },
+            "ts": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pong",
+            "ts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "search_memories",
+        "description": "Search the user's captured ECHO memories (Cursor + Claude Code + Codex conversations, git commits, Granola meeting notes, and derived Granola signal atoms) by free-text query, app, source prefix, or time range. Returns the most recent matching events. Three-way source selection (more-specific wins): `source` (exact match — single session JSONL, git repo encoding, or API surface) > `source_prefix` (LIKE — path-precise filter, e.g. a single workspaceStorage subdir) > `source_app` (`cursor` | `claude_code` | `codex` | `git` | `granola`, expands to the canonical encoded prefix). All three are independently optional and may co-occur; the most-specific wins. Free-text `query` is matched as a case-insensitive literal substring against event content and `metadata.canonical_subject`; this is NOT a semantic / KNN search. Use exact tokens (file paths, SHAs, error codes) rather than paraphrased questions. Pass `repo_path=<absolute repo root>` (item 037) to scope results to atoms whose capture-side `metadata.repo_root` matches — works across source_apps with repo metadata; Granola normally has no repo_root and is resolved without repo_path. For `source_app='git'`, `repo_path` matches `metadata.repo_root` only; legacy git atoms without that metadata are reachable via `source_prefix='git:<path>'`. For `source_app='granola'`, the canonical prefix is `api:granola`. Pass `metadata_match={key: value, ...}` (item 038 + Granola signals) for an arbitrary AND-joined filter; a scalar value means equality and an array value means membership. Storage-forwarded keys remain `workspace_id`, `composer_id`, `session_id`, and `repo_root`; signal filters (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied in the tool before pagination. Passing BOTH `repo_path` and `metadata_match.repo_root` with conflicting values is rejected (isError). Derived Granola signal retrieval returns only the current manifest run for each note. For result sets exceeding `limit`, the response carries an opaque `next_cursor` string — pass it back verbatim as `cursor` on the next call to page through; do not construct one client-side. `next_cursor` is `null` when there are no more rows.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "source_app": {
+              "type": "string",
+              "enum": [
+                "cursor",
+                "claude_code",
+                "codex",
+                "git",
+                "granola"
+              ]
+            },
+            "source_prefix": {
+              "type": "string"
+            },
+            "source": {
+              "description": "Item 038 / AC0: exact-source filter. 3-way precedence — `source` (exact) > `source_prefix` (LIKE) > `source_app` (canonical app prefix); the most-specific wins. The losing axes are ignored, NOT errored.",
+              "type": "string"
+            },
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "cursor": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "number"
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the result set to atoms whose `metadata.repo_root` (written at capture time for claude_code, codex, and cursor; reachable across repo-aware source_apps) equals the normalised path. For `source_app=git`, matches `metadata.repo_root` only — legacy git atoms without that metadata are reachable via `source_prefix=git:<path>`. Granola atoms normally have no repo_root, so search them without repo_path. Conflicts on `repo_root` with an explicit `metadata_match` entry → isError.",
+              "type": "string"
+            },
+            "metadata_match": {
+              "description": "Item 038 / AC0 + Granola signals: arbitrary AND-joined filter. Scalar value means equality; array value means membership. Storage-forwarded keys are `workspace_id`, `composer_id`, `session_id`, `repo_root`; signal/source keys (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied before pagination.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "metadata_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata_keys_elided": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "metadata_keys_projected": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "truncations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "timestamp",
+                  "content",
+                  "truncations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "total_returned": {
+              "type": "number"
+            },
+            "limit_applied": {
+              "type": "number"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "query_echo": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_app": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "cursor",
+                        "claude_code",
+                        "codex",
+                        "git",
+                        "granola"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_prefix": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "limit": {
+                  "type": "number"
+                },
+                "repo_path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "metadata_match": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "query",
+                "source_app",
+                "source_prefix",
+                "source",
+                "since",
+                "until",
+                "cursor",
+                "limit",
+                "repo_path",
+                "metadata_match"
+              ],
+              "additionalProperties": false
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "matches",
+            "total_returned",
+            "limit_applied",
+            "next_cursor",
+            "query_echo",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_recent_work_context",
+        "description": "**[DEPRECATED 2026-05-09 — use `find_clusters` + `get_atoms` instead. This tool will be removed in item 031 after a 1-2 week dogfooding period. Migration recipe in description below.]**\n\nMigration:\n  OLD: get_recent_work_context(window_hours=24, format='minimal')\n       // window_hours=24 in the OLD shape was being misused as lookback —\n       // it actually controls cluster-gap (the temporal gap allowed between\n       // atoms in a single cluster). The default lookback was 4h via the\n       // V1.5.7 auto-expand path. Migration uses since= for explicit\n       // lookback, NOT window_hours=.\n\n  NEW: c = find_clusters(since=now-24h)        // explicit 24h lookback\n       // (omit since= to get find_clusters' V1.5.7-equivalent no-args\n       // semantics: 4h default, auto-expand to 24h if the 4h pass\n       // returns 0 clusters OR only single-source-recent clusters (the\n       // calling session's own ≤5-min activity); in the single-source-\n       // recent case, the noise cluster is demoted in rank so prior\n       // multi-source work surfaces at clusters[0].)\n       //\n       // Inspect c.clusters[]: each has rank, label, source_breakdown,\n       // time_range, atom_ids[]. Pick the cluster matching your intent\n       // (typically rank-1 for \"where did I leave off\", but read label +\n       // source_breakdown before picking — the resume target may be a\n       // sibling).\n       picked = c.clusters[0]                   // or whichever matches intent\n       //\n       // get_atoms accepts ≤50 ids per call. If picked.atom_ids.length > 50,\n       // partition into chunks and concat results:\n       //   chunks = chunk(picked.atom_ids, 50)\n       //   a = flatMap(chunks, ids => get_atoms(ids, format='minimal'))\n       a = get_atoms(picked.atom_ids, format='minimal')   // single call if ≤50\n\n  RESUME-STYLE QUERIES (item 032): for \"where did I leave off after a gap\":\n       - Pass `prefer='newest_first'` to `get_atoms` so the prefix-drop on\n         envelope overflow drops the OLDEST atom (and missing IDs) first,\n         not the freshest — the freshest is exactly what the resume caller\n         needs.\n       - No-args `find_clusters()` now auto-expands to 24h when the only\n         returned cluster is the calling session's own recent activity\n         (single-source-recent), AND demotes that cluster so prior\n         multi-source work surfaces at clusters[0].\n\n---\n\nRetrieve clusters of related events from the user's captured ECHO memories — joined by shared artifacts (files, repos, conversations) within a recent time window. Use when the user asks open-ended questions about recent work across their tools — their own activity, or another agent/app on the same machine (\"what is Codex/Claude Code working on?\" — answered via `cluster.source_breakdown`, which counts atoms per app inside each cluster). Also: where they left off, or to bring prior context (Cursor + Claude Code + Codex + git) into the current conversation. Returns one cluster per coherent work thread; the AI client decides which to attend to. `cluster.edges[]` is signal-bearing — pairs joined only by scope (repo/workspace) or session (conversation/thread) artifacts are omitted, so `edges.length` is no longer guaranteed to equal C(N, 2); use `cluster.atom_ids[]` for membership. `cluster.open_loop_hints[].resolved` indicates whether the hint has a downstream closure signal in the same window (heuristic — treat as a hint, not a guarantee). DEFAULTS (cost-safer): `limit=20`, `format=\"minimal\"` — every retrieval pays twice through tool-result budgets (the AI client's, then the user's chat), so minimal is the right starting point. Three-format ladder by cost ordering: `format:\"skeleton\"` (cheapest — ids + label + counts only, drops artifacts/actors/provenance/cluster-edges/open-loop-hint-bodies; typical < 10k chars even on full-day windows; use for low-budget context-pull / \"where did I leave off\" / resume calls), `format:\"minimal\"` (default — atom heads with action.input/output clipped to 500 chars; uncapped sub-collections still pass through, so realistic claude_code days can exceed the consumer 25k budget), `format:\"full\"` (debug — verbatim atom envelopes, only for offline inspection). `limit` may be raised up to MAX_LIMIT=500 for offline/batch consumers but is rarely the right choice for interactive AI-client paths. Pass `window_hours` to control the maximum temporal gap between atoms in a single cluster; when omitted it is inferred from the (since, until) span (equal to span when ≤ 4h, otherwise min(span, 24h)) — for \"where did I leave off after a break\" queries, span-equal inference lets a single cluster bridge an overnight gap. `since` and `until` should always carry an explicit timezone (`Z` for UTC or `+HH:MM` offset); naive ISO strings are parsed as local server time, which is rarely what an AI client intends. NO-ARGS RESUME: when called with neither `since` nor `until`, the default 4h window auto-expands to 24h on a single retry if the 4h pass returns 0 clusters OR only single-source-recent clusters (the calling session's own ≤5-min activity) — covers \"where did I leave off after a quiet stretch\" or \"the calling session's own noise is the only thing in 4h\" without forcing the caller to pre-pick a span. When the single-source-recent trigger fires AND prior multi-source work exists in 24h, the noise cluster is demoted below the prior work via a strict-partition rank rule so clusters[0] is the resume target, not the calling session. Auto-expand fires a `[AUTO_EXPAND]`-prefixed warning (`empty` or `single-source-recent` trigger) so the implicit widen is visible.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "artifact_hint": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ]
+            },
+            "limit": {
+              "type": "number"
+            },
+            "window_hours": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 168
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "full",
+                "minimal",
+                "skeleton"
+              ]
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the candidate event set to atoms whose `metadata.repo_root` matches (cross-source). Legacy git atoms without that metadata are out of scope when this is passed; reach them via `source_prefix=git:<path>` on `search_memories` or `echo_resolve_mru(sources=['git'], repo_path=...)` for the two-path OR fallback.",
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_recent_work_context"
+            },
+            "query": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "clusters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "atoms": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "truncation": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "query",
+            "clusters",
+            "atoms",
+            "truncation",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "find_clusters",
+        "description": "Use when you need cross-source DISCOVERY of recent work threads — clusters of related events grouped by shared artifacts (files, repos, conversations) — but NOT the atom bodies. Pair with `get_atoms` to materialise bodies for any returned cluster's `atom_ids[]`.\n\nCost: cheap. Typical < 10k chars even on full-day windows; the discovery counterpart to the targeted `get_atoms` body fetch. Hard envelope ceiling: 25k chars.\n\nPARAMETERS — IMPORTANT distinction (most-common foot-gun):\n  • `window_hours` controls the **maximum cluster-gap** (the temporal gap allowed between atoms in a single cluster), NOT lookback. Default 4h cluster-gap.\n  • `since` / `until` control the **lookback window** (which atoms are considered).\n  Pass `since=now-24h` for a 24h LOOKBACK; passing `window_hours=24` widens the cluster-gap, which is rarely what you want.\n\nNO-ARGS RESUME: when called with neither `since` nor `until`, the default 4h lookback auto-expands to 24h on a single retry if the 4h pass returned 0 clusters OR only single-source-recent clusters (the calling session's own activity from the last 5 minutes); when the single-source-recent expand fires AND prior multi-source work exists in 24h, the single-source-recent cluster is demoted in rank so the prior work appears as clusters[0]. Auto-expand fires a `[AUTO_EXPAND] <trigger>`-prefixed warning (trigger: `empty` or `single-source-recent`) so the implicit widen is visible.\n\nRETURNS: per-cluster {cluster_id, rank, rank_reason, atom_ids[] (FULL, un-capped — feed straight to `get_atoms`), source_breakdown ({source_app: count}), time_range, label?, open_loop_hints? (capped at 30)}. No atom bodies. `result_caps` describes response-level budget application; per-cluster `atom_ids_truncated: true` + `atom_ids_total: N` fires if a single cluster's atom_ids[] would dominate the ceiling.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "window_hours": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 168
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "skeleton"
+              ]
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "compact",
+                "rich"
+              ]
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, scopes the cluster candidate set to atoms whose `metadata.repo_root` matches (cross-source — find_clusters has no source_app gate). Legacy git atoms without that metadata are out of scope when passed; reach them via `source_prefix=git:<path>` on `search_memories`/`wait_for_new_turns`, or `echo_resolve_mru(sources=['git'], repo_path=...)` which has the two-path OR fallback.",
+              "type": "string"
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "find_clusters"
+            },
+            "query": {
+              "type": "object",
+              "properties": {
+                "since": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                },
+                "window_hours": {
+                  "type": "number"
+                },
+                "format": {
+                  "type": "string",
+                  "const": "skeleton"
+                },
+                "repo_path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "since",
+                "until",
+                "window_hours",
+                "format",
+                "repo_path"
+              ],
+              "additionalProperties": false
+            },
+            "clusters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "result_caps": {
+              "type": "object",
+              "properties": {
+                "clusters_returned": {
+                  "type": "number"
+                },
+                "clusters_total": {
+                  "type": "number"
+                },
+                "atoms_returned": {
+                  "type": "number"
+                },
+                "atoms_total_in_window": {
+                  "type": "number"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "clusters_returned",
+                "clusters_total",
+                "atoms_returned",
+                "atoms_total_in_window",
+                "truncated"
+              ],
+              "additionalProperties": false
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "clusters",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_atoms",
+        "description": "Use when you have a specific list of atom IDs (from `find_clusters.clusters[].atom_ids[]` or `search_memories.matches[].id`) and want their bodies. The targeted body-fetch counterpart to `find_clusters`' cheap discovery.\n\nCost: medium. Each returned atom passes through the same wire-shape projector as `search_memories` (per-content cap, per-key metadata cap, projector reshapes). Hard envelope ceiling: 25k chars; deterministic prefix-drop on overflow (see below).\n\nPARAMETERS:\n  • `atom_ids: string[]` — required. Non-empty, ≤ 50. Atoms are returned in REQUESTED ORDER by default.\n  • `fields?: string[]` — optional projection. When present, only the listed top-level fields are returned per atom (always-on: `id`, `source`, `timestamp`, `truncations`). Useful for cost reduction.\n  • `format?: \"minimal\"` — V1.6 only ships \"minimal\" (applies WIRE_SHAPE_CAPS to content + per-key metadata). A future debug-only \"full\" mode is a separate item if real demand surfaces.\n  • `prefer?: \"as_requested\" | \"newest_first\"` — default `\"as_requested\"` preserves the existing contract (atoms returned in input order; duplicate input IDs returned as repeated entries). Pass `\"newest_first\"` for resume-style queries: atoms are sorted by `CaptureEvent.timestamp` DESCENDING (newest first; ties resolve in input order), duplicate IDs are de-duplicated to first occurrence BEFORE sorting (NEW behavior — opt-in only), and missing IDs (not in storage) land at the END of the iteration order. Under the deterministic prefix-drop budget, that END is the FIRST thing dropped — so the freshest atoms survive overflow, matching the resume-call intent. If you have already ordered `atom_ids` intentionally, pass `\"as_requested\"` (or omit `prefer`) — `\"newest_first\"` will override your order.\n\nTRUST SIGNAL — `truncations: string[]` is on EVERY returned atom. `[]` ⟺ everything verbatim. `[\"content\"]` ⟺ content was clipped to the wire-shape cap. `[\"metadata.<key>\"]` ⟺ per-key cap fired (LOSSY — opaqued out). `[\"metadata.<key>:projected\"]` ⟺ projector reshaped (REFORMATTED, not clipped — e.g. tool_calls → trajectory). `[\"fields_omitted\"]` ⟺ caller passed `fields[]` excluding some.\n\nDROP RULE — when the response would exceed 25k chars: deterministic prefix-drop. Atoms are appended in PROCESS ORDER (= requested order under `prefer=\"as_requested\"` (default); = newest-first-then-missing under `prefer=\"newest_first\"`) until the next atom would push the envelope over the ceiling; that atom AND every remaining ID in process order are dropped (NOT a hole in the middle). `atoms_dropped: N` + `atoms_dropped_ids: string[]` carry the omitted IDs in that same process order. Missing IDs (not in storage) are also reported in `atoms_dropped_ids`; under `prefer=\"newest_first\"` they sort to the END of the process order so they are dropped first when the budget tightens.\n\nIf even a single projected atom alone would exceed 25k, the response is `{atoms: [], atoms_dropped: input_count, atoms_dropped_ids: [all]}` plus a warning telling the caller to retry with a narrower `fields[]` projection. We do NOT raise WIRE_SHAPE_CAPS to make this pass.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "atom_ids": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "minimal"
+              ]
+            },
+            "prefer": {
+              "type": "string",
+              "enum": [
+                "as_requested",
+                "newest_first"
+              ]
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "compact",
+                "rich"
+              ]
+            }
+          },
+          "required": [
+            "atom_ids"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_atoms"
+            },
+            "atoms": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "truncations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "content_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "metadata_bytes_elided": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "timestamp",
+                  "truncations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "atoms_dropped": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "atoms_dropped_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "atoms",
+            "atoms_dropped",
+            "atoms_dropped_ids",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "wait_for_new_turns",
+        "description": "Use when you want to BLOCK until new captured atoms land at any of N sources — the missing primitive for group session A (synchronized human-driven multi-agent conversation). Pair with `echo_resolve_mru` / `search_memories` / `find_clusters` for the discovery side.\n\nCost: medium-blocking (server holds the request open up to `timeout` seconds, polling storage every 1s; cheap on the daemon, but the call duration is the latency cost). Stateless: no subscriber registry, no per-client state, every call is independent (per item 027).\n\nPARAMETERS:\n  • `sources: string[]` — required. Non-empty, ≤ 8. Mixed entry types accepted:\n      • Literal source path (e.g. `fs:/Users/.../state.vscdb`, `git:/Users/.../repo`) → EXACT match.\n      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH (matches ALL sessions/atoms of that app — explicitly DIFFERENT from `echo_resolve_mru(sources=[<app>])` which resolves to the MRU exact source). Group session A wants \"wake on any session of these apps.\"\n  • `since: string` — required. ISO 8601 timestamp; only return turns with timestamp STRICTLY AFTER this (`> since`, not `>=`). Pass the previous call's `next_since` to chain.\n  • `timeout?: number` — seconds; default 30, max 60.\n\nBEHAVIOR: polls echo.db every 1s. Returns immediately on any non-empty result; returns at `timeout` with empty `turn_ids[]`.\n\nCHAINING (lossless — `next_since` is NEVER the server wall clock): when turns are returned, `next_since` = the max timestamp among the RETURNED turns (canonical Z form, as stored); when the call times out empty, `next_since` = your own `since` (canonicalized) echoed back. Always chain with `since = next_since` — safe unconditionally, even after a timeout. Atom timestamps are event times that land in storage with ingest lag (Cursor re-poll ~15s; CC/codex/git seconds), so a wall-clock watermark would permanently skip late-ingested turns; anchoring `next_since` to delivered data makes the chain lossless.\n\nOVERFLOW PAGING: at most 20 turns per call. When more match, the call returns the OLDEST page (ascending by timestamp, id) plus a warning in `warnings[]` — chain immediately with `next_since` to page through the backlog. A same-timestamp group is never split across the page boundary: either the page carries the WHOLE group (it may exceed the cap by the tie count), or — when the group cannot be proven complete because a window-full fetch ends at its timestamp — the group is held back entirely and the chained call re-fetches it whole. The one lossy case left: a single same-millisecond group in one source larger than the per-source fetch window ships flagged with an explicit warning. `turn_ids` are ordered oldest→newest.\n\nRESPONSE (item 038 / AC4 — IDs-only): the response now carries `turn_ids: string[]` instead of body-projected `turns[]`. The envelope shrinks dramatically (no body projection in the wait response); the caller composes one extra MCP call per wake (`get_atoms(turn_ids)` for cost-bounded summaries, or `get_atom(turn_ids[i])` for verbatim of one atom) to fetch bodies. No parallel-vocabulary deprecation window — the bodies-bundled shape is removed in the same release that ships the IDs-only shape.\n\nCANONICAL COMPOSITION:\n  const w = await wait_for_new_turns({sources: [...], since: last});\n  last = w.next_since;  // safe unconditionally — echoes `since` back on timeout\n  if (!w.timed_out) {\n    const atoms = await get_atoms(w.turn_ids);  // summary bodies\n  }\n\nPOLLING FALLBACK: if your MCP client has issues with long-running calls (timeout limits, no streaming), poll instead — works on any MCP client:\n\n  last_ts = now\n  while monitoring:\n      result = find_clusters(since=last_ts, format=\"skeleton\")\n      if result.clusters:\n          process(result.clusters)\n          last_ts = max_timestamp(result)\n      sleep(2)\n\nCost trade-off: polling = N calls/min (poll frequency). Long-poll = 1 call per wake event. Polling adds wake-latency (≤ poll interval) but works on any client.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source_prefix": {
+              "description": "AC4 (057a): optional prefix filter, sibling of `sources[]`. Matches any captured atom whose `source` string starts with this prefix. When supplied alongside `sources[]`, the returned `turn_ids` are the UNION of the two filters. At least one of `sources[]` (non-empty) or `source_prefix` (non-empty) MUST be present.",
+              "type": "string"
+            },
+            "since": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "repo_path": {
+              "description": "Item 037: absolute filesystem path to a repo root. When set, each per-source poll is AND-filtered by `metadata.repo_root = normalize(repo_path)`. For `sources` containing `git` or a `git:` prefix entry, matches `metadata.repo_root` only — legacy git atoms without that metadata are out of scope (omit `repo_path` to widen).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "since"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "wait_for_new_turns"
+            },
+            "turn_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "next_since": {
+              "type": "string"
+            },
+            "timed_out": {
+              "type": "boolean"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "turn_ids",
+            "next_since",
+            "timed_out",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "get_atom",
+        "description": "Use ONLY when you observed non-empty `truncations` (especially `[\"content\"]`) on a prior `search_memories` / `get_atoms` response AND you need the verbatim content for that specific atom. The content-recovery escape hatch — bypasses `WIRE_SHAPE_CAPS.match_content` clipping for `content`, while keeping the existing metadata projection (per-key cap + `tool_calls` reshape) and excluding `embedding`. Pair this with the other retrieval tools (which clip content + metadata for budget reasons): use `find_clusters` + `get_atoms` for routine discovery, and reach for `get_atom` only when you need verbatim content for a specific atom.\n\nCost: HIGH. Typical Codex long-turn content is 5-15KB; with metadata projected to ~2KB, response fits the 25k ceiling. If the atom's content alone exceeds ~24KB (rare), the tool returns `{atom: null, error_code: \"atom_too_large_for_wire\", source: \"...\"}` so you can read the source path directly. If the atom ID doesn't exist in storage, returns `{atom: null, error_code: \"atom_not_found\"}` — do NOT retry, the ID is wrong or stale. Do NOT call `get_atom` in a tight loop — it's the escape hatch, not the discovery primitive.\n\nPATTERN:\n  const r = await get_atom(id);\n  if (r.error_code === \"atom_too_large_for_wire\") { /* read r.source directly */ }\n  else if (r.error_code === \"atom_not_found\") { /* ID is stale; abort */ }\n  else { /* r.atom is the content-verbatim recovery */ }",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "number",
+              "const": 1
+            },
+            "tool": {
+              "type": "string",
+              "const": "get_atom"
+            },
+            "atom": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "truncations": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "source",
+                    "timestamp",
+                    "content",
+                    "truncations"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "atom_size_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "error_code": {
+              "type": "string",
+              "enum": [
+                "atom_too_large_for_wire",
+                "atom_not_found"
+              ]
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "schema_version",
+            "tool",
+            "atom",
+            "atom_size_bytes",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "echo_resolve_mru",
+        "description": "Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source (NOT bare paths — bare source loses cross-repo scoping for Cursor). IDs-only / source-only; no atom bodies fetched here.\n\nPARAMETERS:\n  • `sources: string[]` — required. Non-empty, ≤ 8. Mixed entry types accepted (same shape as `wait_for_new_turns`):\n      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH on the canonical app prefix; resolves to the newest non-fs source under that prefix.\n      • Literal source path (e.g. `fs:/Users/.../session.jsonl`, `git:/Users/.../repo`) → EXACT match; descriptor returned only if the source has at least one non-fs atom.\n  • `repo_path?: string` — optional absolute repo root. When set, only sources whose newest non-fs atom matches the repo are eligible. Source-app entries: `claude_code` / `codex` filter via `metadata.repo_root`; `cursor` uses a two-phase fallback (Phase 1 metadata.repo_root, Phase 2 legacy composer↔workspace resolver — descriptor encodes `phase: 'cursor_legacy'` when Phase 2 fires); `git` uses a two-path OR (metadata.repo_root OR `source=git:<repo_path>`) to recover legacy git atoms by path; `granola` normally resolves only when repo_path is omitted because meeting-note atoms have no repo_root.\n\nRETURNS: `{ sources: Record<string, ResolvedSourceDescriptor | null>, repo_path?: string, warnings: string[] }`. Each descriptor has shape `{ source, filter: { metadata_match?, repo_path? }, phase?: 'cursor_legacy' }`. The descriptor is `search_memories`-ready ONLY — `filter.metadata_match` is NOT a `wait_for_new_turns` parameter, so the canonical live-watch path uses `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})` and ignores `metadata_match`. Legacy Cursor atoms via wait are out of scope (wait is for NEW turns; legacy = already-captured).\n\nCANONICAL COMPOSITIONS:\n  • Tail (search_memories): `r = echo_resolve_mru({sources: ['cursor'], repo_path: X})` → if `r.sources['cursor'] !== null`, `search_memories({source: desc.source, ...desc.filter, limit: N})`. The `...desc.filter` spread carries through repo_path or metadata_match cleanly without the caller needing to know which Cursor phase fired.\n  • Live watch (wait_for_new_turns): `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})`.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repo_path": {
+              "description": "Absolute filesystem path to a repo root. When set, only sources whose newest non-fs atom matches the repo (per the source-app-specific rules above) are eligible.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sources"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "sources": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string"
+                      },
+                      "filter": {
+                        "type": "object",
+                        "properties": {
+                          "metadata_match": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "repo_path": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "phase": {
+                        "type": "string",
+                        "const": "cursor_legacy"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "filter"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "repo_path": {
+              "type": "string"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "sources",
+            "warnings"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ],
+    "full_roster_sha256": "bdb3ccb6ffc886e440bb0f02a22cc673e5a3227064357937ee3eb9d924e0a544",
+    "projected_descriptor_sha256": "ee476c2b78e1112083ac1d8c3c3e93483370184d7afe51a68c8b9b3d0dbd7935",
+    "ignored_ids": [],
+    "per_case": [
+      {
+        "case_id": "ping-empty",
+        "response_sha256": "7d4cb76d253c5edf3091be5a3316ceab9f1b72d1e034f3b1bf2cc094ec0cbb22"
+      },
+      {
+        "case_id": "resolve-mru-granola",
+        "response_sha256": "8d48a6d72528b9401720397544c7432b59944eb8b0d2916de99b533941ac972d"
+      },
+      {
+        "case_id": "find-empty",
+        "response_sha256": "c475c646a4f3b31ac320957d854a472a8aaef06cd3aecbc79362f399e0bb8c9c"
+      },
+      {
+        "case_id": "find-seeded",
+        "response_sha256": "2e72480d47e1a0b1ffeef622b0b86594d7ba5d6dbe19792a4417c6df462ebe72"
+      },
+      {
+        "case_id": "get-atom-present",
+        "response_sha256": "4c488561f657228bb65754ddb545d9607bbae660e423d051772f1d7e5d90d10e"
+      },
+      {
+        "case_id": "get-atom-missing",
+        "response_sha256": "8df0bfdc90a0e817b88281fb1a3b58fb4a1be44b3b0c086a35dc6b71a7958ff6"
+      },
+      {
+        "case_id": "get-atoms-mixed",
+        "response_sha256": "a6f378a8dcafa97ef047bde5f22d841cd8c1007c4841ff43b6a407b68d9d6520"
+      },
+      {
+        "case_id": "recent-seeded",
+        "response_sha256": "1afc4c774d71f6fa5f2be3702cc83f457b701774abc1712fe85b9d34443414d6"
+      },
+      {
+        "case_id": "search-seeded",
+        "response_sha256": "bdcd7b937d63bff408681d08d81d2de34db082ed9d79bdb1e4760818252c1e97"
+      },
+      {
+        "case_id": "wait-timeout",
+        "response_sha256": "b3798839d0f724f1e1351d8c350249f66fe1e4c1a460015a2dc6dc1799a49b66"
+      }
+    ],
+    "aggregate_sha256": "2f0b28f6b62d31682db30b63139e21cc42977713500a1655f65213f69d7f427e"
+  }
 }

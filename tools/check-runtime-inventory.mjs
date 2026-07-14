@@ -1,225 +1,377 @@
 #!/usr/bin/env node
-// check-runtime-inventory.mjs — AC2 runtime dependency provenance (item 135).
-//
-// Enumerates the final-HEAD runtime entrypoints (the executable tools under
-// tools/ plus the package.json verification scripts) and classifies every edge
-// under a CLOSED grammar:
-//   repository_static_import | repository_dynamic_literal_import |
-//   repository_commonjs_literal_require | repository_literal_read |
-//   repository_literal_process_launch | node_builtin | npm_package |
-//   npm_javascript_cli | native_or_system_helper
-// Local edges must resolve to exactly one tracked target blob; bare imports /
-// JS CLIs to exact locked npm rows; native/system helpers to pinned toolchain
-// rows. Computed repository-capable reads/imports/launches, unknown classes,
-// missing/unused rows, and source/sibling paths FAIL.
-//
-//   node tools/check-runtime-inventory.mjs --git-dir <clone>/.git --commit <oid> \
-//        --manifest provenance/runtime-inventory.v1.json [--emit]
+// AC2: derive the complete runtime closure from final-HEAD entrypoints.
+// The checker reads source bytes from Git objects, never from the checkout.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { posix as path } from 'node:path';
+import ts from 'typescript';
 
-const LITERAL_GIT = '/usr/local/bin/git';
-const NATIVE_HELPERS = new Set(['/usr/local/bin/git', '/usr/local/bin/node']);
+const GIT = '/usr/local/bin/git';
+const NODE = '/usr/local/bin/node';
+const NPM_CLI = '/usr/local/lib/node_modules/npm/bin/npm-cli.js';
+const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
+const CLASSES = new Set([
+  'repository_static_import',
+  'repository_dynamic_literal_import',
+  'repository_commonjs_literal_require',
+  'repository_literal_read',
+  'repository_literal_process_launch',
+  'node_builtin',
+  'npm_package',
+  'npm_javascript_cli',
+  'native_or_system_helper',
+]);
+const SYSTEM_HELPERS = new Map([
+  ['/usr/local/bin/git', GIT],
+  ['git', GIT],
+  ['/usr/local/bin/node', NODE],
+  ['node', NODE],
+  [SANDBOX_EXEC, SANDBOX_EXEC],
+  [NPM_CLI, NPM_CLI],
+]);
 
-function fail(msg) {
-  process.stderr.write(`check-runtime-inventory: ${msg}\n`);
-  process.exit(1);
+function die(message) {
+  throw new Error(`check-runtime-inventory: ${message}`);
 }
-function arg(name, required) {
-  const i = process.argv.indexOf(name);
-  if (i >= 0 && i + 1 < process.argv.length) return process.argv[i + 1];
-  if (required) fail(`${name} is required`);
+function arg(name, required = false) {
+  const index = process.argv.indexOf(name);
+  if (index >= 0 && index + 1 < process.argv.length) return process.argv[index + 1];
+  if (required) die(`${name} is required`);
   return undefined;
 }
 const GIT_DIR = arg('--git-dir', true);
 const COMMIT = arg('--commit', true);
 const MANIFEST = arg('--manifest', true);
 const EMIT = process.argv.includes('--emit');
-
-const ENV = { PATH: '/usr/bin:/bin:/usr/local/bin', HOME: process.env.HOME ?? '/tmp', GIT_CONFIG_NOSYSTEM: '1', GIT_ATTR_NOSYSTEM: '1', GIT_NO_REPLACE_OBJECTS: '1' };
-function git(args) {
-  return execFileSync(LITERAL_GIT, ['--git-dir', GIT_DIR, ...args], { env: ENV, maxBuffer: 256 * 1024 * 1024 });
-}
-function blob(path) {
-  return git(['cat-file', 'blob', `${COMMIT}:${path}`]).toString('utf8');
-}
-function treePaths() {
-  return git(['ls-tree', '-r', '--name-only', COMMIT]).toString('utf8').split('\n').filter(Boolean);
-}
-
-const TRACKED = new Set(treePaths());
-const lock = JSON.parse(blob('package-lock.json'));
-const lockNames = new Set(
-  Object.keys(lock.packages || {})
-    .filter((k) => k.startsWith('node_modules/'))
-    .map((k) => k.slice('node_modules/'.length)),
-);
-const pkg = JSON.parse(blob('package.json'));
-
-// Entrypoints: every tools/*.mjs executable + the package.json scripts' CLIs.
-const toolEntrypoints = [...TRACKED].filter((p) => /^tools\/.*\.mjs$/.test(p)).sort();
-const scriptClis = { typecheck: 'typescript', test: 'vitest', lint: 'eslint' };
-
-function classifyBare(spec, kind) {
-  if (spec.startsWith('node:')) return { class: 'node_builtin', target: spec };
-  const top = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
-  if (!lockNames.has(top)) fail(`bare specifier not in lock: ${spec} (in ${kind})`);
-  return { class: 'npm_package', target: top };
-}
-
-// Static import/export-from + dynamic import() + require() + literal reads + launches.
-const importRe = /\b(?:import\s+(?:[^'";]*?\s+from\s+)?|export\s+(?:\*|\{[^}]*\})\s+from\s+)\s*['"]([^'"]+)['"]/g;
-// Dynamic import()/require() are DETECTED (a real call, quote or not) and, for
-// the closed grammar, either resolved as a literal target or FAILED as computed.
-// The echo-context tool surface uses only static ESM, so these are absent — but
-// the checker still detects them so a future computed dynamic edge fails closed.
-const readRe = /\breadFileSync\s*\(\s*([^,)]*)/g;
-const launchRe = /\b(?:execFileSync|spawnSync|execFile|spawn)\s*\(\s*([^,]*)/g;
-
-// Strip line/block comments and string/regex/template literals so the token
-// scans below do not self-match the checker's own regex-definition text.
-function stripNonCode(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
-    .replace(/'(?:\\.|[^'\\])*'/g, "''")
-    .replace(/"(?:\\.|[^"\\])*"/g, '""')
-    .replace(/`(?:\\.|[^`\\])*`/g, '``');
-}
-
-function resolveLocal(fromFile, spec) {
-  const dir = fromFile.split('/').slice(0, -1).join('/');
-  const parts = (dir + '/' + spec).split('/');
-  const stack = [];
-  for (const p of parts) {
-    if (p === '' || p === '.') continue;
-    if (p === '..') stack.pop();
-    else stack.push(p);
-  }
-  const base = stack.join('/');
-  const cands = [base, base + '.mjs', base + '.js', base + '.json', base + '.ts'];
-  // NodeNext: a './x.js' specifier maps to the x.ts source at HEAD.
-  if (/\.js$/.test(base)) cands.push(base.replace(/\.js$/, '.ts'));
-  for (const c of cands) if (TRACKED.has(c)) return c;
-  return null;
-}
-
-function edgesOf(entry) {
-  const src = blob(entry);
-  const edges = [];
-  let m;
-  importRe.lastIndex = 0;
-  while ((m = importRe.exec(src))) edges.push({ ...classifyImport(entry, m[1]) });
-
-  // Dynamic import()/require() handling. Literal calls become an edge
-  // (repository_dynamic_literal_import / repository_commonjs_literal_require,
-  // resolving to one tracked blob, or an npm row); a COMPUTED call (non-string
-  // argument) fails closed. This checker is EXEMPT from its own dynamic-edge
-  // scan: its body defines those tokens as detection patterns / comments
-  // (self-reference), and it is verified static-ESM by inspection.
-  if (!/check-runtime-inventory\.mjs$/.test(entry)) {
-    const litDyn = /\b(import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-    while ((m = litDyn.exec(src))) {
-      const cls = m[1] === 'import' ? 'repository_dynamic_literal_import' : 'repository_commonjs_literal_require';
-      const spec = m[2];
-      if (spec.startsWith('.')) {
-        const t = resolveLocal(entry, spec);
-        if (!t) fail(`${cls} does not resolve to a tracked blob in ${entry}: ${spec}`);
-        edges.push({ class: cls, target: t });
-      } else edges.push({ ...classifyBare(spec, entry) });
-    }
-    // stripNonCode empties string contents; a handled literal call collapses to
-    // an empty-argument form, which we drop. Anything still showing a call token
-    // has a non-string (computed) argument and fails closed.
-    const residual = stripNonCode(src)
-      .replace(/\/(?:\\.|\[[^\]]*\]|[^/\\\n])+\/[gimsuy]*/g, ' ')
-      .replace(/\b(import|require)\s*\(\s*(?:''|"")\s*\)/g, ' ');
-    if (/\b(import|require)\s*\(/.test(residual)) {
-      fail(`computed dynamic import()/require() in ${entry} — closed grammar requires a literal target`);
-    }
-  }
-  // literal reads
-  readRe.lastIndex = 0;
-  while ((m = readRe.exec(src))) {
-    const a = m[1].trim();
-    const lit = a.match(/^['"]([^'"]+)['"]$/);
-    if (lit) edges.push({ class: 'repository_literal_read', target: lit[1] });
-    // non-literal reads are permitted for scratch/clone paths (not repository-capable);
-    // repository-capable literal reads are the only ones recorded.
-  }
-  // process launches
-  launchRe.lastIndex = 0;
-  while ((m = launchRe.exec(src))) {
-    const a = m[1].trim();
-    const lit = a.match(/^['"]([^'"]+)['"]$/);
-    if (lit && NATIVE_HELPERS.has(lit[1])) edges.push({ class: 'native_or_system_helper', target: lit[1] });
-    else if (lit && lit[1].startsWith('.')) {
-      const t = resolveLocal(entry, lit[1]);
-      if (!t) fail(`repository_literal_process_launch does not resolve to a tracked blob in ${entry}: ${lit[1]}`);
-      edges.push({ class: 'repository_literal_process_launch', target: t });
-    } else {
-      // A variable arg is accepted ONLY when the tool pins it to a native helper
-      // via an assert-equal guard (grep the source for the literal helper path).
-      const pinned = [...NATIVE_HELPERS].find((h) => src.includes(`'${h}'`) || src.includes(`"${h}"`));
-      if (!pinned) fail(`computed process launch in ${entry}: ${a}`);
-      edges.push({ class: 'native_or_system_helper', target: pinned, note: 'variable arg pinned to native helper by an assert-equal guard' });
-    }
-  }
-  // dedupe
-  const seen = new Set();
-  return edges.filter((e) => {
-    const k = `${e.class}:${e.target}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  }).sort((a, b) => (a.class + a.target).localeCompare(b.class + b.target));
-}
-
-function classifyImport(entry, spec) {
-  if (spec.startsWith('.')) {
-    const t = resolveLocal(entry, spec);
-    if (!t) fail(`repository_static_import does not resolve to a tracked blob in ${entry}: ${spec}`);
-    if (!/^tools\//.test(t) && !/^src\//.test(t)) {
-      /* allow src + tools; nothing else */
-    }
-    return { class: 'repository_static_import', target: t };
-  }
-  return classifyBare(spec, entry);
-}
-
-function canon(o) {
-  const s = (v) => Array.isArray(v) ? v.map(s) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, s(v[k])])) : v;
-  return JSON.stringify(s(o), null, 2) + '\n';
-}
-
-const computed = {
-  schema: 'runtime-inventory.v1',
-  // No commit OID is stored: the manifest is HEAD-independent (the accepted OID
-  // is supplied via --commit), so it stays valid as the branch advances.
-  script_clis: Object.entries(scriptClis).map(([script, cli]) => {
-    if (!lockNames.has(cli)) fail(`script cli not in lock: ${cli}`);
-    return { script, class: 'npm_javascript_cli', target: cli };
-  }),
-  entrypoints: toolEntrypoints.map((e) => ({ entrypoint: e, edges: edgesOf(e) })),
+const ENV = {
+  PATH: '/usr/local/bin:/usr/bin:/bin',
+  HOME: '/nonexistent',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_SYSTEM: '/dev/null',
+  GIT_ATTR_NOSYSTEM: '1',
+  GIT_NO_REPLACE_OBJECTS: '1',
+  GIT_OPTIONAL_LOCKS: '0',
 };
-
-if (EMIT) {
-  writeFileSync(MANIFEST, canon(computed));
-  process.stdout.write(`emitted ${MANIFEST} (${computed.entrypoints.length} entrypoints)\n`);
-  process.exit(0);
+function git(args, encoding = null) {
+  return execFileSync(GIT, ['--git-dir', GIT_DIR, ...args], {
+    env: ENV,
+    encoding,
+    maxBuffer: 256 * 1024 * 1024,
+  });
 }
+function blob(file) {
+  return git(['cat-file', 'blob', `${COMMIT}:${file}`], 'utf8');
+}
+const TRACKED = new Set(
+  git(['ls-tree', '-r', '--name-only', COMMIT], 'utf8').split('\n').filter(Boolean),
+);
+const PACKAGE = JSON.parse(blob('package.json'));
+const LOCK = JSON.parse(blob('package-lock.json'));
+const LOCK_PACKAGES = new Map(
+  Object.entries(LOCK.packages ?? {})
+    .filter(([key]) => key.startsWith('node_modules/'))
+    .map(([key, value]) => [key.slice('node_modules/'.length), value]),
+);
 
-const declared = JSON.parse(readFileSync(MANIFEST, 'utf8'));
-if (canon(declared) !== canon(computed)) {
-  // Precise diff for the operator.
-  const de = new Map(declared.entrypoints.map((x) => [x.entrypoint, JSON.stringify(x.edges)]));
-  for (const c of computed.entrypoints) {
-    if (!de.has(c.entrypoint)) fail(`entrypoint missing from manifest: ${c.entrypoint}`);
-    if (de.get(c.entrypoint) !== JSON.stringify(c.edges)) fail(`edge set drift for ${c.entrypoint}`);
-    de.delete(c.entrypoint);
+function canonical(value) {
+  const sort = (item) =>
+    Array.isArray(item)
+      ? item.map(sort)
+      : item && typeof item === 'object'
+        ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, sort(item[key])]))
+        : item;
+  return `${JSON.stringify(sort(value), null, 2)}\n`;
+}
+function topPackage(specifier) {
+  return specifier.startsWith('@')
+    ? specifier.split('/').slice(0, 2).join('/')
+    : specifier.split('/')[0];
+}
+function lockedPackage(specifier) {
+  const name = topPackage(specifier);
+  const row = LOCK_PACKAGES.get(name);
+  if (!row || typeof row.version !== 'string') die(`npm package is not exactly represented in lock: ${specifier}`);
+  return { name, version: row.version, ...(row.integrity ? { integrity: row.integrity } : {}) };
+}
+function packageForCli(cli) {
+  const matches = [];
+  for (const [name, row] of LOCK_PACKAGES) {
+    const bins = typeof row.bin === 'string' ? { [name]: row.bin } : row.bin ?? {};
+    if (Object.hasOwn(bins, cli)) matches.push(name);
   }
-  for (const left of de.keys()) fail(`unused manifest entrypoint (not present at HEAD): ${left}`);
-  fail('runtime-inventory manifest does not match extracted edges');
+  if (matches.length !== 1) die(`npm CLI ${cli} resolves to ${matches.length} locked packages (${matches.join(', ')})`);
+  return matches[0];
 }
-process.stdout.write(`runtime-inventory OK: ${computed.entrypoints.length} entrypoints, ${computed.script_clis.length} script CLIs\n`);
+function resolveLocal(from, specifier) {
+  const base = path.normalize(path.join(path.dirname(from), specifier));
+  const candidates = [base, `${base}.mjs`, `${base}.js`, `${base}.ts`, `${base}.json`, path.join(base, 'index.ts'), path.join(base, 'index.js')];
+  if (base.endsWith('.js')) candidates.push(base.slice(0, -3) + '.ts');
+  const matches = [...new Set(candidates)].filter((candidate) => TRACKED.has(candidate));
+  if (matches.length !== 1) die(`local edge from ${from} (${specifier}) resolves to ${matches.length} tracked blobs: ${matches.join(', ')}`);
+  return matches[0];
+}
+function scriptKind(file) {
+  return file.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+}
+function parse(file) {
+  return ts.createSourceFile(file, blob(file), ts.ScriptTarget.Latest, true, scriptKind(file));
+}
+function nodeText(node, sourceFile) {
+  return node.getText(sourceFile);
+}
+function isImportMetaUrl(node) {
+  return ts.isPropertyAccessExpression(node) && node.name.text === 'url' &&
+    ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword;
+}
+function literalValue(node) {
+  return ts.isStringLiteralLike(node) ? node.text : null;
+}
+function buildConstants(sourceFile, file) {
+  const values = new Map();
+  const evaluate = (node) => {
+    const literal = literalValue(node);
+    if (literal !== null) return { kind: 'string', value: literal };
+    if (ts.isIdentifier(node)) return values.get(node.text) ?? null;
+    if (isImportMetaUrl(node)) return { kind: 'repo-file', value: file };
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const fn = node.expression.text;
+      if ((fn === 'dirname' || fn === 'fileURLToPath') && node.arguments.length === 1) {
+        const value = evaluate(node.arguments[0]);
+        if (!value) return null;
+        if (fn === 'fileURLToPath') return value;
+        if (value.kind === 'repo-file' || value.kind === 'repo-path') return { kind: 'repo-path', value: path.dirname(value.value) };
+      }
+      if ((fn === 'join' || fn === 'resolve') && node.arguments.length > 0) {
+        const parts = node.arguments.map(evaluate);
+        if (parts.some((part) => part === null)) return null;
+        const first = parts[0];
+        if (first.kind === 'repo-file' || first.kind === 'repo-path') {
+          if (parts.slice(1).some((part) => part.kind !== 'string')) return null;
+          return { kind: 'repo-path', value: path.normalize(path.join(first.value, ...parts.slice(1).map((part) => part.value))) };
+        }
+        if (parts.every((part) => part.kind === 'string')) return { kind: 'string', value: path.join(...parts.map((part) => part.value)) };
+      }
+    }
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'URL' && node.arguments?.length === 2) {
+      const relative = literalValue(node.arguments[0]);
+      if (relative !== null && isImportMetaUrl(node.arguments[1])) {
+        return { kind: 'repo-path', value: path.normalize(path.join(path.dirname(file), relative)) };
+      }
+    }
+    return null;
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && !values.has(node.name.text)) {
+        const value = evaluate(node.initializer);
+        if (value) {
+          values.set(node.name.text, value);
+          changed = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return { values, evaluate };
+}
+
+function analyzeEntrypoint(entrypoint) {
+  const modules = new Set();
+  const edges = [];
+  const seenEdges = new Set();
+  const add = (from, klass, target, extra = {}) => {
+    if (!CLASSES.has(klass)) die(`internal unknown edge class ${klass}`);
+    const key = `${from}\0${klass}\0${target}`;
+    if (seenEdges.has(key)) return;
+    seenEdges.add(key);
+    edges.push({ from, class: klass, target, ...extra });
+  };
+  const addBare = (from, specifier) => {
+    if (specifier.startsWith('node:')) return add(from, 'node_builtin', specifier);
+    const locked = lockedPackage(specifier);
+    add(from, 'npm_package', locked.name, { version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+    if (locked.name === 'better-sqlite3') {
+      const toolchain = JSON.parse(blob('provenance/native-toolchain.v1.json'));
+      const native = toolchain.native_artifact;
+      if (!native || native.path !== 'node_modules/better-sqlite3/build/Release/better_sqlite3.node' || !/^[0-9a-f]{64}$/.test(native.sha256 ?? '')) {
+        die('better-sqlite3 native binding is not pinned by native-toolchain.v1.json');
+      }
+      add(from, 'native_or_system_helper', native.path, { sha256: native.sha256 });
+    }
+  };
+  const visitModule = (file) => {
+    if (modules.has(file)) return;
+    if (!TRACKED.has(file)) die(`runtime module is not tracked: ${file}`);
+    modules.add(file);
+    const sourceFile = parse(file);
+    const source = sourceFile.text;
+    const { values, evaluate } = buildConstants(sourceFile, file);
+    const repoConstantNames = new Set(
+      [...values].filter(([, value]) => value.kind === 'repo-file' || value.kind === 'repo-path').map(([name]) => name),
+    );
+    const addImport = (specifier, klass) => {
+      if (specifier.startsWith('.')) {
+        const target = resolveLocal(file, specifier);
+        add(file, klass, target);
+        if (klass === 'repository_dynamic_literal_import' && file.endsWith('.mjs') && target.endsWith('.ts')) {
+          addBare(file, 'tsx');
+        }
+        if (/\.(?:[cm]?js|ts)$/.test(target)) visitModule(target);
+      } else addBare(file, specifier);
+    };
+    const visit = (node) => {
+      if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+        if (ts.isImportDeclaration(node)) {
+          const clause = node.importClause;
+          const named = clause?.namedBindings;
+          const namedAllTypeOnly =
+            named && ts.isNamedImports(named) && named.elements.length > 0 && named.elements.every((element) => element.isTypeOnly);
+          if (clause?.isTypeOnly || (!clause?.name && namedAllTypeOnly)) {
+            ts.forEachChild(node, visit);
+            return;
+          }
+        } else if (node.isTypeOnly) {
+          ts.forEachChild(node, visit);
+          return;
+        }
+        const specifier = node.moduleSpecifier && literalValue(node.moduleSpecifier);
+        if (typeof specifier === 'string') addImport(specifier, 'repository_static_import');
+      }
+      if (ts.isCallExpression(node)) {
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
+          if (specifier === null) die(`computed dynamic import in ${file}: ${nodeText(node, sourceFile)}`);
+          addImport(specifier, 'repository_dynamic_literal_import');
+        } else if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+          const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
+          if (specifier === null) die(`computed require in ${file}: ${nodeText(node, sourceFile)}`);
+          addImport(specifier, 'repository_commonjs_literal_require');
+        }
+        const callee = ts.isIdentifier(node.expression) ? node.expression.text : ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : '';
+        if (['readFileSync', 'readFile', 'readdirSync', 'readdir'].includes(callee) && node.arguments.length > 0) {
+          const resolved = evaluate(node.arguments[0]);
+          if (resolved && (resolved.kind === 'repo-file' || resolved.kind === 'repo-path')) {
+            const target = resolved.value;
+            if (TRACKED.has(target)) add(file, 'repository_literal_read', target);
+            else {
+              const children = [...TRACKED].filter((candidate) => candidate.startsWith(`${target}/`)).sort();
+              if (children.length === 0) die(`repository read in ${file} resolves outside tracked tree: ${target}`);
+              for (const child of children) add(file, 'repository_literal_read', child);
+            }
+          } else {
+            const expression = nodeText(node.arguments[0], sourceFile);
+            if ([...repoConstantNames].some((name) => new RegExp(`\\b${name}\\b`).test(expression))) {
+              die(`computed repository-capable read in ${file}: ${nodeText(node, sourceFile)}`);
+            }
+          }
+        }
+        // A statically resolved repository directory passed into a helper is a
+        // bounded asset set. Enumerate it here; a computed suffix inside that
+        // helper cannot escape the sealed directory without changing this call.
+        if (!['join', 'resolve', 'dirname', 'fileURLToPath'].includes(callee)) {
+          for (const argument of node.arguments) {
+            const resolved = evaluate(argument);
+            if (resolved?.kind === 'repo-path' && !TRACKED.has(resolved.value)) {
+              const children = [...TRACKED].filter((candidate) => candidate.startsWith(`${resolved.value}/`)).sort();
+              for (const child of children) add(file, 'repository_literal_read', child);
+            }
+          }
+        }
+        if (['spawn', 'spawnSync', 'execFile', 'execFileSync'].includes(callee) && node.arguments.length > 0) {
+          const command = evaluate(node.arguments[0]);
+          let helper = command?.kind === 'string' ? SYSTEM_HELPERS.get(command.value) : null;
+          if (
+            !helper &&
+            source.includes(GIT) &&
+            (/(?:gitPath|LITERAL_GIT|\bGIT\b|\.git\b)/.test(nodeText(node.arguments[0], sourceFile)) ||
+              source.includes('assertLiteralGit'))
+          ) helper = GIT;
+          if (!helper) die(`computed or unpinned process launch in ${file}: ${nodeText(node, sourceFile)}`);
+          add(file, 'native_or_system_helper', helper);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  };
+  visitModule(entrypoint);
+  return {
+    entrypoint,
+    modules: [...modules].sort(),
+    edges: edges.sort((a, b) => `${a.from}\0${a.class}\0${a.target}`.localeCompare(`${b.from}\0${b.class}\0${b.target}`)),
+  };
+}
+
+function collectEntrypointsAndScripts() {
+  const reasons = new Map();
+  const mark = (file, reason) => {
+    if (!TRACKED.has(file)) die(`declared entrypoint is not tracked: ${file} (${reason})`);
+    const list = reasons.get(file) ?? [];
+    list.push(reason);
+    reasons.set(file, list);
+  };
+  for (const file of [...TRACKED].sort()) {
+    if (/^tools\/.*\.mjs$/.test(file) && blob(file).startsWith('#!')) mark(file, 'tracked executable tool');
+  }
+  const visitExport = (value, label) => {
+    if (typeof value === 'string' && value.startsWith('.')) mark(value.replace(/^\.\//, ''), label);
+    else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) visitExport(child, `${label}:${key}`);
+  };
+  visitExport(PACKAGE.exports, 'package exports');
+  if (typeof PACKAGE.bin === 'string') mark(PACKAGE.bin.replace(/^\.\//, ''), 'package bin');
+  else for (const [name, file] of Object.entries(PACKAGE.bin ?? {})) mark(String(file).replace(/^\.\//, ''), `package bin:${name}`);
+
+  const scriptClis = [];
+  for (const [name, command] of Object.entries(PACKAGE.scripts ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+    if (typeof command !== 'string' || /[|;&`$()]/.test(command)) die(`computed/shell-composed package script is outside closed grammar: ${name}`);
+    const tokens = command.trim().split(/\s+/);
+    if (tokens[0] === 'node') {
+      scriptClis.push({ script: name, class: 'native_or_system_helper', target: NODE });
+      for (let i = 1; i < tokens.length; i++) {
+        if (tokens[i] === '--import') {
+          const loader = tokens[++i];
+          if (!loader) die(`script ${name} has --import without package`);
+          const locked = lockedPackage(loader);
+          scriptClis.push({ script: name, class: 'npm_package', target: locked.name, version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+        } else if (/^(?:tools|src)\/.+\.(?:mjs|js|ts)$/.test(tokens[i])) mark(tokens[i], `package script:${name}`);
+      }
+    } else {
+      const packageName = packageForCli(tokens[0]);
+      const locked = lockedPackage(packageName);
+      scriptClis.push({ script: name, class: 'npm_javascript_cli', target: packageName, version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+    }
+  }
+  const entrypoints = [...reasons].sort(([a], [b]) => a.localeCompare(b)).map(([file, why]) => ({ file, reasons: [...new Set(why)].sort() }));
+  return { entrypoints, scriptClis };
+}
+
+try {
+  const discovered = collectEntrypointsAndScripts();
+  const computed = {
+    schema: 'runtime-inventory.v1',
+    entrypoint_sources: discovered.entrypoints,
+    script_clis: discovered.scriptClis,
+    entrypoints: discovered.entrypoints.map(({ file }) => analyzeEntrypoint(file)),
+  };
+  if (EMIT) {
+    writeFileSync(MANIFEST, canonical(computed));
+    process.stdout.write(`emitted ${MANIFEST}: ${computed.entrypoints.length} entrypoints\n`);
+  } else {
+    const declared = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+    if (canonical(declared) !== canonical(computed)) die('manifest differs from recursively computed final-HEAD runtime closure');
+    process.stdout.write(
+      `runtime-inventory OK: ${computed.entrypoints.length} entrypoints, ` +
+        `${computed.entrypoints.reduce((sum, row) => sum + row.modules.length, 0)} module-visits, ` +
+        `${computed.entrypoints.reduce((sum, row) => sum + row.edges.length, 0)} edges, ` +
+        `${computed.script_clis.length} script CLIs\n`,
+    );
+  }
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}

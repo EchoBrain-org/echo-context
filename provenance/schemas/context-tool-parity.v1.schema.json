@@ -1,51 +1,105 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "properties": {
-    "schema": {
-      "const": "context-tool-parity.v1"
-    },
-    "projected_tools": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "case_order": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "per_case": {
-      "type": "array",
-      "items": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "properties": {
-          "case_id": {
-            "type": "string"
-          },
-          "response_sha256": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "case_id",
-          "response_sha256"
-        ],
-        "additionalProperties": true
-      }
-    },
-    "aggregate_sha256": {
-      "type": "string"
-    }
-  },
+  "additionalProperties": false,
   "required": [
     "schema",
+    "source_commit",
+    "fixture_sha256",
+    "fixture_bytes_base64",
+    "harness_sha256",
+    "harness_bytes_base64",
+    "context_tools_config_sha256",
+    "context_tools_config_bytes_base64",
     "case_order",
-    "per_case",
-    "aggregate_sha256"
+    "timeout_contract",
+    "source",
+    "target"
   ],
-  "additionalProperties": true
+  "properties": {
+    "schema": { "const": "context-tool-parity.v1" },
+    "source_commit": { "const": "2971310441b69735cbe759293abd8c4d044bf347" },
+    "fixture_sha256": { "$ref": "#/definitions/hash" },
+    "fixture_bytes_base64": { "type": "string", "minLength": 1 },
+    "harness_sha256": { "$ref": "#/definitions/hash" },
+    "harness_bytes_base64": { "type": "string", "minLength": 1 },
+    "context_tools_config_sha256": { "$ref": "#/definitions/hash" },
+    "context_tools_config_bytes_base64": { "type": "string", "minLength": 1 },
+    "case_order": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "timeout_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_api_timeout_seconds", "timeout_budget_ms", "virtual_clock_advance_ms", "note"],
+      "properties": {
+        "source_api_timeout_seconds": { "const": 1 },
+        "timeout_budget_ms": { "const": 10 },
+        "virtual_clock_advance_ms": { "const": 1000 },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": { "$ref": "#/definitions/sourceSide" },
+    "target": { "$ref": "#/definitions/targetSide" }
+  },
+  "definitions": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ignored": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["product_write", "product_read", "task_state_read", "loop_write", "loop_read"] }
+      }
+    },
+    "perCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "response_sha256"],
+      "properties": {
+        "case_id": { "type": "string", "minLength": 1 },
+        "response_sha256": { "$ref": "#/definitions/hash" }
+      }
+    },
+    "sideBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_roster_descriptors", "full_roster_sha256", "projected_descriptor_sha256", "ignored_ids", "per_case", "aggregate_sha256"],
+      "properties": {
+        "full_roster_descriptors": { "type": "array", "items": { "type": "object" } },
+        "full_roster_sha256": { "$ref": "#/definitions/hash" },
+        "projected_descriptor_sha256": { "$ref": "#/definitions/hash" },
+        "ignored_ids": { "type": "array", "items": { "$ref": "#/definitions/ignored" } },
+        "per_case": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/definitions/perCase" } },
+        "aggregate_sha256": { "$ref": "#/definitions/hash" }
+      }
+    },
+    "sourceSide": {
+      "allOf": [
+        { "$ref": "#/definitions/sideBase" },
+        {
+          "properties": {
+            "full_roster_descriptors": { "minItems": 15, "maxItems": 15 },
+            "ignored_ids": { "minItems": 7, "maxItems": 7 }
+          }
+        }
+      ]
+    },
+    "targetSide": {
+      "allOf": [
+        { "$ref": "#/definitions/sideBase" },
+        {
+          "properties": {
+            "full_roster_descriptors": { "minItems": 8, "maxItems": 8 },
+            "ignored_ids": { "maxItems": 0 }
+          }
+        }
+      ]
+    }
+  }
 }

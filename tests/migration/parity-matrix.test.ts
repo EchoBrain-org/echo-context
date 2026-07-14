@@ -1,7 +1,8 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { Ajv } from 'ajv';
 import { describe, expect, it } from 'vitest';
 
@@ -135,5 +136,53 @@ describe('AC6 — rewrite replay + anti-whole-blob + target-OID enforcement (mut
     const cp = await importCheckParity();
     const row = { path: 'x', duplication_rationale: 'r', target_content_sha256: cp.sha256(b(source)), target_blob_oid: cp.gitBlobOid(b(source)) };
     expect(() => cp.verifyDuplicatedRow(b(source), b(source), row)).toThrow(/byte-copy/);
+  });
+
+  it('cross-swapped source OIDs/hashes are rejected by check-parity and the operator audit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'echo-context-cross-swap-'));
+    try {
+      const parity = JSON.parse(
+        readFileSync(join(ROOT, 'provenance', 'parity-matrix.v1.json'), 'utf8'),
+      ) as {
+        rows: { path: string; source_blob_oid: string; source_content_sha256: string }[];
+      };
+      const first = parity.rows[0]!;
+      const second = parity.rows.find(
+        (row) =>
+          row.source_blob_oid !== first.source_blob_oid &&
+          row.source_content_sha256 !== first.source_content_sha256,
+      )!;
+      [first.source_blob_oid, second.source_blob_oid] = [
+        second.source_blob_oid,
+        first.source_blob_oid,
+      ];
+      [first.source_content_sha256, second.source_content_sha256] = [
+        second.source_content_sha256,
+        first.source_content_sha256,
+      ];
+      const mutated = join(dir, 'cross-swapped-parity.json');
+      writeFileSync(mutated, `${JSON.stringify(parity, null, 2)}\n`);
+      for (const tool of ['check-parity.mjs', 'audit-pinned-extraction.mjs']) {
+        const result = spawnSync(
+          NODE,
+          [
+            join(ROOT, 'tools', tool),
+            '--source-git-dir',
+            SRC_GIT,
+            '--source-sha',
+            SRC_SHA,
+            '--target',
+            ROOT,
+            '--parity',
+            mutated,
+          ],
+          { encoding: 'utf8' },
+        );
+        expect(result.status, `${tool} unexpectedly accepted cross-swapped source evidence`).not.toBe(0);
+        expect(result.stderr).toMatch(/parity\/source-evidence (blob OID|content hash) mismatch/);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

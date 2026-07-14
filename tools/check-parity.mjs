@@ -126,12 +126,46 @@ export function verifyDuplicatedRow(sourceBytes, targetBytes, row) {
   if (gitBlobOid(targetBytes) !== row.target_blob_oid) throw new Error(`target_blob_oid mismatch for ${row.path}`);
 }
 
+export function bindParityRowsToEvidence(evidenceEntries, parityRows) {
+  const evidenceByPath = new Map();
+  for (const entry of evidenceEntries) {
+    if (evidenceByPath.has(entry.path)) {
+      throw new Error(`duplicate source-evidence path: ${entry.path}`);
+    }
+    evidenceByPath.set(entry.path, entry);
+  }
+  const parityPaths = new Set();
+  for (const row of parityRows) {
+    if (parityPaths.has(row.path)) throw new Error(`duplicate parity path: ${row.path}`);
+    parityPaths.add(row.path);
+    const evidence = evidenceByPath.get(row.path);
+    if (!evidence) throw new Error(`parity path missing same-path source-evidence row: ${row.path}`);
+    if (row.source_blob_oid !== evidence.blob_oid) {
+      throw new Error(
+        `parity/source-evidence blob OID mismatch for ${row.path}: ` +
+          `${row.source_blob_oid} != ${evidence.blob_oid}`,
+      );
+    }
+    if (row.source_content_sha256 !== evidence.content_sha256) {
+      throw new Error(
+        `parity/source-evidence content hash mismatch for ${row.path}: ` +
+          `${row.source_content_sha256} != ${evidence.content_sha256}`,
+      );
+    }
+  }
+  for (const path of evidenceByPath.keys()) {
+    if (!parityPaths.has(path)) throw new Error(`source-evidence path missing parity row: ${path}`);
+  }
+}
+
 function main() {
   const arg = (n) => { const i = process.argv.indexOf(n); return i >= 0 ? process.argv[i + 1] : undefined; };
   const fail = (m) => { process.stderr.write(`check-parity: ${m}\n`); process.exit(1); };
   const SRC_GIT = arg('--source-git-dir') || fail('--source-git-dir required');
   const SRC_SHA = arg('--source-sha') || fail('--source-sha required');
   const TARGET = arg('--target') || fail('--target required');
+  const EVIDENCE_PATH = arg('--evidence') || join(TARGET, 'provenance/source-evidence.v1.json');
+  const PARITY_PATH = arg('--parity') || join(TARGET, 'provenance/parity-matrix.v1.json');
   const ENV = { PATH: '/usr/bin:/bin:/usr/local/bin', HOME: process.env.HOME ?? '/tmp', GIT_CONFIG_NOSYSTEM: '1', GIT_ATTR_NOSYSTEM: '1', GIT_NO_REPLACE_OBJECTS: '1' };
   const srcBlob = (oid) => execFileSync(GIT, ['--git-dir', SRC_GIT, 'cat-file', 'blob', oid], { env: ENV, maxBuffer: 256 * 1024 * 1024 });
   const srcOidAt = (path) => {
@@ -139,8 +173,16 @@ function main() {
     const m = out.match(/^\d{6} \w+ ([0-9a-f]{40})\t/);
     return m ? m[1] : null;
   };
-  const evidence = JSON.parse(readFileSync(join(TARGET, 'provenance/source-evidence.v1.json'), 'utf8'));
-  const parity = JSON.parse(readFileSync(join(TARGET, 'provenance/parity-matrix.v1.json'), 'utf8'));
+  const evidence = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8'));
+  const parity = JSON.parse(readFileSync(PARITY_PATH, 'utf8'));
+
+  if (evidence.source_commit !== SRC_SHA) fail(`source-evidence source_commit ${evidence.source_commit} != ${SRC_SHA}`);
+  if (parity.source_commit !== SRC_SHA) fail(`parity source_commit ${parity.source_commit} != ${SRC_SHA}`);
+  try {
+    bindParityRowsToEvidence(evidence.entries, parity.rows);
+  } catch (err) {
+    fail(err.message);
+  }
 
   let checked = 0;
   for (const e of evidence.entries) {

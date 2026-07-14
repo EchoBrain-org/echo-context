@@ -54,9 +54,27 @@
             ]
           },
           "source_blob_oid": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
           },
           "source_content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "target_path": {
+            "type": "string"
+          },
+          "target_content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "rewrite_kind": {
+            "type": "string"
+          },
+          "replay": {
             "type": "string"
           },
           "replay_patch": {
@@ -82,7 +100,7 @@
           "source_blob_oid",
           "source_content_sha256"
         ],
-        "additionalProperties": true
+        "additionalProperties": false
       }
     }
   },
@@ -92,5 +110,5 @@
     "counts",
     "rows"
   ],
-  "additionalProperties": true
+  "additionalProperties": false
 }

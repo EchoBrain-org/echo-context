@@ -27,10 +27,12 @@
             "type": "string"
           },
           "blob_oid": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
           },
           "content_sha256": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           }
         },
         "required": [
@@ -39,7 +41,7 @@
           "blob_oid",
           "content_sha256"
         ],
-        "additionalProperties": true
+        "additionalProperties": false
       }
     }
   },
@@ -50,5 +52,5 @@
     "path_count",
     "entries"
   ],
-  "additionalProperties": true
+  "additionalProperties": false
 }
