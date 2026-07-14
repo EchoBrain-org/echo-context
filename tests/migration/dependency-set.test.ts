@@ -36,8 +36,16 @@ type Edge = {
 };
 type Manifest = {
   entrypoint_sources: { file: string; reasons: string[] }[];
-  entrypoints: { entrypoint: string; modules: string[]; edges: Edge[] }[];
+  entrypoints: { entrypoint: string; modules: string[]; edges: Edge[]; package_roots: string[] }[];
   script_clis: { script: string; class: string; target: string }[];
+  npm_closure: {
+    lock_path: string;
+    name: string;
+    version: string;
+    integrity: string;
+    dependencies: { name: string; kind: string; lock_path: string }[];
+    runtime_files: string[];
+  }[];
 };
 
 function git(cwd: string, args: string[]): string {
@@ -130,6 +138,24 @@ describe('AC2 — runtime dependency set', () => {
         sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       }),
     );
+    const closureByPath = new Map(manifest.npm_closure.map((row) => [row.lock_path, row]));
+    for (const required of [
+      'node_modules/tsx',
+      'node_modules/esbuild',
+      `node_modules/@esbuild/${process.platform}-${process.arch}`,
+      'node_modules/vite-node',
+      'node_modules/better-sqlite3',
+    ]) expect(closureByPath.has(required), `missing npm runtime closure row ${required}`).toBe(true);
+    expect(closureByPath.get('node_modules/tsx')?.dependencies).toContainEqual(
+      expect.objectContaining({ name: 'esbuild', lock_path: 'node_modules/esbuild' }),
+    );
+    expect(closureByPath.get(`node_modules/@esbuild/${process.platform}-${process.arch}`)?.runtime_files).toContain(
+      `node_modules/@esbuild/${process.platform}-${process.arch}/bin/esbuild`,
+    );
+    for (const row of manifest.npm_closure) {
+      expect(row.integrity).toMatch(/^sha512-/);
+      for (const dependency of row.dependencies) expect(closureByPath.has(dependency.lock_path)).toBe(true);
+    }
     for (const entry of manifest.entrypoints) {
       expect(new Set(entry.modules).size).toBe(entry.modules.length);
       for (const edge of entry.edges) {
@@ -228,12 +254,89 @@ const command = process.env.AC2_COMMAND;
 spawnSync(command, []);
 `,
         },
+        {
+          label: 'aliased process launch',
+          pattern: /computed or unpinned process launch/,
+          source: `#!/usr/bin/env node
+import { spawn as run } from 'node:child_process';
+run(process.env.AC2_COMMAND, []);
+`,
+        },
+        {
+          label: 'reassigned process launch',
+          pattern: /computed or unpinned process launch/,
+          source: `#!/usr/bin/env node
+import { spawn } from 'node:child_process';
+let command = '/usr/local/bin/git';
+command = process.env.AC2_COMMAND;
+spawn(command, []);
+`,
+        },
+        {
+          label: 'textual Git spoof',
+          pattern: /computed or unpinned process launch/,
+          source: `#!/usr/bin/env node
+import { spawn } from 'node:child_process';
+const GIT = '/usr/local/bin/git';
+function assertLiteralGit() { return GIT; }
+spawn(process.env.AC2_COMMAND, []);
+`,
+        },
+        {
+          label: 'aliased repository read',
+          pattern: /computed repository-capable read/,
+          source: `#!/usr/bin/env node
+import { readFileSync as load } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+load(join(dirname(fileURLToPath(import.meta.url)), process.env.AC2_FILE));
+`,
+        },
+        {
+          label: 'rootImport comment spoof',
+          pattern: /computed rootImport/,
+          source: `#!/usr/bin/env node
+// rootImport('src/storage/memory.ts') must not satisfy the object scanner.
+const rootImport = (value) => import(value);
+await rootImport(process.env.AC2_IMPORT);
+`,
+        },
       ];
       for (const fixture of cases) {
         const commit = commitFixture(clone, 'tools/ac2-computed-fixture.mjs', fixture.source);
         const result = runChecker(join(clone, '.git'), commit, MANIFEST);
         expectRejected(result, fixture.pattern);
       }
+    });
+  }, 120_000);
+
+  it('traverses a tsx script entrypoint and rejects a transitive lock row without integrity', () => {
+    withNoLocalClone((clone) => {
+      commitFixture(clone, 'src/ac2-script-fixture.ts', "export const reachedFromTsxScript = true;\n");
+      const packageJson = JSON.parse(readFileSync(join(clone, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      };
+      packageJson.scripts['ac2:serve'] = 'tsx src/ac2-script-fixture.ts';
+      const scriptCommit = commitFixture(clone, 'package.json', `${JSON.stringify(packageJson, null, 2)}\n`);
+      const emittedPath = join(clone, 'runtime-inventory.tsx-script.json');
+      const emitted = runChecker(join(clone, '.git'), scriptCommit, emittedPath, true);
+      if (emitted.error) throw emitted.error;
+      expect(emitted.status, emitted.stderr).toBe(0);
+      const manifest = JSON.parse(readFileSync(emittedPath, 'utf8')) as Manifest;
+      expect(manifest.entrypoint_sources).toContainEqual(
+        expect.objectContaining({ file: 'src/ac2-script-fixture.ts', reasons: ['package script:ac2:serve'] }),
+      );
+      expect(manifest.entrypoints.find((entry) => entry.entrypoint === 'src/ac2-script-fixture.ts')).toBeDefined();
+
+      const lock = JSON.parse(readFileSync(join(clone, 'package-lock.json'), 'utf8')) as {
+        packages: Record<string, { integrity?: string }>;
+      };
+      delete lock.packages['node_modules/esbuild'].integrity;
+      const brokenLockCommit = commitFixture(clone, 'package-lock.json', `${JSON.stringify(lock, null, 2)}\n`);
+      expectRejected(
+        runChecker(join(clone, '.git'), brokenLockCommit, MANIFEST),
+        /npm closure row lacks version\/integrity: node_modules\/esbuild/,
+      );
     });
   }, 120_000);
 

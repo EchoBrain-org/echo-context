@@ -99,7 +99,7 @@ function main() {
 
   // Full recursive tree at the pinned commit, NUL-delimited names only.
   const res = spawnSync(
-    args.git,
+    LITERAL_GIT,
     ['--git-dir', args.gitDir, 'ls-tree', '-r', '-z', '--name-only', args.sha],
     { env: configFreeEnv(), maxBuffer: 512 * 1024 * 1024 }
   );

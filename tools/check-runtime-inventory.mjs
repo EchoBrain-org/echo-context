@@ -69,11 +69,14 @@ const TRACKED = new Set(
 );
 const PACKAGE = JSON.parse(blob('package.json'));
 const LOCK = JSON.parse(blob('package-lock.json'));
+const LOCK_ROWS = new Map(
+  Object.entries(LOCK.packages ?? {}).filter(([key]) => key.startsWith('node_modules/')),
+);
 const LOCK_PACKAGES = new Map(
-  Object.entries(LOCK.packages ?? {})
-    .filter(([key]) => key.startsWith('node_modules/'))
+  [...LOCK_ROWS].filter(([key]) => !key.slice('node_modules/'.length).includes('/node_modules/'))
     .map(([key, value]) => [key.slice('node_modules/'.length), value]),
 );
+const PLATFORM = { os: process.platform, cpu: process.arch };
 
 function canonical(value) {
   const sort = (item) =>
@@ -89,11 +92,25 @@ function topPackage(specifier) {
     ? specifier.split('/').slice(0, 2).join('/')
     : specifier.split('/')[0];
 }
+function packageNameFromLockPath(lockPath) {
+  const tail = lockPath.slice(lockPath.lastIndexOf('node_modules/') + 'node_modules/'.length);
+  return tail.startsWith('@') ? tail.split('/').slice(0, 2).join('/') : tail.split('/')[0];
+}
+function platformAllows(row) {
+  const allows = (rules, value) => {
+    if (!Array.isArray(rules) || rules.length === 0) return true;
+    if (rules.includes(`!${value}`)) return false;
+    const positive = rules.filter((rule) => !String(rule).startsWith('!'));
+    return positive.length === 0 || positive.includes(value);
+  };
+  return allows(row.os, PLATFORM.os) && allows(row.cpu, PLATFORM.cpu);
+}
 function lockedPackage(specifier) {
   const name = topPackage(specifier);
   const row = LOCK_PACKAGES.get(name);
   if (!row || typeof row.version !== 'string') die(`npm package is not exactly represented in lock: ${specifier}`);
-  return { name, version: row.version, ...(row.integrity ? { integrity: row.integrity } : {}) };
+  if (typeof row.integrity !== 'string') die(`npm package lacks integrity: ${name}`);
+  return { name, lock_path: `node_modules/${name}`, version: row.version, integrity: row.integrity };
 }
 function packageForCli(cli) {
   const matches = [];
@@ -103,6 +120,73 @@ function packageForCli(cli) {
   }
   if (matches.length !== 1) die(`npm CLI ${cli} resolves to ${matches.length} locked packages (${matches.join(', ')})`);
   return matches[0];
+}
+function resolveLockedDependency(issuerPath, name) {
+  let cursor = issuerPath;
+  for (;;) {
+    const candidate = cursor ? `${cursor}/node_modules/${name}` : `node_modules/${name}`;
+    if (LOCK_ROWS.has(candidate)) return candidate;
+    const marker = cursor.lastIndexOf('/node_modules/');
+    if (marker < 0) break;
+    cursor = cursor.slice(0, marker);
+  }
+  const root = `node_modules/${name}`;
+  return LOCK_ROWS.has(root) ? root : null;
+}
+function npmClosure(rootPaths) {
+  const visited = new Set();
+  const rows = [];
+  const queue = [...new Set(rootPaths)].sort();
+  while (queue.length > 0) {
+    const lockPath = queue.shift();
+    if (visited.has(lockPath)) continue;
+    const row = LOCK_ROWS.get(lockPath);
+    if (!row) die(`npm closure references missing lock row: ${lockPath}`);
+    if (!platformAllows(row)) die(`runtime npm root is unavailable on ${PLATFORM.os}/${PLATFORM.cpu}: ${lockPath}`);
+    if (typeof row.version !== 'string' || typeof row.integrity !== 'string') die(`npm closure row lacks version/integrity: ${lockPath}`);
+    visited.add(lockPath);
+    const dependencies = [];
+    const kinds = [
+      ['dependency', row.dependencies ?? {}],
+      ['optional_dependency', row.optionalDependencies ?? {}],
+      ['peer_dependency', row.peerDependencies ?? {}],
+    ];
+    const seenNames = new Set();
+    for (const [kind, declared] of kinds) {
+      for (const name of Object.keys(declared).sort()) {
+        if (seenNames.has(name)) continue;
+        seenNames.add(name);
+        const optional = kind === 'optional_dependency' || row.peerDependenciesMeta?.[name]?.optional === true;
+        const dependencyPath = resolveLockedDependency(lockPath, name);
+        if (!dependencyPath) {
+          if (optional) continue;
+          die(`unresolved ${kind} ${name} from ${lockPath}`);
+        }
+        const dependencyRow = LOCK_ROWS.get(dependencyPath);
+        if (!platformAllows(dependencyRow)) {
+          if (optional) continue;
+          die(`required ${kind} ${dependencyPath} rejects ${PLATFORM.os}/${PLATFORM.cpu}`);
+        }
+        dependencies.push({ name, kind, lock_path: dependencyPath });
+        queue.push(dependencyPath);
+      }
+    }
+    const bins = typeof row.bin === 'string'
+      ? { [packageNameFromLockPath(lockPath)]: row.bin }
+      : Object.fromEntries(Object.entries(row.bin ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+    const runtimeFiles = Object.values(bins).map((file) => `${lockPath}/${String(file).replace(/^\.\//, '')}`);
+    if (packageNameFromLockPath(lockPath).startsWith('@esbuild/')) runtimeFiles.push(`${lockPath}/bin/esbuild`);
+    rows.push({
+      lock_path: lockPath,
+      name: packageNameFromLockPath(lockPath),
+      version: row.version,
+      integrity: row.integrity,
+      dependencies: dependencies.sort((a, b) => `${a.kind}\0${a.name}`.localeCompare(`${b.kind}\0${b.name}`)),
+      runtime_files: [...new Set(runtimeFiles)].sort(),
+    });
+    queue.sort();
+  }
+  return rows.sort((a, b) => a.lock_path.localeCompare(b.lock_path));
 }
 function resolveLocal(from, specifier) {
   const base = path.normalize(path.join(path.dirname(from), specifier));
@@ -166,7 +250,15 @@ function buildConstants(sourceFile, file) {
   while (changed) {
     changed = false;
     const visit = (node) => {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && !values.has(node.name.text)) {
+      const declarationList = ts.isVariableDeclaration(node) && ts.isVariableDeclarationList(node.parent) ? node.parent : null;
+      if (
+        ts.isVariableDeclaration(node) &&
+        declarationList &&
+        (declarationList.flags & ts.NodeFlags.Const) !== 0 &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        !values.has(node.name.text)
+      ) {
         const value = evaluate(node.initializer);
         if (value) {
           values.set(node.name.text, value);
@@ -182,11 +274,12 @@ function buildConstants(sourceFile, file) {
 
 function analyzeEntrypoint(entrypoint) {
   const modules = new Set();
+  const packageRoots = new Set();
   const edges = [];
   const seenEdges = new Set();
   const add = (from, klass, target, extra = {}) => {
     if (!CLASSES.has(klass)) die(`internal unknown edge class ${klass}`);
-    const key = `${from}\0${klass}\0${target}`;
+    const key = `${from}\0${klass}\0${target}\0${extra.lock_path ?? ''}\0${extra.package_subpath ?? ''}`;
     if (seenEdges.has(key)) return;
     seenEdges.add(key);
     edges.push({ from, class: klass, target, ...extra });
@@ -194,7 +287,13 @@ function analyzeEntrypoint(entrypoint) {
   const addBare = (from, specifier) => {
     if (specifier.startsWith('node:')) return add(from, 'node_builtin', specifier);
     const locked = lockedPackage(specifier);
-    add(from, 'npm_package', locked.name, { version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+    packageRoots.add(locked.lock_path);
+    add(from, 'npm_package', locked.name, {
+      lock_path: locked.lock_path,
+      version: locked.version,
+      integrity: locked.integrity,
+      ...(specifier !== locked.name ? { package_subpath: specifier.slice(locked.name.length + 1) } : {}),
+    });
     if (locked.name === 'better-sqlite3') {
       const toolchain = JSON.parse(blob('provenance/native-toolchain.v1.json'));
       const native = toolchain.native_artifact;
@@ -209,8 +308,52 @@ function analyzeEntrypoint(entrypoint) {
     if (!TRACKED.has(file)) die(`runtime module is not tracked: ${file}`);
     modules.add(file);
     const sourceFile = parse(file);
-    const source = sourceFile.text;
     const { values, evaluate } = buildConstants(sourceFile, file);
+    const fsCalls = new Map();
+    const childCalls = new Map();
+    const fsNamespaces = new Set();
+    const childNamespaces = new Set();
+    const createRequireCalls = new Set();
+    const requireCalls = new Set(file.endsWith('.cjs') ? ['require'] : []);
+    const FS_READ_APIS = new Set([
+      'readFileSync', 'readFile', 'readdirSync', 'readdir', 'openSync', 'open',
+      'createReadStream', 'statSync', 'stat', 'lstatSync', 'lstat', 'realpathSync',
+      'realpath', 'existsSync', 'accessSync', 'access',
+    ]);
+    const CHILD_APIS = new Set(['spawn', 'spawnSync', 'execFile', 'execFileSync', 'exec', 'execSync', 'fork']);
+    const collectImports = (node) => {
+      if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
+        const moduleName = node.moduleSpecifier.text;
+        const bindings = node.importClause?.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) {
+          if (moduleName === 'node:fs' || moduleName === 'node:fs/promises') fsNamespaces.add(bindings.name.text);
+          if (moduleName === 'node:child_process') childNamespaces.add(bindings.name.text);
+        } else if (bindings && ts.isNamedImports(bindings)) {
+          for (const binding of bindings.elements) {
+            const original = binding.propertyName?.text ?? binding.name.text;
+            if ((moduleName === 'node:fs' || moduleName === 'node:fs/promises') && FS_READ_APIS.has(original)) fsCalls.set(binding.name.text, original);
+            if (moduleName === 'node:child_process' && CHILD_APIS.has(original)) childCalls.set(binding.name.text, original);
+            if (moduleName === 'node:module' && original === 'createRequire') createRequireCalls.add(binding.name.text);
+          }
+        }
+      }
+      ts.forEachChild(node, collectImports);
+    };
+    collectImports(sourceFile);
+    const collectRequireFactories = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isVariableDeclarationList(node.parent) &&
+        (node.parent.flags & ts.NodeFlags.Const) !== 0 &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        ts.isIdentifier(node.initializer.expression) &&
+        createRequireCalls.has(node.initializer.expression.text)
+      ) requireCalls.add(node.name.text);
+      ts.forEachChild(node, collectRequireFactories);
+    };
+    collectRequireFactories(sourceFile);
     const repoConstantNames = new Set(
       [...values].filter(([, value]) => value.kind === 'repo-file' || value.kind === 'repo-path').map(([name]) => name),
     );
@@ -224,35 +367,86 @@ function analyzeEntrypoint(entrypoint) {
         if (/\.(?:[cm]?js|ts)$/.test(target)) visitModule(target);
       } else addBare(file, specifier);
     };
-    // Scratch launchers are byte-embedded in their tracked orchestrator. Derive
-    // their literal rootImport() closure from those actual bytes, rather than a
-    // parallel hardcoded manifest. Source-only paths are bound by AC3 source
-    // evidence; every target-existing module is traversed recursively here.
-    for (const match of source.matchAll(/rootImport\('([^']+)'\)/g)) {
-      const specifier = match[1];
-      if (specifier.startsWith('node_modules/')) {
-        addBare(file, specifier.slice('node_modules/'.length));
-      } else if (TRACKED.has(specifier)) {
-        add(file, 'repository_dynamic_literal_import', specifier);
-        if (/\.(?:[cm]?js|ts)$/.test(specifier)) visitModule(specifier);
-      }
-    }
-    for (const match of source.matchAll(/node_modules\/((?:@[^/'"]+\/)?[^/'"]+)\/([^'"\s]+)/g)) {
-      if (NPM_CLI.endsWith(`/${match[0]}`)) {
+    const inspectPackagePath = (value) => {
+      const match = value.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)\/(.+)$/);
+      if (!match) return;
+      const packagePath = `node_modules/${match[1]}/${match[2]}`;
+      if (NPM_CLI.endsWith(`/${packagePath}`)) {
         add(file, 'native_or_system_helper', NPM_CLI);
-        continue;
+        return;
       }
       const locked = lockedPackage(match[1]);
       const lockedRow = LOCK_PACKAGES.get(locked.name);
       const bins = typeof lockedRow?.bin === 'string' ? [lockedRow.bin] : Object.values(lockedRow?.bin ?? {});
-      if (!bins.some((bin) => String(bin).replace(/^\.\//, '') === match[2])) continue;
+      if (!bins.some((bin) => String(bin).replace(/^\.\//, '') === match[2])) return;
+      packageRoots.add(locked.lock_path);
       add(file, 'npm_javascript_cli', locked.name, {
+        lock_path: locked.lock_path,
+        package_subpath: match[2],
         version: locked.version,
-        ...(locked.integrity ? { integrity: locked.integrity } : {}),
+        integrity: locked.integrity,
       });
-    }
-    for (const match of source.matchAll(/['"]--import['"]\s*,\s*['"]([^'"]+)['"]/g)) addBare(file, match[1]);
+    };
+    const inspectRootImports = (embeddedSourceFile) => {
+      const inspect = (node) => {
+        if (ts.isStringLiteralLike(node)) inspectPackagePath(node.text);
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'rootImport') {
+          const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
+          if (specifier === null) die(`computed rootImport in ${file}: ${nodeText(node, embeddedSourceFile)}`);
+          if (specifier.startsWith('node_modules/')) addBare(file, specifier.slice('node_modules/'.length));
+          else if (TRACKED.has(specifier)) {
+            add(file, 'repository_dynamic_literal_import', specifier);
+            if (/\.(?:[cm]?js|ts)$/.test(specifier)) visitModule(specifier);
+          }
+        }
+        ts.forEachChild(node, inspect);
+      };
+      inspect(embeddedSourceFile);
+    };
+    const inspectEmbeddedLaunchers = (node) => {
+      if (
+        ts.isTaggedTemplateExpression(node) &&
+        ts.isPropertyAccessExpression(node.tag) &&
+        ts.isIdentifier(node.tag.expression) &&
+        node.tag.expression.text === 'String' &&
+        node.tag.name.text === 'raw' &&
+        ts.isNoSubstitutionTemplateLiteral(node.template)
+      ) {
+        const embedded = ts.createSourceFile(`${file}#embedded`, node.template.text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+        inspectRootImports(embedded);
+      }
+      ts.forEachChild(node, inspectEmbeddedLaunchers);
+    };
+    inspectEmbeddedLaunchers(sourceFile);
+    const importedApi = (expression, direct, namespaces) => {
+      if (ts.isIdentifier(expression)) return direct.get(expression.text) ?? null;
+      if (
+        ts.isPropertyAccessExpression(expression) &&
+        ts.isIdentifier(expression.expression) &&
+        namespaces.has(expression.expression.text)
+      ) return expression.name.text;
+      return null;
+    };
+    const containsRepositoryAnchor = (node) => {
+      let found = false;
+      const inspect = (candidate) => {
+        if (isImportMetaUrl(candidate) || (ts.isIdentifier(candidate) && candidate.text === '__dirname')) found = true;
+        if (!found) ts.forEachChild(candidate, inspect);
+      };
+      inspect(node);
+      return found;
+    };
     const visit = (node) => {
+      if (ts.isStringLiteralLike(node)) inspectPackagePath(node.text);
+      if (ts.isArrayLiteralExpression(node)) {
+        for (let index = 0; index < node.elements.length - 1; index++) {
+          if (literalValue(node.elements[index]) === '--import') {
+            const loader = literalValue(node.elements[index + 1]);
+            if (loader === null) die(`computed --import loader in ${file}: ${nodeText(node, sourceFile)}`);
+            addBare(file, loader);
+          }
+        }
+      }
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
         if (ts.isImportDeclaration(node)) {
           const clause = node.importClause;
@@ -271,17 +465,32 @@ function analyzeEntrypoint(entrypoint) {
         if (typeof specifier === 'string') addImport(specifier, 'repository_static_import');
       }
       if (ts.isCallExpression(node)) {
+        const fsApi = importedApi(node.expression, fsCalls, fsNamespaces);
+        const childApi = importedApi(node.expression, childCalls, childNamespaces);
         if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
           const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
           if (specifier === null) die(`computed dynamic import in ${file}: ${nodeText(node, sourceFile)}`);
           addImport(specifier, 'repository_dynamic_literal_import');
-        } else if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+        } else if (ts.isIdentifier(node.expression) && requireCalls.has(node.expression.text)) {
           const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
           if (specifier === null) die(`computed require in ${file}: ${nodeText(node, sourceFile)}`);
           addImport(specifier, 'repository_commonjs_literal_require');
+        } else if (ts.isIdentifier(node.expression) && node.expression.text === 'rootImport') {
+          const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
+          if (specifier === null) die(`computed rootImport in ${file}: ${nodeText(node, sourceFile)}`);
+          if (specifier.startsWith('node_modules/')) addBare(file, specifier.slice('node_modules/'.length));
+          else if (TRACKED.has(specifier)) {
+            add(file, 'repository_dynamic_literal_import', specifier);
+            if (/\.(?:[cm]?js|ts)$/.test(specifier)) visitModule(specifier);
+          }
         }
         const callee = ts.isIdentifier(node.expression) ? node.expression.text : ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : '';
-        if (['readFileSync', 'readFile', 'readdirSync', 'readdir'].includes(callee) && node.arguments.length > 0) {
+        for (const argument of node.arguments) {
+          if (ts.isIdentifier(argument) && (childCalls.has(argument.text) || fsCalls.has(argument.text))) {
+            die(`indirect sensitive API use in ${file}: ${nodeText(node, sourceFile)}`);
+          }
+        }
+        if (fsApi && node.arguments.length > 0) {
           const resolved = evaluate(node.arguments[0]);
           if (resolved && (resolved.kind === 'repo-file' || resolved.kind === 'repo-path')) {
             const target = resolved.value;
@@ -293,7 +502,10 @@ function analyzeEntrypoint(entrypoint) {
             }
           } else {
             const expression = nodeText(node.arguments[0], sourceFile);
-            if ([...repoConstantNames].some((name) => new RegExp(`\\b${name}\\b`).test(expression))) {
+            if (
+              containsRepositoryAnchor(node.arguments[0]) ||
+              [...repoConstantNames].some((name) => new RegExp(`\\b${name}\\b`).test(expression))
+            ) {
               die(`computed repository-capable read in ${file}: ${nodeText(node, sourceFile)}`);
             }
           }
@@ -310,15 +522,12 @@ function analyzeEntrypoint(entrypoint) {
             }
           }
         }
-        if (['spawn', 'spawnSync', 'execFile', 'execFileSync'].includes(callee) && node.arguments.length > 0) {
+        if (childApi && node.arguments.length > 0) {
+          if (childApi === 'exec' || childApi === 'execSync' || childApi === 'fork') {
+            die(`unsupported process API ${childApi} in ${file}: ${nodeText(node, sourceFile)}`);
+          }
           const command = evaluate(node.arguments[0]);
-          let helper = command?.kind === 'string' ? SYSTEM_HELPERS.get(command.value) : null;
-          if (
-            !helper &&
-            source.includes(GIT) &&
-            (/(?:gitPath|LITERAL_GIT|\bGIT\b|\.git\b)/.test(nodeText(node.arguments[0], sourceFile)) ||
-              source.includes('assertLiteralGit'))
-          ) helper = GIT;
+          const helper = command?.kind === 'string' ? SYSTEM_HELPERS.get(command.value) : null;
           if (!helper) die(`computed or unpinned process launch in ${file}: ${nodeText(node, sourceFile)}`);
           add(file, 'native_or_system_helper', helper);
           const collectNestedHelpers = (candidate) => {
@@ -349,6 +558,7 @@ function analyzeEntrypoint(entrypoint) {
     entrypoint,
     modules: [...modules].sort(),
     edges: edges.sort((a, b) => `${a.from}\0${a.class}\0${a.target}`.localeCompare(`${b.from}\0${b.class}\0${b.target}`)),
+    package_roots: [...packageRoots].sort(),
   };
 }
 
@@ -372,6 +582,7 @@ function collectEntrypointsAndScripts() {
   else for (const [name, file] of Object.entries(PACKAGE.bin ?? {})) mark(String(file).replace(/^\.\//, ''), `package bin:${name}`);
 
   const scriptClis = [];
+  const scriptPackageRoots = new Set();
   for (const [name, command] of Object.entries(PACKAGE.scripts ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
     if (typeof command !== 'string' || /[|;&`$()]/.test(command)) die(`computed/shell-composed package script is outside closed grammar: ${name}`);
     const tokens = command.trim().split(/\s+/);
@@ -382,26 +593,50 @@ function collectEntrypointsAndScripts() {
           const loader = tokens[++i];
           if (!loader) die(`script ${name} has --import without package`);
           const locked = lockedPackage(loader);
-          scriptClis.push({ script: name, class: 'npm_package', target: locked.name, version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+          scriptPackageRoots.add(locked.lock_path);
+          scriptClis.push({ script: name, class: 'npm_package', target: locked.name, lock_path: locked.lock_path, version: locked.version, integrity: locked.integrity });
         } else if (/^(?:tools|src)\/.+\.(?:mjs|js|ts)$/.test(tokens[i])) mark(tokens[i], `package script:${name}`);
       }
     } else {
       const packageName = packageForCli(tokens[0]);
       const locked = lockedPackage(packageName);
-      scriptClis.push({ script: name, class: 'npm_javascript_cli', target: packageName, version: locked.version, ...(locked.integrity ? { integrity: locked.integrity } : {}) });
+      const lockedRow = LOCK_PACKAGES.get(packageName);
+      const bins = typeof lockedRow.bin === 'string' ? { [tokens[0]]: lockedRow.bin } : lockedRow.bin ?? {};
+      const binPath = bins[tokens[0]];
+      if (typeof binPath !== 'string') die(`script ${name} CLI ${tokens[0]} has no exact lock bin path`);
+      scriptPackageRoots.add(locked.lock_path);
+      scriptClis.push({
+        script: name,
+        class: 'npm_javascript_cli',
+        target: packageName,
+        lock_path: locked.lock_path,
+        package_subpath: binPath.replace(/^\.\//, ''),
+        version: locked.version,
+        integrity: locked.integrity,
+      });
+      for (const token of tokens.slice(1)) {
+        if (/^(?:tools|src)\/.+\.(?:mjs|js|ts)$/.test(token)) mark(token, `package script:${name}`);
+      }
     }
   }
   const entrypoints = [...reasons].sort(([a], [b]) => a.localeCompare(b)).map(([file, why]) => ({ file, reasons: [...new Set(why)].sort() }));
-  return { entrypoints, scriptClis };
+  return { entrypoints, scriptClis, scriptPackageRoots: [...scriptPackageRoots].sort() };
 }
 
 try {
   const discovered = collectEntrypointsAndScripts();
+  const analyzed = discovered.entrypoints.map(({ file }) => analyzeEntrypoint(file));
+  const packageRoots = [
+    ...discovered.scriptPackageRoots,
+    ...analyzed.flatMap((entrypoint) => entrypoint.package_roots),
+  ];
   const computed = {
     schema: 'runtime-inventory.v1',
+    platform: PLATFORM,
     entrypoint_sources: discovered.entrypoints,
     script_clis: discovered.scriptClis,
-    entrypoints: discovered.entrypoints.map(({ file }) => analyzeEntrypoint(file)),
+    npm_closure: npmClosure(packageRoots),
+    entrypoints: analyzed,
   };
   if (EMIT) {
     writeFileSync(MANIFEST, canonical(computed));
