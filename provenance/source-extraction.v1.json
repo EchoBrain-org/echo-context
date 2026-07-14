@@ -113,6 +113,7 @@
       "path": "src/echo-home/state-paths.ts",
       "source_blob_oid": "bcf30e93c9648868e6ff2c8271059797e9d44773",
       "source_content_sha256": "d1c44e79d28e1d67de07ac7e349def697667d9b53a9472be7cadfaedf74bfd58",
+      "target_blob_oid": "c81342401b31e2a89eb4d76e344e355d7c2790af",
       "target_content_sha256": "786211dd11792df6a905a0778e22a7e625c21803a0234666a4a5bbdcc9822d71"
     },
     {
@@ -120,6 +121,7 @@
       "path": "src/enrich/granola-signals.ts",
       "source_blob_oid": "1dc78fbc0dc0f435e7d9131dece18107c4cdf2ae",
       "source_content_sha256": "f67d1220ed8ad20e8d8d56a74e15fb28d81ee287c52cda90bbede8c6d01fd9d4",
+      "target_blob_oid": "ebfd98816f23729192c20230e582351d94f4e587",
       "target_content_sha256": "104aa2d72ecd3566a11d542a2d2fb30e2e520550acc1c8e39e447e164f0ebfc4"
     },
     {
@@ -163,6 +165,7 @@
       "path": "src/mcp/server.ts",
       "source_blob_oid": "324c80146f0a7cda224fb8930804b23dd0dd1362",
       "source_content_sha256": "8bfa27ee1ea9ce227e984fb64786e2bd16d1cb3fb027c2b3235dd86bfb6fc074",
+      "target_blob_oid": "5182cc601d3be54bfbf1bae80217955f553001af",
       "target_content_sha256": "ba35001a8d8db99bb17daeff7763920066424669ba07dfd5dca9251d96675efa"
     },
     {
@@ -542,6 +545,7 @@
       "path": "tests/echo-home/paths.test.ts",
       "source_blob_oid": "b3f4f6acd0e820d1848325bc89b01633f5972828",
       "source_content_sha256": "af6f419f70fd5ec03fb76880eb749bae1f8bd80d977f878e173da0b88cdab7a5",
+      "target_blob_oid": "f842aee9645aca4f266e3273943cdee602485a55",
       "target_content_sha256": "a92ba904e87137020ad1389d31df4b02fa96dacc899ba401ef40f1de7a3432df"
     },
     {
@@ -621,6 +625,7 @@
       "path": "tests/mcp/recent-calls-endpoint.test.ts",
       "source_blob_oid": "d4538161ad6600605c8730f67dd46f7460f0f66f",
       "source_content_sha256": "6a230c35697649025f1a7e5ce59f7f77d1e28a1a00e83cf2d9894a72375a0fb6",
+      "target_blob_oid": "119dc15c08f72891255679235646e19cd276ed17",
       "target_content_sha256": "c3e2dfa2873aa69c571a0c44c0bb52863d8432a73b417ef110d871cb267fb279"
     },
     {
@@ -634,6 +639,7 @@
       "path": "tests/mcp/server.test.ts",
       "source_blob_oid": "d364ef656f38c087a6ed85225267006ec7d57852",
       "source_content_sha256": "c513689c7b564e18386734c45c8fc30dda435efc9874175d5422e528ec9ca814",
+      "target_blob_oid": "645fc78de697fbf1c84e08fa8a0aa019d3c5efd6",
       "target_content_sha256": "0869a201904d87a22c3c1a957f64b8c9caefbddc51c5de1f91f7a01bd6eafb0d"
     },
     {
@@ -665,6 +671,7 @@
       "path": "tests/mcp/tools/recent-work-context.test.ts",
       "source_blob_oid": "06f34c180d5251c3200260e03d1f135302a3637b",
       "source_content_sha256": "76c890b30aafbb1150cf620725864087b6141da7e0017b54252161398f5c9d9f",
+      "target_blob_oid": "d4ffb9e47495a44bf8610709afde8b66cb8aac02",
       "target_content_sha256": "290c9b32ecebd1b973e7a526ebfd07396e3671abbbfdbbf63289955b22b641f4"
     },
     {
@@ -672,6 +679,7 @@
       "path": "tests/mcp/tools/search-memories.test.ts",
       "source_blob_oid": "bb8a63d41bfe55b72ed9e1e66979263638a3f567",
       "source_content_sha256": "584f0e02f16a5074cefa717144b6bb4f00e16e07876ffc6e092ead358658386b",
+      "target_blob_oid": "fbd739babe6dc33a1ac910d3e0f17767132d260c",
       "target_content_sha256": "e26fa5ba16c3788df08960506e6e330405241eab2cc1d2996747be84b154ded8"
     },
     {

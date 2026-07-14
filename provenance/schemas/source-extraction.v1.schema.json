@@ -56,6 +56,10 @@
           },
           "source_content_sha256": {
             "type": "string"
+          },
+          "target_blob_oid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
           }
         },
         "required": [

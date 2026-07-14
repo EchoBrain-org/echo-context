@@ -68,6 +68,7 @@ describe('AC6 — parity matrix + source inventory', () => {
 type CheckParity = {
   applyUnifiedDiff: (source: string, patch: string) => string;
   sha256: (buf: Buffer) => string;
+  gitBlobOid: (buf: Buffer) => string;
   sharedLineFraction: (source: string, target: string) => number;
   verifyRewrittenRow: (sourceBytes: Buffer, targetBytes: Buffer, row: unknown) => void;
   verifyDuplicatedRow: (sourceBytes: Buffer, targetBytes: Buffer, row: unknown) => void;
@@ -76,47 +77,63 @@ const importCheckParity = (): Promise<CheckParity> =>
   // @ts-expect-error tools/check-parity.mjs is a plain .mjs tool with no .d.ts; its shape is asserted via CheckParity.
   import('../../tools/check-parity.mjs') as Promise<CheckParity>;
 
-describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixtures)', () => {
+describe('AC6 — rewrite replay + anti-whole-blob + target-OID enforcement (mutation fixtures)', () => {
   const source = 'line1\nline2\nline3\nline4\nline5\n';
   const b = (s: string) => Buffer.from(s, 'utf8');
+  // a complete, valid rewritten row for `target`, given a reproducing patch.
+  const validRow = (cp: CheckParity, patch: string, target: string) => ({
+    path: 'x',
+    replay_patch: patch,
+    replay_command: 'cmd',
+    target_content_sha256: cp.sha256(b(target)),
+    target_blob_oid: cp.gitBlobOid(b(target)),
+  });
+  const deletePatch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n line2\n-line3\n line4\n line5\n';
 
-  it('a legitimate deletion rewrite (replay reproduces target) PASSES', async () => {
-    const { applyUnifiedDiff, sha256, verifyRewrittenRow } = await importCheckParity();
-    // delete line3 (a genuine, source-preserving edit)
-    const patch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n line2\n-line3\n line4\n line5\n';
-    const target = applyUnifiedDiff(source, patch);
-    const row = { path: 'x', replay_patch: patch, replay_command: 'cmd', target_content_sha256: sha256(b(target)) };
-    expect(() => verifyRewrittenRow(b(source), b(target), row)).not.toThrow();
+  it('a legitimate deletion rewrite (replay reproduces target, OID matches) PASSES', async () => {
+    const cp = await importCheckParity();
+    const target = cp.applyUnifiedDiff(source, deletePatch);
+    expect(() => cp.verifyRewrittenRow(b(source), b(target), validRow(cp, deletePatch, target))).not.toThrow();
   });
 
   it('a whole-blob substitution (target shares nothing with source) is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await importCheckParity();
+    const cp = await importCheckParity();
     const target = 'totally\ndifferent\nauthored\ncontent\nhere\n';
-    // even with a patch that reproduces it, the shared-line guard rejects it.
     const patch = '--- a\n+++ b\n@@ -1,5 +1,5 @@\n-line1\n-line2\n-line3\n-line4\n-line5\n+totally\n+different\n+authored\n+content\n+here\n';
-    const row = { path: 'x', replay_patch: patch, replay_command: 'cmd', target_content_sha256: sha256(b(target)) };
-    expect(() => verifyRewrittenRow(b(source), b(target), row)).toThrow(/whole-blob/);
+    expect(() => cp.verifyRewrittenRow(b(source), b(target), validRow(cp, patch, target))).toThrow(/whole-blob/);
   });
 
   it('an incomplete/mismatched replay (patch does not reproduce target) is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await importCheckParity();
+    const cp = await importCheckParity();
     const realTarget = 'line1\nline2\nline4\nline5\n'; // line3 deleted
-    // recorded patch only deletes line2 — reproduces a DIFFERENT stream than realTarget
     const wrongPatch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n-line2\n line3\n line4\n line5\n';
-    const row = { path: 'x', replay_patch: wrongPatch, replay_command: 'cmd', target_content_sha256: sha256(b(realTarget)) };
-    expect(() => verifyRewrittenRow(b(source), b(realTarget), row)).toThrow(/does NOT reproduce/);
+    expect(() => cp.verifyRewrittenRow(b(source), b(realTarget), validRow(cp, wrongPatch, realTarget))).toThrow(/does NOT reproduce/);
   });
 
   it('a rewritten row with no replay_patch descriptor is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await importCheckParity();
+    const cp = await importCheckParity();
     const target = 'line1\nline2\nline4\nline5\n';
-    const row = { path: 'x', replay_command: 'cmd', target_content_sha256: sha256(b(target)) } as unknown as { path: string };
-    expect(() => verifyRewrittenRow(b(source), b(target), row)).toThrow(/lacks replay_patch/);
+    const row = { path: 'x', replay_command: 'cmd', target_content_sha256: cp.sha256(b(target)) };
+    expect(() => cp.verifyRewrittenRow(b(source), b(target), row)).toThrow(/lacks replay_patch/);
+  });
+
+  it('a rewritten row MISSING target_blob_oid is REJECTED (F6)', async () => {
+    const cp = await importCheckParity();
+    const target = cp.applyUnifiedDiff(source, deletePatch);
+    const row = { path: 'x', replay_patch: deletePatch, replay_command: 'cmd', target_content_sha256: cp.sha256(b(target)) };
+    expect(() => cp.verifyRewrittenRow(b(source), b(target), row)).toThrow(/lacks a full target_blob_oid/);
+  });
+
+  it('a rewritten row with a WRONG target_blob_oid is REJECTED (F6)', async () => {
+    const cp = await importCheckParity();
+    const target = cp.applyUnifiedDiff(source, deletePatch);
+    const row = { ...validRow(cp, deletePatch, target), target_blob_oid: '0'.repeat(40) };
+    expect(() => cp.verifyRewrittenRow(b(source), b(target), row)).toThrow(/target_blob_oid mismatch/);
   });
 
   it('a duplicated row that is a byte-copy of the source is REJECTED (no silent double-claim)', async () => {
-    const { verifyDuplicatedRow, sha256 } = await importCheckParity();
-    const row = { path: 'x', duplication_rationale: 'r', target_content_sha256: sha256(b(source)) };
-    expect(() => verifyDuplicatedRow(b(source), b(source), row)).toThrow(/byte-copy/);
+    const cp = await importCheckParity();
+    const row = { path: 'x', duplication_rationale: 'r', target_content_sha256: cp.sha256(b(source)), target_blob_oid: cp.gitBlobOid(b(source)) };
+    expect(() => cp.verifyDuplicatedRow(b(source), b(source), row)).toThrow(/byte-copy/);
   });
 });

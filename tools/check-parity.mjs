@@ -32,6 +32,14 @@ export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
+// The Git blob object id of a byte buffer: sha1("blob <len>\0" + bytes). AC6
+// requires each rewritten (and, for uniform completeness, duplicated) row to
+// bind the TARGET blob OID; this recomputes it from the target file bytes.
+export function gitBlobOid(buf) {
+  const header = Buffer.from(`blob ${buf.length}\0`, 'utf8');
+  return createHash('sha1').update(Buffer.concat([header, buf])).digest('hex');
+}
+
 // Minimal unified-diff applier (git `--no-index` output). Applies the hunks to
 // `sourceText` and returns the transformed text; throws on any context mismatch,
 // making the replay deterministic and fail-closed.
@@ -89,6 +97,10 @@ export function sharedLineFraction(sourceText, targetText) {
 export function verifyRewrittenRow(sourceBytes, targetBytes, row) {
   if (!row.replay_patch || typeof row.replay_patch !== 'string') throw new Error(`rewritten row lacks replay_patch: ${row.path}`);
   if (!row.replay_command) throw new Error(`rewritten row lacks replay_command: ${row.path}`);
+  // AC6 (F6): the row must bind the full target Git blob OID; recompute + verify.
+  if (!row.target_blob_oid || !/^[0-9a-f]{40}$/.test(row.target_blob_oid)) throw new Error(`rewritten row lacks a full target_blob_oid: ${row.path}`);
+  const computedOid = gitBlobOid(targetBytes);
+  if (computedOid !== row.target_blob_oid) throw new Error(`target_blob_oid mismatch for ${row.path}: row ${row.target_blob_oid} != git ${computedOid}`);
   const sourceText = sourceBytes.toString('utf8');
   const targetText = targetBytes.toString('utf8');
   const frac = sharedLineFraction(sourceText, targetText);
@@ -109,6 +121,9 @@ export function verifyDuplicatedRow(sourceBytes, targetBytes, row) {
   if (!row.duplication_rationale) throw new Error(`duplicated row lacks duplication_rationale: ${row.path}`);
   if (targetBytes.equals(sourceBytes)) throw new Error(`duplicated row is a byte-copy of the source (silent double-claim): ${row.path}`);
   if (!row.target_content_sha256 || sha256(targetBytes) !== row.target_content_sha256) throw new Error(`duplicated row target hash mismatch: ${row.path}`);
+  // Bind the full target Git blob OID (uniform with rewritten rows).
+  if (!row.target_blob_oid || !/^[0-9a-f]{40}$/.test(row.target_blob_oid)) throw new Error(`duplicated row lacks a full target_blob_oid: ${row.path}`);
+  if (gitBlobOid(targetBytes) !== row.target_blob_oid) throw new Error(`target_blob_oid mismatch for ${row.path}`);
 }
 
 function main() {
