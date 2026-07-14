@@ -175,6 +175,7 @@ function npmClosure(rootPaths) {
       ? { [packageNameFromLockPath(lockPath)]: row.bin }
       : Object.fromEntries(Object.entries(row.bin ?? {}).sort(([a], [b]) => a.localeCompare(b)));
     const runtimeFiles = Object.values(bins).map((file) => `${lockPath}/${String(file).replace(/^\.\//, '')}`);
+    if (packageNameFromLockPath(lockPath) === 'tsx') runtimeFiles.push(`${lockPath}/dist/loader.mjs`);
     if (packageNameFromLockPath(lockPath).startsWith('@esbuild/')) runtimeFiles.push(`${lockPath}/bin/esbuild`);
     rows.push({
       lock_path: lockPath,

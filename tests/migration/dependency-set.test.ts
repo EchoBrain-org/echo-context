@@ -149,6 +149,7 @@ describe('AC2 — runtime dependency set', () => {
     expect(closureByPath.get('node_modules/tsx')?.dependencies).toContainEqual(
       expect.objectContaining({ name: 'esbuild', lock_path: 'node_modules/esbuild' }),
     );
+    expect(closureByPath.get('node_modules/tsx')?.runtime_files).toContain('node_modules/tsx/dist/loader.mjs');
     expect(closureByPath.get(`node_modules/@esbuild/${process.platform}-${process.arch}`)?.runtime_files).toContain(
       `node_modules/@esbuild/${process.platform}-${process.arch}/bin/esbuild`,
     );
