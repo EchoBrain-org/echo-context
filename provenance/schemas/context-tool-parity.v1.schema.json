@@ -11,6 +11,8 @@
     "harness_bytes_base64",
     "context_tools_config_sha256",
     "context_tools_config_bytes_base64",
+    "source_install_lifecycle",
+    "clock_negative_control",
     "case_order",
     "timeout_contract",
     "source",
@@ -25,6 +27,8 @@
     "harness_bytes_base64": { "type": "string", "minLength": 1 },
     "context_tools_config_sha256": { "$ref": "#/definitions/hash" },
     "context_tools_config_bytes_base64": { "type": "string", "minLength": 1 },
+    "source_install_lifecycle": { "$ref": "#/definitions/sourceInstallLifecycle" },
+    "clock_negative_control": { "$ref": "#/definitions/clockNegativeControl" },
     "case_order": {
       "type": "array",
       "minItems": 10,
@@ -66,15 +70,206 @@
         "response_sha256": { "$ref": "#/definitions/hash" }
       }
     },
+    "clockCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested_delay_ms", "virtual_before_ms", "virtual_after_ms", "virtual_advance_ms"],
+      "properties": {
+        "requested_delay_ms": { "const": 1000 },
+        "virtual_before_ms": { "const": 1782864300000 },
+        "virtual_after_ms": { "type": "integer" },
+        "virtual_advance_ms": { "type": "integer" }
+      }
+    },
+    "clockObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "mode", "timer_calls"],
+      "properties": {
+        "schema": { "const": "context-clock-observation.v1" },
+        "mode": { "enum": ["advance-exactly", "immediate-no-advance"] },
+        "timer_calls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/definitions/clockCall" }
+        }
+      }
+    },
+    "clockObservationExact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "mode", "timer_calls"],
+      "properties": {
+        "schema": { "const": "context-clock-observation.v1" },
+        "mode": { "const": "advance-exactly" },
+        "timer_calls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requested_delay_ms", "virtual_before_ms", "virtual_after_ms", "virtual_advance_ms"],
+            "properties": {
+              "requested_delay_ms": { "const": 1000 },
+              "virtual_before_ms": { "const": 1782864300000 },
+              "virtual_after_ms": { "const": 1782864301000 },
+              "virtual_advance_ms": { "const": 1000 }
+            }
+          }
+        }
+      }
+    },
+    "clockObservationImmediate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "mode", "timer_calls"],
+      "properties": {
+        "schema": { "const": "context-clock-observation.v1" },
+        "mode": { "const": "immediate-no-advance" },
+        "timer_calls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requested_delay_ms", "virtual_before_ms", "virtual_after_ms", "virtual_advance_ms"],
+            "properties": {
+              "requested_delay_ms": { "const": 1000 },
+              "virtual_before_ms": { "const": 1782864300000 },
+              "virtual_after_ms": { "const": 1782864300000 },
+              "virtual_advance_ms": { "const": 0 }
+            }
+          }
+        }
+      }
+    },
+    "networkObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "code"],
+      "properties": {
+        "name": { "enum": ["dns", "direct_ip_tcp", "https"] },
+        "status": { "const": "denied" },
+        "code": { "type": "string", "minLength": 1, "not": { "const": "TIMEOUT" } }
+      }
+    },
+    "networkProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "observations"],
+      "properties": {
+        "phase": { "enum": ["before_ci", "after_ci", "after_rebuild"] },
+        "observations": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": [
+            { "allOf": [{ "$ref": "#/definitions/networkObservation" }, { "properties": { "name": { "const": "dns" } } }] },
+            { "allOf": [{ "$ref": "#/definitions/networkObservation" }, { "properties": { "name": { "const": "direct_ip_tcp" } } }] },
+            { "allOf": [{ "$ref": "#/definitions/networkObservation" }, { "properties": { "name": { "const": "https" } } }] }
+          ],
+          "additionalItems": false
+        }
+      }
+    },
+    "sourceInstallLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_profile", "loopback_control", "network_probes", "ci", "rebuild", "smoke"],
+      "properties": {
+        "network_profile": { "const": "(version 1) (allow default) (deny network*)" },
+        "loopback_control": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outside_profile", "inside_profile", "inside_error_code"],
+          "properties": {
+            "outside_profile": { "const": "ACCEPT" },
+            "inside_profile": { "const": "DENIED" },
+            "inside_error_code": { "type": "string", "minLength": 1, "not": { "const": "TIMEOUT" } }
+          }
+        },
+        "network_probes": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": [
+            { "allOf": [{ "$ref": "#/definitions/networkProbe" }, { "properties": { "phase": { "const": "before_ci" } } }] },
+            { "allOf": [{ "$ref": "#/definitions/networkProbe" }, { "properties": { "phase": { "const": "after_ci" } } }] },
+            { "allOf": [{ "$ref": "#/definitions/networkProbe" }, { "properties": { "phase": { "const": "after_rebuild" } } }] }
+          ],
+          "additionalItems": false
+        },
+        "ci": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "exit", "scripts_executed"],
+          "properties": {
+            "command": { "const": "npm ci --offline --ignore-scripts --no-audit --no-fund" },
+            "exit": { "const": 0 },
+            "scripts_executed": { "type": "array", "maxItems": 0 }
+          }
+        },
+        "rebuild": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "exit", "npm_config_nodedir", "package", "native_artifact"],
+          "properties": {
+            "command": { "const": "npm rebuild better-sqlite3 --offline --foreground-scripts --build-from-source" },
+            "exit": { "const": 0 },
+            "npm_config_nodedir": { "const": "/usr/local/Cellar/node@22/22.22.1_1" },
+            "package": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "integrity"],
+              "properties": {
+                "version": { "const": "12.10.0" },
+                "integrity": { "const": "sha512-CyzaZRQKyHkB2ZInfTTl2nvT33EbDpjkLEbE8/Zck3Ll6O0qqvuGdrJ45HgtH+HykRg88ITY3AdreBGN70aBSQ==" }
+              }
+            },
+            "native_artifact": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "size_bytes", "sha256"],
+              "properties": {
+                "path": { "const": "node_modules/better-sqlite3/build/Release/better_sqlite3.node" },
+                "size_bytes": { "type": "integer", "minimum": 1 },
+                "sha256": { "$ref": "#/definitions/hash" }
+              }
+            }
+          }
+        },
+        "smoke": { "const": "better-sqlite3 in-memory open/create/insert/select/close under deny-network" }
+      }
+    },
+    "clockNegativeControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "side", "request_deadline_ms", "outcome", "observation", "observation_sha256"],
+      "properties": {
+        "mode": { "const": "immediate-no-advance" },
+        "side": { "const": "target" },
+        "request_deadline_ms": { "const": 10 },
+        "outcome": { "const": "rejected_request_deadline" },
+        "observation": { "$ref": "#/definitions/clockObservationImmediate" },
+        "observation_sha256": { "$ref": "#/definitions/hash" }
+      }
+    },
     "sideBase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["full_roster_descriptors", "full_roster_sha256", "projected_descriptor_sha256", "ignored_ids", "per_case", "aggregate_sha256"],
+      "required": ["full_roster_descriptors", "full_roster_sha256", "projected_descriptor_sha256", "ignored_ids", "initialize_response_sha256", "tools_list_response_sha256", "clock_observation", "clock_observation_sha256", "per_case", "aggregate_sha256"],
       "properties": {
         "full_roster_descriptors": { "type": "array", "items": { "type": "object" } },
         "full_roster_sha256": { "$ref": "#/definitions/hash" },
         "projected_descriptor_sha256": { "$ref": "#/definitions/hash" },
         "ignored_ids": { "type": "array", "items": { "$ref": "#/definitions/ignored" } },
+        "initialize_response_sha256": { "$ref": "#/definitions/hash" },
+        "tools_list_response_sha256": { "$ref": "#/definitions/hash" },
+        "clock_observation": { "$ref": "#/definitions/clockObservationExact" },
+        "clock_observation_sha256": { "$ref": "#/definitions/hash" },
         "per_case": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/definitions/perCase" } },
         "aggregate_sha256": { "$ref": "#/definitions/hash" }
       }
