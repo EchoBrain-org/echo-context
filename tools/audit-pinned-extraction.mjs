@@ -66,6 +66,7 @@ for (const p of invPaths) {
 for (const p of evSet) if (!invSet.has(p)) fail(`source-evidence has a path not in the recomputed closure: ${p}`);
 
 const c = parity.counts;
-if (c.ported + c.rewritten + c.excluded !== 217) fail(`partition ${c.ported}+${c.rewritten}+${c.excluded} != 217`);
+const dup = c.duplicated ?? 0;
+if (c.ported + c.rewritten + dup + c.excluded !== 217) fail(`partition ${c.ported}+${c.rewritten}+${dup}+${c.excluded} != 217`);
 
-process.stdout.write(`audit-pinned-extraction OK: 217 paths (110 src, 107 test), SHA ${invSha.slice(0, 12)}…; partition ${c.ported}/${c.rewritten}/${c.excluded}\n`);
+process.stdout.write(`audit-pinned-extraction OK: 217 paths (110 src, 107 test), SHA ${invSha.slice(0, 12)}…; partition ${c.ported}/${c.rewritten}/${dup}/${c.excluded}\n`);

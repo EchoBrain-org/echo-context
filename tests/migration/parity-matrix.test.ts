@@ -26,16 +26,16 @@ describe('AC6 — parity matrix + source inventory', () => {
     expect(run('audit-pinned-extraction.mjs')).toMatch(/audit-pinned-extraction OK: 217 paths \(110 src, 107 test\)/);
   });
 
-  it('check-parity verifies ported bytes, rewritten hashes, and exclusions', () => {
-    expect(run('check-parity.mjs')).toMatch(/check-parity OK: 217 source-evidence rows; ported=144 rewritten=8 excluded=65/);
+  it('check-parity EXECUTES each rewritten replay + verifies exclusions/duplication', () => {
+    expect(run('check-parity.mjs')).toMatch(/check-parity OK: 217 source-evidence rows; ported=144 rewritten=7 duplicated=1 excluded=65/);
   }, 30000);
 
   it('the disposition counts partition the full 217-path inventory', () => {
     const pm = JSON.parse(readFileSync(join(ROOT, 'provenance/parity-matrix.v1.json'), 'utf8')) as {
-      counts: { ported: number; rewritten: number; excluded: number; total: number };
+      counts: { ported: number; rewritten: number; duplicated: number; excluded: number; total: number };
     };
-    expect(pm.counts.ported + pm.counts.rewritten + pm.counts.excluded).toBe(217);
-    expect(pm.counts).toMatchObject({ ported: 144, rewritten: 8, excluded: 65, total: 217 });
+    expect(pm.counts.ported + pm.counts.rewritten + pm.counts.duplicated + pm.counts.excluded).toBe(217);
+    expect(pm.counts).toMatchObject({ ported: 144, rewritten: 7, duplicated: 1, excluded: 65, total: 217 });
   });
 
   it('every provenance document validates against its committed schema', () => {
@@ -59,5 +59,53 @@ describe('AC6 — parity matrix + source inventory', () => {
       if (!ok) throw new Error(`${doc} fails ${schema}: ${JSON.stringify(validate.errors)}`);
       expect(ok).toBe(true);
     }
+  });
+});
+
+// AC6 F5 — the rewrite-replay verifier is fail-closed: an authored whole-blob
+// substitution, an incomplete/mismatched replay, and an omitted descriptor must
+// all be REJECTED. These mutation fixtures exercise check-parity's real logic.
+describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixtures)', () => {
+  const source = 'line1\nline2\nline3\nline4\nline5\n';
+  const b = (s: string) => Buffer.from(s, 'utf8');
+
+  it('a legitimate deletion rewrite (replay reproduces target) PASSES', async () => {
+    const { applyUnifiedDiff, sha256, verifyRewrittenRow } = await import('../../tools/check-parity.mjs');
+    // delete line3 (a genuine, source-preserving edit)
+    const patch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n line2\n-line3\n line4\n line5\n';
+    const target = applyUnifiedDiff(source, patch);
+    const row = { path: 'x', replay_patch: patch, replay_command: 'cmd', target_content_sha256: sha256(b(target)) };
+    expect(() => verifyRewrittenRow(b(source), b(target), row)).not.toThrow();
+  });
+
+  it('a whole-blob substitution (target shares nothing with source) is REJECTED', async () => {
+    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const target = 'totally\ndifferent\nauthored\ncontent\nhere\n';
+    // even with a patch that reproduces it, the shared-line guard rejects it.
+    const patch = '--- a\n+++ b\n@@ -1,5 +1,5 @@\n-line1\n-line2\n-line3\n-line4\n-line5\n+totally\n+different\n+authored\n+content\n+here\n';
+    const row = { path: 'x', replay_patch: patch, replay_command: 'cmd', target_content_sha256: sha256(b(target)) };
+    expect(() => verifyRewrittenRow(b(source), b(target), row)).toThrow(/whole-blob/);
+  });
+
+  it('an incomplete/mismatched replay (patch does not reproduce target) is REJECTED', async () => {
+    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const realTarget = 'line1\nline2\nline4\nline5\n'; // line3 deleted
+    // recorded patch only deletes line2 — reproduces a DIFFERENT stream than realTarget
+    const wrongPatch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n-line2\n line3\n line4\n line5\n';
+    const row = { path: 'x', replay_patch: wrongPatch, replay_command: 'cmd', target_content_sha256: sha256(b(realTarget)) };
+    expect(() => verifyRewrittenRow(b(source), b(realTarget), row)).toThrow(/does NOT reproduce/);
+  });
+
+  it('a rewritten row with no replay_patch descriptor is REJECTED', async () => {
+    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const target = 'line1\nline2\nline4\nline5\n';
+    const row = { path: 'x', replay_command: 'cmd', target_content_sha256: sha256(b(target)) } as unknown as { path: string };
+    expect(() => verifyRewrittenRow(b(source), b(target), row)).toThrow(/lacks replay_patch/);
+  });
+
+  it('a duplicated row that is a byte-copy of the source is REJECTED (no silent double-claim)', async () => {
+    const { verifyDuplicatedRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const row = { path: 'x', duplication_rationale: 'r', target_content_sha256: sha256(b(source)) };
+    expect(() => verifyDuplicatedRow(b(source), b(source), row)).toThrow(/byte-copy/);
   });
 });

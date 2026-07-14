@@ -23,6 +23,9 @@
         },
         "total": {
           "type": "integer"
+        },
+        "duplicated": {
+          "type": "integer"
         }
       },
       "required": [
@@ -46,6 +49,7 @@
             "enum": [
               "ported",
               "rewritten",
+              "duplicated",
               "excluded"
             ]
           },
@@ -53,6 +57,18 @@
             "type": "string"
           },
           "source_content_sha256": {
+            "type": "string"
+          },
+          "replay_patch": {
+            "type": "string"
+          },
+          "replay_command": {
+            "type": "string"
+          },
+          "duplication_rationale": {
+            "type": "string"
+          },
+          "excluded_reason": {
             "type": "string"
           }
         },

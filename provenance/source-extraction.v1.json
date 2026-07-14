@@ -1,7 +1,8 @@
 {
   "counts": {
+    "duplicated": 1,
     "ported": 144,
-    "rewritten": 8,
+    "rewritten": 7,
     "total": 152
   },
   "rows": [
@@ -115,7 +116,7 @@
       "target_content_sha256": "786211dd11792df6a905a0778e22a7e625c21803a0234666a4a5bbdcc9822d71"
     },
     {
-      "disposition": "rewritten",
+      "disposition": "duplicated",
       "path": "src/enrich/granola-signals.ts",
       "source_blob_oid": "1dc78fbc0dc0f435e7d9131dece18107c4cdf2ae",
       "source_content_sha256": "f67d1220ed8ad20e8d8d56a74e15fb28d81ee287c52cda90bbede8c6d01fd9d4",

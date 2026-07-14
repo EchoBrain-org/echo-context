@@ -48,6 +48,10 @@
         {
           "class": "node_builtin",
           "target": "node:path"
+        },
+        {
+          "class": "node_builtin",
+          "target": "node:url"
         }
       ],
       "entrypoint": "tools/check-parity.mjs"

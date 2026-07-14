@@ -20,6 +20,9 @@
         },
         "total": {
           "type": "integer"
+        },
+        "duplicated": {
+          "type": "integer"
         }
       },
       "required": [
@@ -44,7 +47,8 @@
           "disposition": {
             "enum": [
               "ported",
-              "rewritten"
+              "rewritten",
+              "duplicated"
             ]
           },
           "source_blob_oid": {
