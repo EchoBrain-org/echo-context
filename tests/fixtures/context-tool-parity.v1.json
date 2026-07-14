@@ -1,0 +1,105 @@
+{
+  "cases": [
+    {
+      "args": {
+        "message": ""
+      },
+      "id": "ping-empty",
+      "tool": "echo_ping"
+    },
+    {
+      "args": {
+        "sources": [
+          "granola"
+        ]
+      },
+      "id": "resolve-mru-granola",
+      "tool": "echo_resolve_mru"
+    },
+    {
+      "args": {
+        "since": "2020-01-01T00:00:00",
+        "until": "2020-01-02T00:00:00"
+      },
+      "id": "find-empty",
+      "tool": "find_clusters"
+    },
+    {
+      "args": {
+        "since": "2026-07-01T00:00:00",
+        "until": "2026-07-01T00:05:00"
+      },
+      "id": "find-seeded",
+      "tool": "find_clusters"
+    },
+    {
+      "args": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "id": "get-atom-present",
+      "tool": "get_atom"
+    },
+    {
+      "args": {
+        "id": "00000000-0000-4000-8000-000000000009"
+      },
+      "id": "get-atom-missing",
+      "tool": "get_atom"
+    },
+    {
+      "args": {
+        "atom_ids": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000009",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "format": "minimal"
+      },
+      "id": "get-atoms-mixed",
+      "tool": "get_atoms"
+    },
+    {
+      "args": {
+        "format": "minimal",
+        "limit": 10
+      },
+      "id": "recent-seeded",
+      "tool": "get_recent_work_context"
+    },
+    {
+      "args": {
+        "limit": 10,
+        "query": "alpha"
+      },
+      "id": "search-seeded",
+      "tool": "search_memories"
+    },
+    {
+      "args": {
+        "since": "2026-07-01T00:05:00.000Z",
+        "source_prefix": "nope:",
+        "timeout": 0
+      },
+      "id": "wait-timeout",
+      "tool": "wait_for_new_turns"
+    }
+  ],
+  "fixed_now": "2026-07-01T00:05:00.000Z",
+  "repo_path": "/fixture/repo",
+  "schema": "context-tool-parity.v1",
+  "seed_atom_ids": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003"
+  ],
+  "tools": [
+    "echo_ping",
+    "echo_resolve_mru",
+    "find_clusters",
+    "get_atom",
+    "get_atoms",
+    "get_recent_work_context",
+    "search_memories",
+    "wait_for_new_turns"
+  ]
+}

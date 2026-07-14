@@ -1,0 +1,68 @@
+{
+  "aggregate_sha256": "632a7b2f2515a68d92e819fcedfa5d26f3960bb631995046ccf3d23de245da90",
+  "case_order": [
+    "ping-empty",
+    "resolve-mru-granola",
+    "find-empty",
+    "find-seeded",
+    "get-atom-present",
+    "get-atom-missing",
+    "get-atoms-mixed",
+    "recent-seeded",
+    "search-seeded",
+    "wait-timeout"
+  ],
+  "per_case": [
+    {
+      "case_id": "ping-empty",
+      "response_sha256": "29eb8a51cc0796d3c28c7ed063f1f460bef1d22ad38e21ba8da2aa8f9849c5e7"
+    },
+    {
+      "case_id": "resolve-mru-granola",
+      "response_sha256": "4d133dcbcfcd3cae98d1a0961e665ca5288f781ddeb8bea83271aea827022933"
+    },
+    {
+      "case_id": "find-empty",
+      "response_sha256": "c15078426d6ffc2a9f0dff18a83cf45a935e809bfab8c3869491ccad6b1ad6fb"
+    },
+    {
+      "case_id": "find-seeded",
+      "response_sha256": "cede93ec68bd6feeb098deea0c6eafdc50f852c04d7992d8f5602bc41f9d7ba1"
+    },
+    {
+      "case_id": "get-atom-present",
+      "response_sha256": "1075d0ed53e28f62251c038717e4a50458c54f2143f6956683a668f784c76201"
+    },
+    {
+      "case_id": "get-atom-missing",
+      "response_sha256": "a29246589adee2484e45db781a51bf77409de8e519f3a0c5ffd4272dba773726"
+    },
+    {
+      "case_id": "get-atoms-mixed",
+      "response_sha256": "d26f161ddb17334ab0f473972d047b12d32d62df2b6465f05dd088d99c526caf"
+    },
+    {
+      "case_id": "recent-seeded",
+      "response_sha256": "6f3ca0a49bba0d50d6f7a3d3e4d4f12084352d2b8d5dca04da1230c5038d9297"
+    },
+    {
+      "case_id": "search-seeded",
+      "response_sha256": "31a20cf802dc4de923fa7ca6785f96de01c442545bca03f0e059ca0487ae6375"
+    },
+    {
+      "case_id": "wait-timeout",
+      "response_sha256": "cf6efa6a9433305e9b6a6d7116a5a37f2315104f858f9d578059649cce05668b"
+    }
+  ],
+  "projected_tools": [
+    "echo_ping",
+    "echo_resolve_mru",
+    "find_clusters",
+    "get_atom",
+    "get_atoms",
+    "get_recent_work_context",
+    "search_memories",
+    "wait_for_new_turns"
+  ],
+  "schema": "context-tool-parity.v1"
+}
