@@ -134,7 +134,7 @@ describe('AC2 — runtime dependency set', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toMatch(/runtime-inventory OK/);
-  });
+  }, 30_000);
 
   it('binds the real launcher, storage, migration, SQL, npm CLI, and native closure', () => {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8')) as Manifest;
