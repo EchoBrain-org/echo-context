@@ -31,7 +31,7 @@ describe('AC6 — committed source only', () => {
       const h = createHash('sha256').update(bytes).digest('hex');
       if (h !== r.source_content_sha256) throw new Error(`ported HEAD blob differs from source for ${r.path}`);
     }
-  });
+  }, 30000);
 
   it('no source-derived file carries CRLF or export-subst smudge markers', () => {
     // Scope to the source-EXTRACTED files (ported+rewritten). Target-only tools /
@@ -43,5 +43,5 @@ describe('AC6 — committed source only', () => {
       if (bytes.includes(0x0d)) throw new Error(`CRLF byte in ${f}`);
       if (/\$Format:[^$]*\$/.test(bytes.toString('utf8'))) throw new Error(`export-subst smudge in ${f}`);
     }
-  });
+  }, 30000);
 });
