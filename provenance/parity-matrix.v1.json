@@ -6,6 +6,8 @@
     "rewritten": 7,
     "total": 217
   },
+  "disposition_policy_sha256": "7f905d1e3b64828e7b10e794af2c93a64daf12f92b53b11439b6bf18ac2d7069",
+  "ready_content_sha": "aa9fa9d89c30b2ba2823d6b3eecdc32e389120bb9f3bc46538b9335a301c8392",
   "rows": [
     {
       "disposition": "ported",

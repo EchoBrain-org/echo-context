@@ -6,44 +6,54 @@
       "const": "parity-matrix.v1"
     },
     "source_commit": {
-      "type": "string"
+      "const": "2971310441b69735cbe759293abd8c4d044bf347"
+    },
+    "ready_content_sha": {
+      "const": "aa9fa9d89c30b2ba2823d6b3eecdc32e389120bb9f3bc46538b9335a301c8392"
+    },
+    "disposition_policy_sha256": {
+      "const": "7f905d1e3b64828e7b10e794af2c93a64daf12f92b53b11439b6bf18ac2d7069"
     },
     "counts": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
       "properties": {
         "ported": {
-          "type": "integer"
+          "const": 144
         },
         "rewritten": {
-          "type": "integer"
+          "const": 7
         },
         "excluded": {
-          "type": "integer"
+          "const": 65
         },
         "total": {
-          "type": "integer"
+          "const": 217
         },
         "duplicated": {
-          "type": "integer"
+          "const": 1
         }
       },
       "required": [
         "ported",
         "rewritten",
         "excluded",
+        "duplicated",
         "total"
       ],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "rows": {
       "type": "array",
+      "minItems": 217,
+      "maxItems": 217,
       "items": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "disposition": {
             "enum": [
@@ -62,32 +72,40 @@
             "pattern": "^[0-9a-f]{64}$"
           },
           "target_path": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "target_content_sha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
           },
           "summary": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "rewrite_kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "replay": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "replay_patch": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "replay_command": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "duplication_rationale": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "excluded_reason": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "target_blob_oid": {
             "type": "string",
@@ -100,6 +118,45 @@
           "source_blob_oid",
           "source_content_sha256"
         ],
+        "allOf": [
+          {
+            "if": { "properties": { "disposition": { "const": "ported" } } },
+            "then": { "required": ["target_path"] }
+          },
+          {
+            "if": { "properties": { "disposition": { "const": "rewritten" } } },
+            "then": {
+              "required": [
+                "target_path",
+                "target_content_sha256",
+                "target_blob_oid",
+                "summary",
+                "rewrite_kind",
+                "replay",
+                "replay_patch",
+                "replay_command"
+              ]
+            }
+          },
+          {
+            "if": { "properties": { "disposition": { "const": "duplicated" } } },
+            "then": {
+              "required": [
+                "target_path",
+                "target_content_sha256",
+                "target_blob_oid",
+                "duplication_rationale"
+              ]
+            }
+          },
+          {
+            "if": { "properties": { "disposition": { "const": "excluded" } } },
+            "then": {
+              "required": ["excluded_reason"],
+              "not": { "required": ["target_path"] }
+            }
+          }
+        ],
         "additionalProperties": false
       }
     }
@@ -107,6 +164,8 @@
   "required": [
     "schema",
     "source_commit",
+    "ready_content_sha",
+    "disposition_policy_sha256",
     "counts",
     "rows"
   ],

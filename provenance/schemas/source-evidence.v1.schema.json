@@ -6,25 +6,28 @@
       "const": "source-evidence.v1"
     },
     "source_commit": {
-      "type": "string"
+      "const": "2971310441b69735cbe759293abd8c4d044bf347"
     },
     "inventory_sha256": {
-      "type": "string"
+      "const": "8b0280660ea5eb64851a5ce0d1a9d56b707d6e29ce00d113ec6656b055d72d37"
     },
     "path_count": {
-      "type": "integer"
+      "const": 217
     },
     "entries": {
       "type": "array",
+      "minItems": 217,
+      "maxItems": 217,
       "items": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "mode": {
-            "type": "string"
+            "const": "100644"
           },
           "blob_oid": {
             "type": "string",
