@@ -45,9 +45,9 @@ function startChild(): Promise<Ready> {
   });
 }
 
-async function post(path: string, body: unknown): Promise<{ status: number; json: any }> {
+async function post(path: string, body: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
   const res = await fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  return { status: res.status, json: await res.json().catch(() => null) };
+  return { status: res.status, json: (await res.json().catch(() => ({}))) as Record<string, unknown> };
 }
 
 beforeAll(async () => {
@@ -78,13 +78,16 @@ describe('AC8 — context service parity', () => {
     expect(cap.status).toBe(200);
     expect(typeof cap.json.id).toBe('string');
 
+    const id = cap.json.id as string;
     const search = await post('/v1/search', { query: 'alpha', limit: 10 });
     expect(search.status).toBe(200);
-    expect(search.json.matches.map((m: any) => m.id)).toContain(cap.json.id);
+    const matches = search.json.matches as { id: string }[];
+    expect(matches.map((m) => m.id)).toContain(id);
 
-    const atoms = await post('/v1/atoms', { atom_ids: [cap.json.id], format: 'minimal' });
+    const atoms = await post('/v1/atoms', { atom_ids: [id], format: 'minimal' });
     expect(atoms.status).toBe(200);
-    expect(atoms.json.atoms.map((a: any) => a.id)).toEqual([cap.json.id]);
+    const atomRows = atoms.json.atoms as { id: string }[];
+    expect(atomRows.map((a) => a.id)).toEqual([id]);
   });
 
   it('POST /v1/clusters and /v1/wait return without error', async () => {
