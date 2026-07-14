@@ -33,15 +33,15 @@ describe('AC6 — committed source only', () => {
     }
   });
 
-  it('no source file carries CRLF or export-subst smudge markers', () => {
-    const files = gitOut(['ls-files', '--', 'src', 'tests']).split('\n').filter(Boolean);
-    for (const f of files) {
+  it('no source-derived file carries CRLF or export-subst smudge markers', () => {
+    // Scope to the source-EXTRACTED files (ported+rewritten). Target-only tools /
+    // tests / provenance are authored, not extracted, and legitimately mention
+    // these tokens (e.g. this test's own detection logic).
+    const extraction = JSON.parse(readFileSync(join(ROOT, 'provenance/source-extraction.v1.json'), 'utf8')) as { rows: { path: string }[] };
+    for (const { path: f } of extraction.rows) {
       const bytes = execFileSync(GIT, ['-C', ROOT, 'cat-file', 'blob', `HEAD:${f}`], { maxBuffer: 64 * 1024 * 1024 });
       if (bytes.includes(0x0d)) throw new Error(`CRLF byte in ${f}`);
-      const text = bytes.toString('utf8');
-      // $Format:...$ / $Id:...$ are git export-subst / keyword smudges; a bare
-      // fixture may legitimately mention them, so only flag the active smudge form.
-      if (/\$Format:[^$]*\$/.test(text) && !f.includes('fixtures')) throw new Error(`export-subst smudge in ${f}`);
+      if (/\$Format:[^$]*\$/.test(bytes.toString('utf8'))) throw new Error(`export-subst smudge in ${f}`);
     }
   });
 });

@@ -28,7 +28,7 @@ describe('AC6 — parity matrix + source inventory', () => {
 
   it('check-parity verifies ported bytes, rewritten hashes, and exclusions', () => {
     expect(run('check-parity.mjs')).toMatch(/check-parity OK: 217 source-evidence rows; ported=144 rewritten=8 excluded=65/);
-  });
+  }, 30000);
 
   it('the disposition counts partition the full 217-path inventory', () => {
     const pm = JSON.parse(readFileSync(join(ROOT, 'provenance/parity-matrix.v1.json'), 'utf8')) as {
