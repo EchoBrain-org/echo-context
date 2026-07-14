@@ -176,7 +176,8 @@ function canon(o) {
 
 const computed = {
   schema: 'runtime-inventory.v1',
-  commit: COMMIT,
+  // No commit OID is stored: the manifest is HEAD-independent (the accepted OID
+  // is supplied via --commit), so it stays valid as the branch advances.
   script_clis: Object.entries(scriptClis).map(([script, cli]) => {
     if (!lockNames.has(cli)) fail(`script cli not in lock: ${cli}`);
     return { script, class: 'npm_javascript_cli', target: cli };
