@@ -710,7 +710,22 @@
         {
           "class": "node_builtin",
           "from": "tools/verify-context-tools.mjs",
+          "target": "node:dns"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
           "target": "node:fs"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:https"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:net"
         },
         {
           "class": "node_builtin",
@@ -721,6 +736,11 @@
           "class": "node_builtin",
           "from": "tools/verify-context-tools.mjs",
           "target": "node:path"
+        },
+        {
+          "class": "node_builtin",
+          "from": "tools/verify-context-tools.mjs",
+          "target": "node:url"
         },
         {
           "class": "npm_javascript_cli",
@@ -945,6 +965,24 @@
           "class": "repository_static_import",
           "from": "src/mcp/internal/cluster-engine.ts",
           "target": "src/trace/index.ts"
+        },
+        {
+          "class": "npm_package",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+          "lock_path": "node_modules/zod",
+          "target": "zod",
+          "version": "4.4.3"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "target": "src/mcp/wire-shape/compact.ts"
+        },
+        {
+          "class": "repository_static_import",
+          "from": "src/mcp/tools/get-atoms.ts",
+          "target": "src/mcp/wire-shape/match.ts"
         },
         {
           "class": "npm_package",
@@ -1333,6 +1371,11 @@
         {
           "class": "repository_dynamic_literal_import",
           "from": "tools/verify-service-parity.mjs",
+          "target": "src/mcp/tools/get-atoms.ts"
+        },
+        {
+          "class": "repository_dynamic_literal_import",
+          "from": "tools/verify-service-parity.mjs",
           "target": "src/mcp/tools/search-memories.ts"
         },
         {
@@ -1360,6 +1403,7 @@
         "src/mcp/cursor-workspace-resolver.ts",
         "src/mcp/internal/cluster-engine.ts",
         "src/mcp/tools/_cursor.ts",
+        "src/mcp/tools/get-atoms.ts",
         "src/mcp/tools/search-memories.ts",
         "src/mcp/tools/wait-for-new-turns.ts",
         "src/mcp/util/fs-exclusion.ts",
@@ -1368,6 +1412,7 @@
         "src/mcp/util/source-app.ts",
         "src/mcp/wire-shape/caps.ts",
         "src/mcp/wire-shape/clip.ts",
+        "src/mcp/wire-shape/compact.ts",
         "src/mcp/wire-shape/match.ts",
         "src/mcp/wire-shape/tool-calls.ts",
         "src/normalize/adapters/_shared.ts",
