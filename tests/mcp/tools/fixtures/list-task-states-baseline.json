@@ -1,0 +1,83 @@
+{
+  "task_states": [
+    {
+      "task_id": "2026-07-02-111-fixture-claimed",
+      "stage": "claimed",
+      "roles_present": [
+        "strategist"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-claimed/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "spec": "backlog/claimed/2026-07-02-111-fixture-claimed.md",
+        "reviews": "backlog/reviews/2026-07-02-111-fixture-claimed/"
+      }
+    },
+    {
+      "task_id": "2026-07-02-111-fixture-complete-builder-only",
+      "stage": "complete",
+      "roles_present": [
+        "builder"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-complete-builder-only/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "spec": "backlog/complete/2026-07-02-111-fixture-complete-builder-only.md",
+        "reviews": "backlog/reviews/2026-07-02-111-fixture-complete-builder-only/"
+      }
+    },
+    {
+      "task_id": "2026-07-02-111-fixture-malformed-anchors",
+      "stage": "ready",
+      "roles_present": [
+        "strategist"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-malformed-anchors/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "_parse_error": "canonical_anchors: unknown key 'bogus_key' (allowed: spec, reviews)"
+      }
+    },
+    {
+      "task_id": "2026-07-02-111-fixture-pending",
+      "stage": "pending_review",
+      "roles_present": [
+        "round-state"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-pending/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "spec": "backlog/pending_review/2026-07-02-111-fixture-pending.md",
+        "reviews": "backlog/reviews/2026-07-02-111-fixture-pending/"
+      }
+    },
+    {
+      "task_id": "2026-07-02-111-fixture-ready",
+      "stage": "ready",
+      "roles_present": [
+        "strategist",
+        "builder"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-ready/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "spec": "backlog/ready/2026-07-02-111-fixture-ready.md",
+        "reviews": "backlog/reviews/2026-07-02-111-fixture-ready/"
+      }
+    },
+    {
+      "task_id": "2026-07-02-111-fixture-stage-less",
+      "stage": null,
+      "roles_present": [
+        "strategist"
+      ],
+      "task_state_ref_path": "backlog/task-state/2026-07-02-111-fixture-stage-less/",
+      "last_updated": "2026-07-02T12:00:00+00:00",
+      "canonical_anchors": {
+        "spec": "backlog/ready/2026-07-02-111-fixture-stage-less.md",
+        "reviews": "backlog/reviews/2026-07-02-111-fixture-stage-less/"
+      }
+    }
+  ],
+  "ref": "ad13c7fda2b4ca2d1d6d31de3308a22dae1e1414"
+}

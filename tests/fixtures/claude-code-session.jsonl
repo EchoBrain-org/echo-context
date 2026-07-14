@@ -1,0 +1,9 @@
+{"type":"user","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"user","content":"First question"},"uuid":"u1","timestamp":"2026-04-30T10:00:00Z"}
+{"type":"assistant","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"assistant","content":[{"type":"text","text":"First answer"}]},"uuid":"a1","timestamp":"2026-04-30T10:00:01Z"}
+{"type":"user","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"user","content":"Now with tools"},"uuid":"u2","timestamp":"2026-04-30T10:00:02Z"}
+{"type":"assistant","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"cmd":"ls"}}]},"uuid":"a2","timestamp":"2026-04-30T10:00:03Z"}
+{"type":"user","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"file1\nfile2"}]},"uuid":"u3","timestamp":"2026-04-30T10:00:04Z"}
+{"type":"assistant","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"assistant","content":[{"type":"text","text":"Found two files."}]},"uuid":"a3","timestamp":"2026-04-30T10:00:05Z"}
+{"type":"user","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"user","content":"Thanks"},"uuid":"u4","timestamp":"2026-04-30T10:00:06Z"}
+{"type":"assistant","sessionId":"fixture-session","cwd":"/Users/x/proj","message":{"role":"assistant","content":[{"type":"text","text":"You're welcome"}]},"uuid":"a4","timestamp":"2026-04-30T10:00:07Z"}
+{"parentUuid":"end-1","sessionId":"claude-code-session","cwd":"/tmp","userType":"external","isSidechain":false,"version":"1.0.0","gitBranch":"main","type":"user","message":{"role":"user","content":"closing"},"uuid":"end-2","timestamp":"2026-04-30T10:00:08Z"}

@@ -1,0 +1,2432 @@
+{
+  "schema_version": 1,
+  "tool": "get_recent_work_context",
+  "query": {
+    "since": "2026-05-08T18:54:22.202Z",
+    "until": "2026-05-08T22:54:22.202Z",
+    "artifact_hint": null,
+    "format": "minimal",
+    "window_hours": 4
+  },
+  "clusters": [
+    {
+      "cluster_id": "ctx_3ddd6590",
+      "rank": 1,
+      "rank_reason": [
+        "recent_activity",
+        "has_open_loop",
+        "dense"
+      ],
+      "anchor_artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        },
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        }
+      ],
+      "atom_ids": [
+        "012af57f-1da0-4954-ae9a-4bbe4724225d",
+        "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+        "34354427-ade4-4594-8397-5d46a5a1095d",
+        "40392765-9520-43b1-811b-357cb108ede5",
+        "486a6f92-6cd0-473d-affa-06c9aead8c3b",
+        "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+        "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+        "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+        "61055de6-018c-496d-a29f-aeb3b841e802",
+        "835728dc-5e6a-4045-961c-9cd539288ffd",
+        "8631a887-3f71-477d-ad32-2682531a39e9",
+        "900d3665-cf26-4acc-a0ec-1445dc96099d",
+        "a0503638-3c96-448f-a3f3-d7251f946c6d",
+        "ad030888-0a20-4a74-92e5-f6fad6d11837",
+        "b9a2a734-6dc4-437f-88b6-775dab5ed23b",
+        "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+        "c716a1fc-1776-45ef-b6a8-937ebf44d1a4",
+        "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+        "e2a7c1a3-acf0-4119-b23b-0ac2e9543021",
+        "e70dc7f2-c1eb-4226-a3f2-4f735362a776"
+      ],
+      "edges": [
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/complete/2026-05-08-027-mcp-stateless-transport.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+          "to": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+          "to": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+          "to": "8631a887-3f71-477d-ad32-2682531a39e9",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "40392765-9520-43b1-811b-357cb108ede5",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/capture/surfaces/git-watcher.test.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "34354427-ade4-4594-8397-5d46a5a1095d",
+          "to": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "40392765-9520-43b1-811b-357cb108ede5",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "claude_code:conversation:claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+          "to": "c716a1fc-1776-45ef-b6a8-937ebf44d1a4",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+          "to": "8631a887-3f71-477d-ad32-2682531a39e9",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "claude_code:conversation:claude_code:747fb7dc-f9dc-4a3e-a0bf-129eb62cf024",
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+          "to": "c716a1fc-1776-45ef-b6a8-937ebf44d1a4",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "8631a887-3f71-477d-ad32-2682531a39e9",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/docs/mcp-integration.md",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/server.ts",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/_cursor.ts",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/search-memories.ts",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/tail-session.ts",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/tail-session.test.ts",
+            "local_fs:file:abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/ready/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "61055de6-018c-496d-a29f-aeb3b841e802",
+          "to": "e70dc7f2-c1eb-4226-a3f2-4f735362a776",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/claimed/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "to": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "to": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "claude_code:conversation:claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "835728dc-5e6a-4045-961c-9cd539288ffd",
+          "to": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "8631a887-3f71-477d-ad32-2682531a39e9",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+          "to": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::docs/mcp-integration.md",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/server.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/_cursor.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/tail-session.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/recent-work-context.test.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/tail-session.test.ts",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh"
+          ],
+          "confidence": "high"
+        },
+        {
+          "from": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "to": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+          "kind": "shared_artifact",
+          "artifact_ids": [
+            "local:repo:local:/Users/<redacted>/Desktop/Project_echo",
+            "local_fs:file:local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md"
+          ],
+          "confidence": "high"
+        }
+      ],
+      "open_loop_hints": [
+        {
+          "atom_id": "1596c40f-19bb-4cba-a386-24f7a652b037",
+          "kind": "contains_todo",
+          "text": "TODO type cast — `hints.ts:150` still uses the `as` cast (best bundled with 016 ObservedState fix)",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "1eee0188-0519-44d8-b8a5-64902578e725",
+          "kind": "unresolved_assistant_q",
+          "text": "I haven't filed it — want me to draft a `backlog/ready/<id>-recent-work-context-envelope-budget-real-fixture.md` next, or hold for end-of-window synthesis?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "95d2fbaf-2a08-4a8a-8341-fdba9e7d9481"
+        },
+        {
+          "atom_id": "347f6046-629e-49cf-9364-8fa391dfdc57",
+          "kind": "unresolved_assistant_q",
+          "text": "Which direction?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "6fd76b3a-45b8-41b5-87e7-5af8af357595"
+        },
+        {
+          "atom_id": "40392765-9520-43b1-811b-357cb108ede5",
+          "kind": "ends_with_question",
+          "text": "those 5 fixes are all verified and repro against original failures?",
+          "confidence": "high",
+          "resolved": true,
+          "resolved_by_atom_id": "e2a7c1a3-acf0-4119-b23b-0ac2e9543021"
+        },
+        {
+          "atom_id": "486a6f92-6cd0-473d-affa-06c9aead8c3b",
+          "kind": "contains_todo",
+          "text": "TODO type cast, 020 add earliest tests + UTC-Z invariant comment, 022 migrate.ts inline comment, 022 cap-hit `>=` storageCap, 011 waitFor budget bump, 021 TZ guardrail false-negative — ~10 items",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "486a6f92-6cd0-473d-affa-06c9aead8c3b",
+          "kind": "unresolved_assistant_q",
+          "text": "Want me to mark it resolved + check the rest of the file for similar staleness?",
+          "confidence": "medium",
+          "resolved": false
+        },
+        {
+          "atom_id": "5504c2a3-a141-410c-8ec8-d1cd2bfe1517",
+          "kind": "unresolved_assistant_q",
+          "text": "Want me to log these two MCP calls to today's dogfooding journal per the in-the-moment discipline?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "347f6046-629e-49cf-9364-8fa391dfdc57"
+        },
+        {
+          "atom_id": "6fd76b3a-45b8-41b5-87e7-5af8af357595",
+          "kind": "unresolved_assistant_q",
+          "text": "Want me to push the 4 commits?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "82b9cadc-5c40-412c-be50-69fa2d89ca57"
+        },
+        {
+          "atom_id": "75293a97-624e-4ac0-92a8-e9484be78669",
+          "kind": "unresolved_assistant_q",
+          "text": "Which?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "d41edfcb-021c-4a71-9dcb-4acf321386f5"
+        },
+        {
+          "atom_id": "79f53c89-328f-4432-841b-af21315bb59b",
+          "kind": "ends_with_question",
+          "text": "binary answer is it worth it to build the mcp evalution now ?",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "7a32386a-0acc-4a55-9cce-3837e8806c57",
+          "kind": "contains_todo",
+          "text": "TODO before V1 ship\" reminder — risk that the deferral outlives memory (non-blocking, see fixup §7).",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "900d3665-cf26-4acc-a0ec-1445dc96099d",
+          "kind": "ends_with_question",
+          "text": "before 026 and 027 what are some of the highest roi fixes in followup that are not yet addresses?",
+          "confidence": "high",
+          "resolved": true,
+          "resolved_by_atom_id": "835728dc-5e6a-4045-961c-9cd539288ffd"
+        },
+        {
+          "atom_id": "900d3665-cf26-4acc-a0ec-1445dc96099d",
+          "kind": "contains_todo",
+          "text": "TODO type cast bundle** — best done together; ~30 min combined; cosmetic so easy to keep deferring.",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+          "kind": "contains_todo",
+          "text": "TODO type cast tighten (best bundled with 016 ObservedState)",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "d49ff22e-b370-4bc7-8104-e0cf12f5d225",
+          "kind": "ends_with_question",
+          "text": "can you confirm that?",
+          "confidence": "high",
+          "resolved": true,
+          "resolved_by_atom_id": "de42fddd-cac5-4700-b3e2-baee259f9dc6"
+        },
+        {
+          "atom_id": "d49ff22e-b370-4bc7-8104-e0cf12f5d225",
+          "kind": "unresolved_assistant_q",
+          "text": "Want me to add the entry?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "e3fcd7da-b607-4da9-b6d8-fc4bf6e80449"
+        },
+        {
+          "atom_id": "d81f25cb-a202-46af-8d87-f54ba3f86b3d",
+          "kind": "contains_todo",
+          "text": "TODO before V1 ship\" deferral risk.",
+          "confidence": "high",
+          "resolved": false
+        },
+        {
+          "atom_id": "e3fcd7da-b607-4da9-b6d8-fc4bf6e80449",
+          "kind": "unresolved_assistant_q",
+          "text": "`tail_session({source: 'fs:.../rollout-…jsonl', count: 5})`) | Failure A's \"no exact-fetch primitive\" gap; the actual cross-AI handoff demo | 0.5d |\n| 027 | Codex MCP transport deserialize failure investigation | Failure B's wire-protocol mismatch; reproduce + diff bytes + isolate cause (SDK upstream, ECHO config, or Codex client) | 1-2d |\n| 028 | `format: 'skeleton'` on `get_recent_work_context` — top-level cluster summaries only, no atom bodies | Failure A's structural cost issue, beyond 025's truncation; gives consumers a sub-5k response shape | 0.5-1d |\n\nWant me to spec 026 + 027 (the two highest-leverage bypass-fixers) before logging today's bypass entry, so the journal entry can cite the items as the planned response?",
+          "confidence": "medium",
+          "resolved": true,
+          "resolved_by_atom_id": "de42fddd-cac5-4700-b3e2-baee259f9dc6"
+        }
+      ],
+      "source_breakdown": {
+        "git": 40,
+        "claude_code": 59
+      },
+      "time_range": {
+        "from": "2026-05-08T19:02:34.996Z",
+        "to": "2026-05-08T22:53:17.119Z"
+      },
+      "label": "discussion about Project_echo"
+    }
+  ],
+  "atoms": {
+    "012af57f-1da0-4954-ae9a-4bbe4724225d": {
+      "schema_version": 1,
+      "id": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+      "time": {
+        "occurred_at": "2026-05-08T22:26:10.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "post-merge: 027 mcp-stateless-transport + complete (founder reconciliation)\n\nSwitches ECHO MCP from stateful per-session McpServer to documented stateless mode (sessionIdGenerator: undefined, enableJsonResponse: true). Per-request fresh McpServer + StreamableHTTPServerTransport over the shared Storage. Eliminates the stale-session class that caused Codex JsonRpcMessage deserialize errors after daemon restart. GET/DELETE /mcp now return 405 + Allow: POST + JSON-RPC error body. Loopback DNS rebind… [truncated; 724 chars omitted; fetch full atom via search_memories]",
+        "output": "diff --git a/backlog/_followups.md b/backlog/_followups.md\nindex 11b4bce..6368e5a 100644\n--- a/backlog/_followups.md\n+++ b/backlog/_followups.md\n@@ -265,6 +265,13 @@ Deferred fixups and follow-up items surfaced during `/merge-and-cleanup`. Founde\n - [ ] **Capture AI-client uptake on the new affordances:** does Claude Code spontaneously use `source_app: 'claude_code'` for app-scoped queries instead of guessing FS prefixes? Does pagination via `next_cursor` get used at all, or do consumers default… [truncated; 5321 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::db3001d4246e693a55fce7c027752dfbbc9afca5",
+          "label": "db3001d",
+          "locator": "db3001d4246e693a55fce7c027752dfbbc9afca5"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/complete/2026-05-08-027-mcp-stateless-transport.md",
+          "label": "backlog/complete/2026-05-08-027-mcp-stateless-transport.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/complete/2026-05-08-027-mcp-stateless-transport.md"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::db3001d4246e693a55fce7c027752dfbbc9afca5",
+          "kind": "commit",
+          "detail": "2 files changed, +26, -1"
+        }
+      },
+      "provenance": {
+        "source_event_id": "012af57f-1da0-4954-ae9a-4bbe4724225d",
+        "raw_payload_hash": "158840651a581ea617cba80d27e89077a51d9fd29566368293867420d31a917d",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "c827b3ef5cef4985536ff0f71e9401a3eb0e28e5",
+          "files_changed": "2",
+          "additions": "26",
+          "deletions": "1"
+        }
+      }
+    },
+    "1a23bd66-bed5-4ef4-b84d-7838dc1828c4": {
+      "schema_version": 1,
+      "id": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+      "time": {
+        "occurred_at": "2026-05-08T22:44:46.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "review: 2026-05-08-026-tail-session-tool\n\ntail_session MCP tool implemented on agent/tail-session-tool @ 981735f.\n4th MCP tool: cheap exact-fetch retrieval for the cross-AI handoff demo.\nTwo input modes (source XOR source_app), two-step source_app resolution,\ncomposite cursor shared with search_memories, count clamping (0 rejected,\nupper bound 20). Cursor helpers extracted to src/mcp/tools/_cursor.ts per\nhelper-location contract; search-memories.ts re-exports for compat.\n18/18 tail-session tests… [truncated; 354 chars omitted; fetch full atom via search_memories]",
+        "output": "diff --git a/backlog/claimed/2026-05-08-026-tail-session-tool.md b/backlog/pending_review/2026-05-08-026-tail-session-tool.md\nsimilarity index 87%\nrename from backlog/claimed/2026-05-08-026-tail-session-tool.md\nrename to backlog/pending_review/2026-05-08-026-tail-session-tool.md\nindex 9d6e025..60e335b 100644\n--- a/backlog/claimed/2026-05-08-026-tail-session-tool.md\n+++ b/backlog/pending_review/2026-05-08-026-tail-session-tool.md\n@@ -7,9 +7,38 @@ created: 2026-05-08\n claimed_by: \"78D5AB0F-A8A3-4F… [truncated; 19872 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::98ab225dd59b46f1fec222a14db615a8a686cfa5",
+          "label": "98ab225",
+          "locator": "98ab225dd59b46f1fec222a14db615a8a686cfa5"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md",
+          "label": "raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::98ab225dd59b46f1fec222a14db615a8a686cfa5",
+          "kind": "commit",
+          "detail": "2 files changed, +236, -2"
+        }
+      },
+      "provenance": {
+        "source_event_id": "1a23bd66-bed5-4ef4-b84d-7838dc1828c4",
+        "raw_payload_hash": "ea5c4f005412169783387330fdf3619c27fef011967abbd3a6babba6c0821d0d",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "0c3a74605e3c7a5cb517ff9fcd84be9577e2d30c",
+          "files_changed": "2",
+          "additions": "236",
+          "deletions": "2"
+        }
+      }
+    },
+    "34354427-ade4-4594-8397-5d46a5a1095d": {
+      "schema_version": 1,
+      "id": "34354427-ade4-4594-8397-5d46a5a1095d",
+      "time": {
+        "occurred_at": "2026-05-08T22:48:44.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "chore: high-ROI followup fixes (5) — discoverLastSeen, parse_failed warn, curl -f, MAX_OVERFETCH delete, SOURCE_APP_MAP hoist\n\nDirect fixes of items already tracked in backlog/_followups.md, no new\nbacklog items. Each fix repro-verified: old code fails the post-fix\nassertion, new code passes.\n\n1. src/capture/surfaces/git-watcher.ts — discoverLastSeen now walks\n   `git log --format=%H` from HEAD backwards and returns the first SHA\n   present in storage. Deterministic regardless of storage's\n   (t… [truncated; 1804 chars omitted; fetch full atom via search_memories]",
+        "output": "diff --git a/backlog/_followups.md b/backlog/_followups.md\nindex 6368e5a..69925b3 100644\n--- a/backlog/_followups.md\n+++ b/backlog/_followups.md\n@@ -20,6 +20,8 @@ Deferred fixups and follow-up items surfaced during `/merge-and-cleanup`. Founde\n ## 2026-04-30 — from merge of 011-claude-code-extractor\n \n - `log.warn(\"parse_failed\", ...)` in `parseLine`'s JSON catch (`src/capture/extractors/claude-code.ts:64`) for diagnosability. Currently silent on parse failures; makes JSONL shape regressions obs… [truncated; 20426 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::7e4d4e0bd64c0bf625b3945a8303cce031300e84",
+          "label": "7e4d4e0",
+          "locator": "7e4d4e0bd64c0bf625b3945a8303cce031300e84"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+          "label": "src/capture/extractors/claude-code.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/extractors/claude-code.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts",
+          "label": "src/capture/surfaces/git-watcher.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/surfaces/git-watcher.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+          "label": "src/mcp/tools/search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/capture/surfaces/git-watcher.test.ts",
+          "label": "tests/capture/surfaces/git-watcher.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/capture/surfaces/git-watcher.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts",
+          "label": "tests/mcp/tools/search-memories.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/search-memories.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh",
+          "label": "tools/mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tools/mcp-integration-smoke.sh"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::7e4d4e0bd64c0bf625b3945a8303cce031300e84",
+          "kind": "commit",
+          "detail": "7 files changed, +49, -63"
+        }
+      },
+      "provenance": {
+        "source_event_id": "34354427-ade4-4594-8397-5d46a5a1095d",
+        "raw_payload_hash": "4edde1b15b6acf5f04375d9d2e81aa53022c23e11f5f3f51ce90152d5333bba2",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "98ab225dd59b46f1fec222a14db615a8a686cfa5",
+          "files_changed": "7",
+          "additions": "49",
+          "deletions": "63"
+        }
+      }
+    },
+    "40392765-9520-43b1-811b-357cb108ede5": {
+      "schema_version": 1,
+      "id": "40392765-9520-43b1-811b-357cb108ede5",
+      "time": {
+        "occurred_at": "2026-05-08T22:47:21.452Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "those 5 fixes are all verified and repro against original failures?",
+        "output": "Honest answer: **no, not all five.** Fixes 4 and 5 are dead-code/cosmetic (no failure to repro by their nature). For fixes 1, 2, 3 I verified the **new code passes**, but I never ran the **old code against the new strict test** to prove the fix is doing real work. Let me fix that gap now — most important is Fix 1.\n\n**Fix 1 verification: run old `discoverLastSeen` against the new strict test, expect failure.**\n\nOld `discoverLastSeen` restored. Running the new strict resumption test against it.\n\n*… [truncated; 2517 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts",
+          "label": "src/capture/surfaces/git-watcher.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/surfaces/git-watcher.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/_verify-parse-failed-tmp.test.ts",
+          "label": "tests/_verify-parse-failed-tmp.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/_verify-parse-failed-tmp.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+          "label": "src/capture/extractors/claude-code.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/extractors/claude-code.ts"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "40392765-9520-43b1-811b-357cb108ede5",
+        "raw_payload_hash": "c2d3c8e137151e27627e32b1a680bc5580d91f3ff4d28b67774bd754ad91ec32",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 11
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "default"
+        }
+      },
+      "open_loop_hints": [
+        "ends_with_question"
+      ]
+    },
+    "486a6f92-6cd0-473d-affa-06c9aead8c3b": {
+      "schema_version": 1,
+      "id": "486a6f92-6cd0-473d-affa-06c9aead8c3b",
+      "time": {
+        "occurred_at": "2026-05-08T22:51:46.139Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "how many followups issues remain open",
+        "output": "Raw count: **66 unresolved bullets** in `_followups.md` after today's commit. But that's noisy — includes sub-bullets, dogfooding observations, and process notes. Breakdown:\n\n## ~30 code-level issues (need a code fix)\n\n- **Tier 1 (mechanical, small)**: 016 hostOf tighten, 016 ObservedState simplify, 018 limit zod tighten, 018 hint regexes, 020 R1.TODO type cast, 020 add earliest tests + UTC-Z invariant comment, 022 migrate.ts inline comment, 022 cap-hit `>=` storageCap, 011 waitFor budget bump, … [truncated; 2105 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "486a6f92-6cd0-473d-affa-06c9aead8c3b",
+        "raw_payload_hash": "9719a22a4390ef00231ab7c93794fe2cf857ed084d9fd7bca29b15ef657b2937",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 13
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "auto"
+        }
+      },
+      "open_loop_hints": [
+        "contains_todo",
+        "unresolved_assistant_q"
+      ]
+    },
+    "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5": {
+      "schema_version": 1,
+      "id": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+      "time": {
+        "occurred_at": "2026-05-08T22:52:38.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "post-merge: 026 tail-session-tool + complete (founder reconciliation)\n\nAdds the V1.5.4 `tail_session` MCP tool: cheap exact-fetch retrieval primitive for the cross-AI handoff demo. Two input modes (`source` exact-match XOR `source_app` enum with two-step prefix→exact resolution), `count` clamped to [1, 20], composite cursor shared with `search_memories` via the new `src/mcp/tools/_cursor.ts` extraction. `searchMatchSchema` exported from `search-memories.ts` for cross-tool reuse. Live measurement… [truncated; 996 chars omitted; fetch full atom via search_memories]",
+        "output": "diff --git a/backlog/_followups.md b/backlog/_followups.md\nindex 69925b3..563de6f 100644\n--- a/backlog/_followups.md\n+++ b/backlog/_followups.md\n@@ -279,3 +279,23 @@ Deferred fixups and follow-up items surfaced during `/merge-and-cleanup`. Founde\n - **Test files outside `files_to_modify` (escalation pattern).** 025 agent self-flagged that three test files in `tests/capture/{extractors,surfaces}/*` were modified to absorb the spec-mandated `ORDER BY id` fallout. Reviewer judged: stand (diffs surg… [truncated; 7687 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::8c368fb36e638d9c62bbcd92aa5d49a9faaa4879",
+          "label": "8c368fb",
+          "locator": "8c368fb36e638d9c62bbcd92aa5d49a9faaa4879"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/complete/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/complete/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/complete/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::8c368fb36e638d9c62bbcd92aa5d49a9faaa4879",
+          "kind": "commit",
+          "detail": "3 files changed, +39, -32"
+        }
+      },
+      "provenance": {
+        "source_event_id": "5bcf2cbe-6a48-46c3-be07-21a1a2553bd5",
+        "raw_payload_hash": "5718b6d3b6401dfbe918b67e073607b2dd7ca546458b71b09c5ced62b66f4940",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "6ba78c4b605553e937c51c5547580c2662c2a09f",
+          "files_changed": "3",
+          "additions": "39",
+          "deletions": "32"
+        }
+      }
+    },
+    "5cc6ce13-bba8-4b50-9fec-af13a75b4196": {
+      "schema_version": 1,
+      "id": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+      "time": {
+        "occurred_at": "2026-05-08T22:49:23.904Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/747fb7dc-f9dc-4a3e-a0bf-129eb62cf024.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "You are reviewing the agent's pending work for the founder. The founder runs this command in the morning (or whenever pending_review has items) to get a structured verdict before deciding what to merge.\n\nThis command is **read-only**. It does not move files, modify the working tree, or run any state-changing git operations. Its only output is human-readable summaries plus a sidecar review plan per item.\n\n## Inputs\n\n- Optional positional argument: a specific item id (e.g., `012`, `2026-04-30-012`… [truncated; 7440 chars omitted; fetch full atom via search_memories]",
+        "output": "## Review summary\n\n**1 item reviewed:**\n\n| Item | Verdict | Fixups | Conflicts |\n|---|---|---|---|\n| `2026-05-08-026-tail-session-tool` | **merge as-is** | 0 | 0 predicted |\n\n### Verdict — 026 tail-session-tool\n\nMerge as-is. All 18 dedicated `tail-session` tests pass; lint + typecheck clean. The two failing tests in the full run (`tests/trace/build.test.ts` perf, `tests/capture/surfaces/git-watcher.test.ts` backfill) are pre-existing flakes — they pass in isolation and flake on bare `main` per t… [truncated; 1034 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:747fb7dc-f9dc-4a3e-a0bf-129eb62cf024",
+          "label": "747fb7dc-f9dc-4a3e-a0bf-129eb62cf024"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "5cc6ce13-bba8-4b50-9fec-af13a75b4196",
+        "raw_payload_hash": "fc3ecb03f1bd05c25497c237f0f25d8e3d49fefdce7fed7d4f84c23116c88ff1",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "747fb7dc-f9dc-4a3e-a0bf-129eb62cf024",
+        "turn_index": 0
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "5eda1db7-dfa1-4b5d-8ee4-278462d29e95": {
+      "schema_version": 1,
+      "id": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+      "time": {
+        "occurred_at": "2026-05-08T22:27:22.136Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/f89407ef-eb99-4968-a961-114d15e938fe.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "You are executing the founder's morning merge after `/review-pending` has produced verdicts the founder accepts. Your job is to do the **mechanical** parts of merge + cleanup correctly, while pausing at every **judgment** point so the founder stays in the loop.\n\nThis command is destructive in the sense that it pushes to origin and deletes branches. Match the scope of what was approved — do not merge items the human did not name.\n\n## Inputs\n\n- One or more positional arguments: item ids in **merge… [truncated; 12970 chars omitted; fetch full atom via search_memories]",
+        "output": "Starting pre-flight checks for item 027.\n\nWorking tree is effectively clean (the only untracked file is the sidecar this command consumes). Proceeding.\n\nVerdict `merge as-is` (mergeable). Sidecar reviewed at 2026-05-08T22:18:00Z, ~30 min old — fresh. Acquiring lock.\n\nLock acquired. Now C1–C2: announce and merge.\n\n**=== Merging 027 (mcp-stateless-transport) ===**\n\nSidecar verdict: **merge as-is** | Pre-merge fixups: **none** | Expected conflicts: **none** (4 spec files untouched on main since 025… [truncated; 2853 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:f89407ef-eb99-4968-a961-114d15e938fe",
+          "label": "f89407ef-eb99-4968-a961-114d15e938fe"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-027-mcp-stateless-transport.md",
+          "label": "backlog/pending_review/2026-05-08-027-mcp-stateless-transport.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-027-mcp-stateless-transport.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "5eda1db7-dfa1-4b5d-8ee4-278462d29e95",
+        "raw_payload_hash": "2b8103d13ab862691e21d49102bd0a0c5c200d7391b207ec72566fbc2676b362",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "f89407ef-eb99-4968-a961-114d15e938fe",
+        "turn_index": 2
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "61055de6-018c-496d-a29f-aeb3b841e802": {
+      "schema_version": 1,
+      "id": "61055de6-018c-496d-a29f-aeb3b841e802",
+      "time": {
+        "occurred_at": "2026-05-08T22:45:19.661Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5720aacc-8a26-4b7e-a98a-c2b9a2018bfc.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "You are an ECHO builder agent. Pick up the next ready backlog item — or resume a previously crashed run — and execute it through the full implementation loop. Multiple agents may run in parallel; the atomic-claim mechanic handles collisions; the reconciliation step handles crash recovery.\n\n## Mandatory First Steps\n\nBefore doing anything, read these four files in order — they are your global context for every run:\n\n1. `docs/AGENT_INSTRUCTIONS.md` — operating manual; loop, drift rules, write/no-wr… [truncated; 10258 chars omitted; fetch full atom via search_memories]",
+        "output": "Mandatory context already loaded this session. Pulling main and checking for prior claims.\n\nSelector returns 026, matching the user's hint. Reading the spec.\n\nLet me check the current state of search-memories.ts and storage interface to plan correctly.\n\nPlan is clear. Claiming 026 atomically.\n\nUpdating search-memories.ts to import from _cursor.ts and exporting `searchMatchSchema`.\n\nNow removing the inline cursor implementations and exporting `searchMatchSchema`.\n\nNow exporting `searchMatchSchema… [truncated; 3315 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5720aacc-8a26-4b7e-a98a-c2b9a2018bfc",
+          "label": "5720aacc-8a26-4b7e-a98a-c2b9a2018bfc"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/ready/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/ready/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/ready/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+          "label": "src/mcp/tools/search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/storage/interface.ts",
+          "label": "src/storage/interface.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/storage/interface.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/storage/sqlite.ts",
+          "label": "src/storage/sqlite.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/storage/sqlite.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts",
+          "label": "tests/mcp/tools/search-memories.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/search-memories.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/_cursor.ts",
+          "label": "_cursor.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/_cursor.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/search-memories.ts",
+          "label": "search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/tail-session.ts",
+          "label": "tail-session.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/tail-session.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/server.ts",
+          "label": "server.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/server.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/tail-session.test.ts",
+          "label": "tail-session.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/tail-session.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tools/mcp-integration-smoke.sh",
+          "label": "mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tools/mcp-integration-smoke.sh"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/docs/mcp-integration.md",
+          "label": "mcp-integration.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/docs/mcp-integration.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/recent-work-context.test.ts",
+          "label": "recent-work-context.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/recent-work-context.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md",
+          "label": "raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/raw/internal/agent-runs/2026-05-08-2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/claimed/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/claimed/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/claimed/2026-05-08-026-tail-session-tool.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "61055de6-018c-496d-a29f-aeb3b841e802",
+        "raw_payload_hash": "d3a809a2d5016f19e580d47103a720eb2fa61bcedfba03d9697172f3bd4dc78a",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5720aacc-8a26-4b7e-a98a-c2b9a2018bfc",
+        "turn_index": 1
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "835728dc-5e6a-4045-961c-9cd539288ffd": {
+      "schema_version": 1,
+      "id": "835728dc-5e6a-4045-961c-9cd539288ffd",
+      "time": {
+        "occurred_at": "2026-05-08T22:42:35.090Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "fix it in this session while we wait for 026 and 027 to land . no backlog needed",
+        "output": "Reading the relevant code regions in parallel before making edits.\n\nNeed to check the MAX_OVERFETCH test before deciding wire-vs-delete, and find the git-watcher test that needs restoration.\n\nPlan locked. Making all five fixes now.\n\n**Fix 1: `discoverLastSeen` proper fix using `git log` + stored-SHA intersection.**\n\n**Fix 1b: Restore the strict `toHaveLength(5)` assertion in the resumption test.**\n\n**Fix 2: `parse_failed` warn in claude-code.ts.**\n\n**Fix 3: `curl -f` flag.**\n\n**Fix 4: Delete `MA… [truncated; 3882 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/surfaces/git-watcher.ts",
+          "label": "src/capture/surfaces/git-watcher.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/surfaces/git-watcher.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/capture/extractors/claude-code.ts",
+          "label": "src/capture/extractors/claude-code.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/capture/extractors/claude-code.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+          "label": "src/mcp/tools/search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh",
+          "label": "tools/mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tools/mcp-integration-smoke.sh"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/capture/surfaces/git-watcher.test.ts",
+          "label": "tests/capture/surfaces/git-watcher.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/capture/surfaces/git-watcher.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/search-memories.test.ts",
+          "label": "tests/mcp/tools/search-memories.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/search-memories.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "835728dc-5e6a-4045-961c-9cd539288ffd",
+        "raw_payload_hash": "8f233ce9c6595e488e34660046774b50c27921355a4a6876f85b59935cc35e5a",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 10
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "default"
+        }
+      }
+    },
+    "8631a887-3f71-477d-ad32-2682531a39e9": {
+      "schema_version": 1,
+      "id": "8631a887-3f71-477d-ad32-2682531a39e9",
+      "time": {
+        "occurred_at": "2026-05-08T22:48:55.455Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/747fb7dc-f9dc-4a3e-a0bf-129eb62cf024/subagents/agent-afa541f3d1ad30fa5.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "You are reviewing a backlog item that has been moved to `pending_review/` and is awaiting founder sign-off before merge. Your verdict will drive `/merge-and-cleanup`. Be evidence-based, specific, and concise (under 1000 words).\n\n## Where things are\n\n- **Item file:** `/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.md` — read it in full. The frontmatter `acceptance:` list and the body's \"Out of Scope (Don't Drift)\" are the contract.\n- **Worktree:** `/Use… [truncated; 3753 chars omitted; fetch full atom via search_memories]",
+        "output": "I'll start with the ground-truth check before anything else.\n\nHEAD matches. Proceeding with the review.\n\nSkipping task-tracking — single review pass, not relevant.\n\nNow let me check the search-memories test, run log, and verify the diff against main.\n\nSearch-memories tests are unchanged (re-exports preserve the import path). Now run tests + lint + typecheck and check potential merge conflicts.\n\nTwo failures. Agent flagged these as pre-existing flaky. Let me verify against bare main and check tai… [truncated; 7384 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:agent-afa541f3d1ad30fa5",
+          "label": "agent-afa541f3d1ad30fa5"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/_cursor.ts",
+          "label": "_cursor.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/_cursor.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/tail-session.ts",
+          "label": "tail-session.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/tail-session.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/search-memories.ts",
+          "label": "search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/server.ts",
+          "label": "server.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/src/mcp/server.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/tail-session.test.ts",
+          "label": "tail-session.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tests/mcp/tools/tail-session.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tools/mcp-integration-smoke.sh",
+          "label": "mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/tools/mcp-integration-smoke.sh"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "abs:/Users/<redacted>/Desktop/Project_echo--tail-session-tool/docs/mcp-integration.md",
+          "label": "mcp-integration.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo--tail-session-tool/docs/mcp-integration.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "8631a887-3f71-477d-ad32-2682531a39e9",
+        "raw_payload_hash": "c5ca7e9fd425c2c3310045e738ae452b427659079d1579edef054de96560eff4",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "agent-afa541f3d1ad30fa5",
+        "turn_index": 0
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "900d3665-cf26-4acc-a0ec-1445dc96099d": {
+      "schema_version": 1,
+      "id": "900d3665-cf26-4acc-a0ec-1445dc96099d",
+      "time": {
+        "occurred_at": "2026-05-08T22:29:19.923Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "before 026 and 027 what are some of the highest roi fixes in followup that are not yet addresses?",
+        "output": "Ranking by impact-per-effort, looking only at items currently open (not blocked by 026 or already closed by 027):\n\n## Tier 1 — high impact, small cost (do these first)\n\n1. **025 `discoverLastSeen` non-determinism in `src/capture/surfaces/git-watcher.ts:225-242`** *(~45 min)*\n   Actual latent reliability bug, not cosmetic. Storage's post-025 `(timestamp DESC, id DESC)` ordering plus the loop's `>=` last-write-wins means same-second commits resolve to the id-DESC-smallest tied SHA → watcher can re… [truncated; 2912 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "900d3665-cf26-4acc-a0ec-1445dc96099d",
+        "raw_payload_hash": "580c4c101433e6ad439dd023fe0aba638b2103824fd1cb7e0538d5ac967304d6",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 9
+      },
+      "context": {
+        "ambient": {
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "default"
+        }
+      },
+      "open_loop_hints": [
+        "ends_with_question",
+        "contains_todo"
+      ]
+    },
+    "a0503638-3c96-448f-a3f3-d7251f946c6d": {
+      "schema_version": 1,
+      "id": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+      "time": {
+        "occurred_at": "2026-05-08T22:41:21.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "2026-05-08-026: tail_session MCP tool + extract cursor helpers\n\nNew cheap exact-fetch retrieval tool: tail_session({source XOR source_app,\ncount?, cursor?}) → {turns, next_cursor, source_resolved, warnings}.\nDesigned for the V1 killer-demo case \"where did Codex / Claude Code leave\noff in their last session\" that today gets bypassed by direct file grep\nbecause neither search_memories (substring) nor get_recent_work_context\n(clustered) fits the shape.\n\nsrc/mcp/tools/_cursor.ts (new): extracted enc… [truncated; 2046 chars omitted; fetch full atom via search_memories]",
+        "output": "diff --git a/docs/mcp-integration.md b/docs/mcp-integration.md\nindex a1827fa..e9f2005 100644\n--- a/docs/mcp-integration.md\n+++ b/docs/mcp-integration.md\n@@ -25,7 +25,7 @@ This is the V1 \"killer demo\" surface: you ask Cursor or Claude Code a question,\n    ```bash\n    ./tools/mcp-integration-smoke.sh\n    ```\n-   Expect a sequence of `OK:` lines and exit `0` — including a final `OK: stale-session echo_ping recovery` line that proves the stateless transport from item 027 is in place. If it fails, se… [truncated; 39646 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::981735f3bc896f2d2e3bb2169b5c1737683b6cd0",
+          "label": "981735f",
+          "locator": "981735f3bc896f2d2e3bb2169b5c1737683b6cd0"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::docs/mcp-integration.md",
+          "label": "docs/mcp-integration.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/docs/mcp-integration.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/server.ts",
+          "label": "src/mcp/server.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/server.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/_cursor.ts",
+          "label": "src/mcp/tools/_cursor.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/_cursor.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+          "label": "src/mcp/tools/search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/tail-session.ts",
+          "label": "src/mcp/tools/tail-session.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/tail-session.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/recent-work-context.test.ts",
+          "label": "tests/mcp/tools/recent-work-context.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/recent-work-context.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/tail-session.test.ts",
+          "label": "tests/mcp/tools/tail-session.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/tail-session.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh",
+          "label": "tools/mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tools/mcp-integration-smoke.sh"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::981735f3bc896f2d2e3bb2169b5c1737683b6cd0",
+          "kind": "commit",
+          "detail": "8 files changed, +849, -58"
+        }
+      },
+      "provenance": {
+        "source_event_id": "a0503638-3c96-448f-a3f3-d7251f946c6d",
+        "raw_payload_hash": "d04183129d7b3fd20980c732d66a823c26cb5761c38dc7025dba275ed48f4510",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "0c3a74605e3c7a5cb517ff9fcd84be9577e2d30c",
+          "files_changed": "8",
+          "additions": "849",
+          "deletions": "58"
+        }
+      }
+    },
+    "ad030888-0a20-4a74-92e5-f6fad6d11837": {
+      "schema_version": 1,
+      "id": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+      "time": {
+        "occurred_at": "2026-05-08T22:27:42.806Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "after both 027 and 026 land what can i expect to resolve and what would still be open issues",
+        "output": "Reading 026 and 027 specs to map what they cover against the open followups.\n\n027 has already landed (commit `c827b3e`). Reading 026 spec to know its scope.\n\n027 already landed (commit `c827b3e`). Reading the current 022 + 025 followup sections to see if 027's resolutions were captured.\n\n027 already landed at commit `c827b3e` — only 026 is pending. Updating the 022 section to mark 027's resolutions, then giving you a forward-looking map.\n\nNow the forward-looking answer.\n\n---\n\n## After 026 lands … [truncated; 3298 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/complete/2026-05-08-027-mcp-stateless-transport.md",
+          "label": "backlog/complete/2026-05-08-027-mcp-stateless-transport.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/complete/2026-05-08-027-mcp-stateless-transport.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/ready/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/ready/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/ready/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "ad030888-0a20-4a74-92e5-f6fad6d11837",
+        "raw_payload_hash": "948ce1c9e8286eef1d6b399058578c2705ac5c2f8ccdc8e6eff6c8505cba7536",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 8
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "default"
+        }
+      },
+      "open_loop_hints": [
+        "contains_todo"
+      ]
+    },
+    "b9a2a734-6dc4-437f-88b6-775dab5ed23b": {
+      "schema_version": 1,
+      "id": "b9a2a734-6dc4-437f-88b6-775dab5ed23b",
+      "time": {
+        "occurred_at": "2026-05-08T22:53:03.214Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/f89407ef-eb99-4968-a961-114d15e938fe.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "<synthetic>"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "<local-command-stdout>Catch you later!</local-command-stdout>",
+        "output": "No response requested."
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:f89407ef-eb99-4968-a961-114d15e938fe",
+          "label": "f89407ef-eb99-4968-a961-114d15e938fe"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "b9a2a734-6dc4-437f-88b6-775dab5ed23b",
+        "raw_payload_hash": "946dd626148a729adf4b627e5b1cf65203f8524eeb7a68c43c19ad9b5872bca1",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "f89407ef-eb99-4968-a961-114d15e938fe",
+        "turn_index": 3
+      },
+      "context": {
+        "ambient": {
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "bc1af9cf-b976-40a5-90e4-42c7e3659e09": {
+      "schema_version": 1,
+      "id": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+      "time": {
+        "occurred_at": "2026-05-08T22:53:17.119Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/747fb7dc-f9dc-4a3e-a0bf-129eb62cf024.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "You are executing the founder's morning merge after `/review-pending` has produced verdicts the founder accepts. Your job is to do the **mechanical** parts of merge + cleanup correctly, while pausing at every **judgment** point so the founder stays in the loop.\n\nThis command is destructive in the sense that it pushes to origin and deletes branches. Match the scope of what was approved — do not merge items the human did not name.\n\n## Inputs\n\n- One or more positional arguments: item ids in **merge… [truncated; 12970 chars omitted; fetch full atom via search_memories]",
+        "output": "I'll follow the command's per-step instructions for merging 026. Starting with pre-flight.\n\nI have an untracked sidecar from `/review-pending` plus an unpushed `chore` commit ahead of origin. I need to commit the sidecar so the C7 `git rm` step works, then proceed with pre-flight.\n\nPre-flight clean, lock acquired. Now starting C1 for 026.\n\n### C1 — Plan one more time\n\n**Item:** `2026-05-08-026-tail-session-tool` — V1.5.4 `tail_session` MCP tool\n**Branch:** `agent/tail-session-tool`\n**Worktree:**… [truncated; 1744 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:747fb7dc-f9dc-4a3e-a0bf-129eb62cf024",
+          "label": "747fb7dc-f9dc-4a3e-a0bf-129eb62cf024"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/_followups.md",
+          "label": "backlog/_followups.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/_followups.md"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "bc1af9cf-b976-40a5-90e4-42c7e3659e09",
+        "raw_payload_hash": "3ad2674ffd1fe83c70975c9f3abe65be310589ca77b7f670d2446bce9d112ad1",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "747fb7dc-f9dc-4a3e-a0bf-129eb62cf024",
+        "turn_index": 1
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119"
+        }
+      }
+    },
+    "c716a1fc-1776-45ef-b6a8-937ebf44d1a4": {
+      "schema_version": 1,
+      "id": "c716a1fc-1776-45ef-b6a8-937ebf44d1a4",
+      "time": {
+        "occurred_at": "2026-05-08T22:50:28.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "review-sidecar: 2026-05-08-026-tail-session-tool\n\nVerdict: merge as-is. 0 pre-merge fixups. 0 conflicts predicted.\nTest counts: passed 510, failed 2 (pre-existing flakes — pass in isolation).\nWill be consumed by /merge-and-cleanup.",
+        "output": "diff --git a/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md b/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md\nnew file mode 100644\nindex 0000000..87914d1\n--- /dev/null\n+++ b/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md\n@@ -0,0 +1,31 @@\n+---\n+item_id: 2026-05-08-026-tail-session-tool\n+verdict: merge as-is\n+reviewed_at: 2026-05-08T22:35:00Z\n+test_counts: { passed: 510, failed: 2 }\n+---\n+\n+## Verdict\n+\n+Merge as-is. Implementation lands the … [truncated; 2478 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::351f600691abc7757d34ffd5fb6218fe8042e376",
+          "label": "351f600",
+          "locator": "351f600691abc7757d34ffd5fb6218fe8042e376"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "label": "backlog/pending_review/2026-05-08-026-tail-session-tool.review.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/pending_review/2026-05-08-026-tail-session-tool.review.md"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::351f600691abc7757d34ffd5fb6218fe8042e376",
+          "kind": "commit",
+          "detail": "1 files changed, +31, -0"
+        }
+      },
+      "provenance": {
+        "source_event_id": "c716a1fc-1776-45ef-b6a8-937ebf44d1a4",
+        "raw_payload_hash": "7e6be2167caba985fc41125c45a043ac0c197135ae6b51a4634c7c80b169af9c",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "7e4d4e0bd64c0bf625b3945a8303cce031300e84",
+          "files_changed": "1",
+          "additions": "31",
+          "deletions": "0"
+        }
+      }
+    },
+    "d6c35814-31bb-47a9-9a58-e1f727b6a3a2": {
+      "schema_version": 1,
+      "id": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+      "time": {
+        "occurred_at": "2026-05-08T22:50:49.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "merge: 2026-05-08-026-tail-session-tool (with founder reconciliation)",
+        "output": "diff --git a/docs/mcp-integration.md b/docs/mcp-integration.md\nindex a1827fa..e9f2005 100644\n--- a/docs/mcp-integration.md\n+++ b/docs/mcp-integration.md\n@@ -25,7 +25,7 @@ This is the V1 \"killer demo\" surface: you ask Cursor or Claude Code a question,\n    ```bash\n    ./tools/mcp-integration-smoke.sh\n    ```\n-   Expect a sequence of `OK:` lines and exit `0` — including a final `OK: stale-session echo_ping recovery` line that proves the stateless transport from item 027 is in place. If it fails, se… [truncated; 39646 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::6ba78c4b605553e937c51c5547580c2662c2a09f",
+          "label": "6ba78c4",
+          "locator": "6ba78c4b605553e937c51c5547580c2662c2a09f"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::docs/mcp-integration.md",
+          "label": "docs/mcp-integration.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/docs/mcp-integration.md"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/server.ts",
+          "label": "src/mcp/server.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/server.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/_cursor.ts",
+          "label": "src/mcp/tools/_cursor.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/_cursor.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/search-memories.ts",
+          "label": "src/mcp/tools/search-memories.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/search-memories.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::src/mcp/tools/tail-session.ts",
+          "label": "src/mcp/tools/tail-session.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/src/mcp/tools/tail-session.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/recent-work-context.test.ts",
+          "label": "tests/mcp/tools/recent-work-context.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/recent-work-context.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tests/mcp/tools/tail-session.test.ts",
+          "label": "tests/mcp/tools/tail-session.test.ts",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tests/mcp/tools/tail-session.test.ts"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::tools/mcp-integration-smoke.sh",
+          "label": "tools/mcp-integration-smoke.sh",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/tools/mcp-integration-smoke.sh"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::6ba78c4b605553e937c51c5547580c2662c2a09f",
+          "kind": "commit",
+          "detail": "8 files changed, +849, -58"
+        }
+      },
+      "provenance": {
+        "source_event_id": "d6c35814-31bb-47a9-9a58-e1f727b6a3a2",
+        "raw_payload_hash": "e9bb4cec9cd8d2182d5c66385dfdafae5e648bc8d3f52eb13f21ef002c589993",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "351f600691abc7757d34ffd5fb6218fe8042e376",
+          "files_changed": "8",
+          "additions": "849",
+          "deletions": "58"
+        }
+      }
+    },
+    "e2a7c1a3-acf0-4119-b23b-0ac2e9543021": {
+      "schema_version": 1,
+      "id": "e2a7c1a3-acf0-4119-b23b-0ac2e9543021",
+      "time": {
+        "occurred_at": "2026-05-08T22:48:47.632Z"
+      },
+      "source": {
+        "app": "claude_code",
+        "surface": "jsonl",
+        "raw_pointer": "fs:/Users/<redacted>/.claude/projects/-Users-<redacted>-Desktop-Project-echo/5c4ab280-d7d3-4fe3-a469-737077fa054d.jsonl"
+      },
+      "actors": [
+        {
+          "role": "user"
+        },
+        {
+          "role": "assistant",
+          "provider": "anthropic",
+          "model": "claude-opus-4-7"
+        }
+      ],
+      "action": {
+        "kind": "message",
+        "input": "commit the fixes",
+        "output": "Committed as `7e4d4e0` — 7 files changed, 49 insertions, 63 deletions. Working tree clean.\n\nLocal-only; not pushed. Let me know when you want it pushed to `origin/main` (you're now 1 ahead)."
+      },
+      "artifacts": [
+        {
+          "type": "conversation",
+          "provider": "claude_code",
+          "id": "claude_code:5c4ab280-d7d3-4fe3-a469-737077fa054d",
+          "label": "5c4ab280-d7d3-4fe3-a469-737077fa054d"
+        },
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        }
+      ],
+      "provenance": {
+        "source_event_id": "e2a7c1a3-acf0-4119-b23b-0ac2e9543021",
+        "raw_payload_hash": "ee8d903750fc33e69b256df2f726556ead0d962f7775e5cd7ba169ce53a937a4",
+        "extractor_version": "claude-code@1"
+      },
+      "conversation": {
+        "provider": "claude_code",
+        "session_id": "5c4ab280-d7d3-4fe3-a469-737077fa054d",
+        "turn_index": 12
+      },
+      "context": {
+        "ambient": {
+          "had_tool_use": "true",
+          "branch": "main",
+          "cli_version": "2.1.119",
+          "permission_mode": "auto"
+        }
+      }
+    },
+    "e70dc7f2-c1eb-4226-a3f2-4f735362a776": {
+      "schema_version": 1,
+      "id": "e70dc7f2-c1eb-4226-a3f2-4f735362a776",
+      "time": {
+        "occurred_at": "2026-05-08T22:29:39.000Z"
+      },
+      "source": {
+        "app": "git",
+        "surface": "commit",
+        "raw_pointer": "git:/Users/<redacted>/Desktop/Project_echo"
+      },
+      "actors": [
+        {
+          "role": "user",
+          "name": "Zhen"
+        }
+      ],
+      "action": {
+        "kind": "commit",
+        "verb": "committed",
+        "input": "claim: 2026-05-08-026-tail-session-tool",
+        "output": "diff --git a/backlog/ready/2026-05-08-026-tail-session-tool.md b/backlog/claimed/2026-05-08-026-tail-session-tool.md\nsimilarity index 99%\nrename from backlog/ready/2026-05-08-026-tail-session-tool.md\nrename to backlog/claimed/2026-05-08-026-tail-session-tool.md\nindex 9bc58bc..9d6e025 100644\n--- a/backlog/ready/2026-05-08-026-tail-session-tool.md\n+++ b/backlog/claimed/2026-05-08-026-tail-session-tool.md\n@@ -4,9 +4,9 @@ title: V1.5.4 `tail_session` MCP tool — cheap exact-fetch for the cross-AI han… [truncated; 266 chars omitted; fetch full atom via search_memories]"
+      },
+      "artifacts": [
+        {
+          "type": "repo",
+          "provider": "local",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo",
+          "label": "Project_echo",
+          "locator": "/Users/<redacted>/Desktop/Project_echo"
+        },
+        {
+          "type": "commit",
+          "provider": "git",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::0c3a74605e3c7a5cb517ff9fcd84be9577e2d30c",
+          "label": "0c3a746",
+          "locator": "0c3a74605e3c7a5cb517ff9fcd84be9577e2d30c"
+        },
+        {
+          "type": "file",
+          "provider": "local_fs",
+          "id": "local:/Users/<redacted>/Desktop/Project_echo::backlog/claimed/2026-05-08-026-tail-session-tool.md",
+          "label": "backlog/claimed/2026-05-08-026-tail-session-tool.md",
+          "locator": "/Users/<redacted>/Desktop/Project_echo/backlog/claimed/2026-05-08-026-tail-session-tool.md"
+        }
+      ],
+      "state": {
+        "delta": {
+          "artifact_id": "local:/Users/<redacted>/Desktop/Project_echo::0c3a74605e3c7a5cb517ff9fcd84be9577e2d30c",
+          "kind": "commit",
+          "detail": "1 files changed, +3, -3"
+        }
+      },
+      "provenance": {
+        "source_event_id": "e70dc7f2-c1eb-4226-a3f2-4f735362a776",
+        "raw_payload_hash": "8c652ae95f1eb7871ac8a6a67263cee578e2f215f154d89ef95f3cd37fe3afd1",
+        "extractor_version": "git@1"
+      },
+      "context": {
+        "ambient": {
+          "parent_sha": "db3001d4246e693a55fce7c027752dfbbc9afca5",
+          "files_changed": "1",
+          "additions": "3",
+          "deletions": "3"
+        }
+      }
+    }
+  },
+  "truncation": {
+    "atoms_returned": 20,
+    "atoms_total_in_window": 110,
+    "clusters_returned": 1,
+    "clusters_total": 2,
+    "truncated": true
+  },
+  "warnings": [
+    "limit dropped 1 entire cluster(s); raise `limit` or narrow the (since, until) window to retain them"
+  ]
+}

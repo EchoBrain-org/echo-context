@@ -1,0 +1,15 @@
+{
+  "count": 8,
+  "note": "Exactly the eight read-only context retrieval tools registered by src/mcp/server.ts. No coord/product/loop tools. Capture is service-only (POST /v1/capture), never a ninth MCP tool.",
+  "schema": "context-tools.v1",
+  "tools": [
+    "echo_ping",
+    "echo_resolve_mru",
+    "find_clusters",
+    "get_atom",
+    "get_atoms",
+    "get_recent_work_context",
+    "search_memories",
+    "wait_for_new_turns"
+  ]
+}
