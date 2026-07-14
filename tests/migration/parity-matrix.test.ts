@@ -65,12 +65,23 @@ describe('AC6 — parity matrix + source inventory', () => {
 // AC6 F5 — the rewrite-replay verifier is fail-closed: an authored whole-blob
 // substitution, an incomplete/mismatched replay, and an omitted descriptor must
 // all be REJECTED. These mutation fixtures exercise check-parity's real logic.
+type CheckParity = {
+  applyUnifiedDiff: (source: string, patch: string) => string;
+  sha256: (buf: Buffer) => string;
+  sharedLineFraction: (source: string, target: string) => number;
+  verifyRewrittenRow: (sourceBytes: Buffer, targetBytes: Buffer, row: unknown) => void;
+  verifyDuplicatedRow: (sourceBytes: Buffer, targetBytes: Buffer, row: unknown) => void;
+};
+const importCheckParity = (): Promise<CheckParity> =>
+  // @ts-expect-error tools/check-parity.mjs is a plain .mjs tool with no .d.ts; its shape is asserted via CheckParity.
+  import('../../tools/check-parity.mjs') as Promise<CheckParity>;
+
 describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixtures)', () => {
   const source = 'line1\nline2\nline3\nline4\nline5\n';
   const b = (s: string) => Buffer.from(s, 'utf8');
 
   it('a legitimate deletion rewrite (replay reproduces target) PASSES', async () => {
-    const { applyUnifiedDiff, sha256, verifyRewrittenRow } = await import('../../tools/check-parity.mjs');
+    const { applyUnifiedDiff, sha256, verifyRewrittenRow } = await importCheckParity();
     // delete line3 (a genuine, source-preserving edit)
     const patch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n line2\n-line3\n line4\n line5\n';
     const target = applyUnifiedDiff(source, patch);
@@ -79,7 +90,7 @@ describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixture
   });
 
   it('a whole-blob substitution (target shares nothing with source) is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const { verifyRewrittenRow, sha256 } = await importCheckParity();
     const target = 'totally\ndifferent\nauthored\ncontent\nhere\n';
     // even with a patch that reproduces it, the shared-line guard rejects it.
     const patch = '--- a\n+++ b\n@@ -1,5 +1,5 @@\n-line1\n-line2\n-line3\n-line4\n-line5\n+totally\n+different\n+authored\n+content\n+here\n';
@@ -88,7 +99,7 @@ describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixture
   });
 
   it('an incomplete/mismatched replay (patch does not reproduce target) is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const { verifyRewrittenRow, sha256 } = await importCheckParity();
     const realTarget = 'line1\nline2\nline4\nline5\n'; // line3 deleted
     // recorded patch only deletes line2 — reproduces a DIFFERENT stream than realTarget
     const wrongPatch = '--- a\n+++ b\n@@ -1,5 +1,4 @@\n line1\n-line2\n line3\n line4\n line5\n';
@@ -97,14 +108,14 @@ describe('AC6 — rewrite replay + anti-whole-blob enforcement (mutation fixture
   });
 
   it('a rewritten row with no replay_patch descriptor is REJECTED', async () => {
-    const { verifyRewrittenRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const { verifyRewrittenRow, sha256 } = await importCheckParity();
     const target = 'line1\nline2\nline4\nline5\n';
     const row = { path: 'x', replay_command: 'cmd', target_content_sha256: sha256(b(target)) } as unknown as { path: string };
     expect(() => verifyRewrittenRow(b(source), b(target), row)).toThrow(/lacks replay_patch/);
   });
 
   it('a duplicated row that is a byte-copy of the source is REJECTED (no silent double-claim)', async () => {
-    const { verifyDuplicatedRow, sha256 } = await import('../../tools/check-parity.mjs');
+    const { verifyDuplicatedRow, sha256 } = await importCheckParity();
     const row = { path: 'x', duplication_rationale: 'r', target_content_sha256: sha256(b(source)) };
     expect(() => verifyDuplicatedRow(b(source), b(source), row)).toThrow(/byte-copy/);
   });
