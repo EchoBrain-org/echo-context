@@ -1,0 +1,14 @@
+{
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "native_artifact": {
+    "path": "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+    "sha256": "289ac2671fc501b275af7ce170ea2ef84e07be7e2a4a403aaa055cef02018557",
+    "size_bytes": 1985384
+  },
+  "network_denial_during_build": "deny (sandbox-exec deny network*); build succeeded offline from prebuilt cache tarballs + local toolchain",
+  "node": "v22.22.1",
+  "npm": "10.9.4",
+  "npm_config_nodedir": "/usr/local/Cellar/node@22/22.22.1_1",
+  "python": "Python 3.10.7",
+  "schema": "native-toolchain.v1"
+}

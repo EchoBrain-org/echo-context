@@ -113,7 +113,7 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapter-sync.ts",
       "source_blob_oid": "7c57a3a0f808f2a353436413c91d2b591420db6a",
       "source_content_sha256": "904cf53589c798d6af861ea8d61f049fe843f2d9ee859f7f3f3ab922300aa405"
@@ -127,56 +127,56 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/claude-code-mcp.ts",
       "source_blob_oid": "27449ace3b0a039a531594673c7c4355e1b8a453",
       "source_content_sha256": "6c2ae43810de1675f7e74b4440c576433f5e043d773f4a5b7cbd70e88b30429f"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/codex-config.ts",
       "source_blob_oid": "a83d1a404c886ceb8761a2939ca2bee53abefb50",
       "source_content_sha256": "92ee087ba1f8cd4e92618be6e92285a250ddf31ce71cd40f29a594205efd27d3"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/cursor-config.ts",
       "source_blob_oid": "868909c9ac9c53f340528314208441cf749b024c",
       "source_content_sha256": "51b7f5b8ce153453d9af35bca48ecb099dfbb198020907c305d959277bd80bf0"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/markers.ts",
       "source_blob_oid": "e1b1bcc3acb0d8896f99b5519b74521dde546cb8",
       "source_content_sha256": "95984378739d971a4e0c2d8b5165f208daa3e15eb66f5e67c8a88639dcea28ba"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/role-sync.ts",
       "source_blob_oid": "bf7f2b749fd022225ccfd35332f126294723a792",
       "source_content_sha256": "b24fa457bf74aa6a2db71471062c131b780a36cb88084ce1ab13e1d4d9d469b9"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/skill-sync.ts",
       "source_blob_oid": "ba1110a13ab8ae1bf4827a8ae12c99d5b8b05cad",
       "source_content_sha256": "e3b79406613f852dc51c14fff2ae9370090ea0d6c6ec303adad92d925bb331cc"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/adapters/workflow-sync.ts",
       "source_blob_oid": "be8a4cd4eef3ddca7796dba11eb6a4c58efeee2a",
       "source_content_sha256": "efab605ccf8cb493ca0e6ad743f8a6cc1e836cc0f3b207cbe4e179453ba57aef"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/index.ts",
       "source_blob_oid": "58750198e1e4283b2f346ca6a2055940d23b28f2",
       "source_content_sha256": "26ac2eaaaaa5b645b494672aadceb437fddca190a55ae1bbdd31a36cc7e77964"
@@ -190,14 +190,14 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/roles.ts",
       "source_blob_oid": "cc1f8c4d5f95951732e4cd06b929e92b71ef7993",
       "source_content_sha256": "9c34157b11391d5982f232e1adf1e80ac5545d8c4667b760fd1ffa04e31d1c92"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "src/echo-home/scaffold.ts",
       "source_blob_oid": "573b3fa80303b333c60d84a2304708dda62420aa",
       "source_content_sha256": "8ac667c119a5df3e729af2b15a91fa78f7c64e3d7a2343d061d7869b03c55dc5"
@@ -215,98 +215,98 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/adapter-cache.ts",
       "source_blob_oid": "3788b84ff260c4aff87e39a1d9631153d6163233",
       "source_content_sha256": "51df58febd78a3f9502391efe1880a8e8dc8fbedd9bc40610729d7283068b384"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/atom-store-readonly.ts",
       "source_blob_oid": "69e4b2b5cca07c21d9779b6a82ec763d7c7dc098",
       "source_content_sha256": "a7ed0b11be21ef8bcc1c4292dbe5171316304574709895a5094a19478ef5bae9"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/detect-agents.ts",
       "source_blob_oid": "0135f0d4c74ce985a0f447d0542c4a3acadb5104",
       "source_content_sha256": "367948d3b4d9fdecbf0993eb25720e08ad550ffb0de77bc839e87428f0d48f85"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/detect-projects.ts",
       "source_blob_oid": "4f916e51f54ba9c91c83fce684f83256f83cf3c9",
       "source_content_sha256": "755ce70bd1c0094a3599fafc67b0bd773745006e2079089734b433aedaf498d2"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/index.ts",
       "source_blob_oid": "9bc1c34d5c4984c711315d4e0d3f71203c2a5f1a",
       "source_content_sha256": "8c9e65676d959e7e7b3e6b3662ddfcfe347da94da2b1648e42a78b23decfbc38"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/probe.ts",
       "source_blob_oid": "71c84619e64b2c4fe54977e5c971b32884876268",
       "source_content_sha256": "e370962259f8e6b1cbf9161d7c433ead7cb4d7f7272480967a84c80e5f04ea4e"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/render-echo-section.ts",
       "source_blob_oid": "3705266f57b5fa76ce1c82ca6e68cbec86895ae7",
       "source_content_sha256": "390aff3dda464a2552d897262f73f2dcaca25e753beb850c8e63c5afb7530b7f"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/run-wizard.ts",
       "source_blob_oid": "a426f75abec4c6a2a38779e59e533bde9b597590",
       "source_content_sha256": "c00bd884ac183dda5239493a205da8f224bc2747b79dedae784eec3c836c5ecf"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "src/echo-home/wizard/wire.ts",
       "source_blob_oid": "f92831c7fb121c8d43f84522481f335efd721da4",
       "source_content_sha256": "f6b3c81e35305182ef3624cd2a03d44eae9204939537ed134d8cd9ef8d5ad533"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/decision-drift.ts",
       "source_blob_oid": "8f17b1ced971eb63802a46f12f5029af34a4b41e",
       "source_content_sha256": "0b7ab8c54c1e644eb3a36813c1f3a932bdaad8b060abfb07f380bb77b39f4216"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/dispatch.ts",
       "source_blob_oid": "19686604565b52a5ddd8e5adf70c9c2f6ff73dda",
       "source_content_sha256": "b06f9d48aed80d91f8b92e80893a531d472c200a90f4c44dd458fa005d27065e"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/granola-intake-candidates.ts",
       "source_blob_oid": "137a9be8d16d59167d3ceaf51c740fec1a4e69fc",
       "source_content_sha256": "5a8f7d37c39b24a4c8b85893e5a97af683f34534fafdaa700e62301d56bd7d67"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/granola-intake-seed-store.ts",
       "source_blob_oid": "babba581757d8ee1590235f78b09645eea01ebca",
       "source_content_sha256": "9e1d00a72bf0c180d9c7ad7ba6bdaecda8af6338f96a2c0d20cd3f9aedaed1fe"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/granola-signals-cli-adapter.ts",
       "source_blob_oid": "5a8ca8dabb3db7671b8371671406c37cd200ac75",
       "source_content_sha256": "ab10ada7555ad8528a0db1116e5742ed06d08cc92001beba7abbab659bda1213"
@@ -324,14 +324,14 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/post-meeting-brief.ts",
       "source_blob_oid": "dd296741c6c8fc0af761cd67d7ed8a45cf3ed049",
       "source_content_sha256": "c96d1b820eabda063fdb0c470827a4fcf7df41009a16dd0c2927a9028a7dccf8"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "src/enrich/worker-heartbeat.ts",
       "source_blob_oid": "fe4adceb46d99704a138aaa1fed79fdef61be667",
       "source_content_sha256": "d83fbfa0db6dd3f358503ec306dea39dc40a3ecc9d5894812d14b1690a5b5014"
@@ -398,21 +398,21 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/coord-emit.ts",
       "source_blob_oid": "815e896b1d5ab3f80b3ee577ed4a88ce65ab0244",
       "source_content_sha256": "bbb8564e44b86a9a5034e2a8e9064140a0849357478d0097f8cf5db2d71e26a5"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/coord-invoke.ts",
       "source_blob_oid": "51bf7cb17bfd53b5393dd879eb31a4cbaa3cf5ab",
       "source_content_sha256": "f89c9944316dd2e9dddbd1b568ece0029bf88d31329b7b0733df4f44aed654e9"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/coord-status.ts",
       "source_blob_oid": "2332eeb7e282624d12b341528894837f58e94edc",
       "source_content_sha256": "0f079b32d4fb6d9d51a6fdbc70e398c070b1a67607713211f449c65ac6192e01"
@@ -454,35 +454,35 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/get-role-state.ts",
       "source_blob_oid": "3e9b9d1ab89cc88bd293466551b9bd97f22c50dd",
       "source_content_sha256": "26b2af49b81fa426f08e708966cb84dd10d5952bcbc10170fecf8d80bfc02b5f"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/internal/decision-card-types.ts",
       "source_blob_oid": "7e2d782711f9169cf2e27bb304cb829820c553c1",
       "source_content_sha256": "e2ba8e0066c67fc7e9b308226e1a7e27a62f505c1e0ad83892f5f73b4e076b16"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/internal/decision-source-playbook.ts",
       "source_blob_oid": "db2d3556a4d0fce869b0486c2af04e161657f79e",
       "source_content_sha256": "38f24415a1aab09600f1a596010166b926835dc5b5d0657ebd7b1a16b361b7f3"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/list-task-states.ts",
       "source_blob_oid": "04b427c8f8e4cab36fadd6d5a3ef510e257c0e89",
       "source_content_sha256": "0c2db53a756adea203652e4c4e66aac67586778f5756dc2b90cb0bca9e928f24"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "src/mcp/tools/pending-decisions.ts",
       "source_blob_oid": "4288fa43f7169b97aeb66d950b87d9c6a9a322e8",
       "source_content_sha256": "6296593a853db0aacc4c1589b37383351ecb979db2c8f1a911cc07dbf29ed09c"
@@ -874,7 +874,7 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapter-sync.test.ts",
       "source_blob_oid": "f5035ef7b8ee976740a5f08e358ff189a7c31aa8",
       "source_content_sha256": "9d07a7034cc71d3abf2a6112f9f73b597c09954f57fea77db7d0230049689805"
@@ -888,63 +888,63 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/claude-code-mcp.test.ts",
       "source_blob_oid": "275fd02463748b9773a741fd369bea7e31e3b461",
       "source_content_sha256": "b395514ab98ae1b3a40adff46aef8d3bc8dec15d7134a596a953aa3fd6e98e13"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/codex-config.test.ts",
       "source_blob_oid": "6f8e09bb052698d0471be436b05f7f066e5a2b2a",
       "source_content_sha256": "e85c396c3fbb59905bd1313d35dab0e43e324d03bd59ea327ee6669859974932"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/cursor-config.test.ts",
       "source_blob_oid": "d37442af976beb6c394322e1a9e924c3f95ab8a5",
       "source_content_sha256": "f738734b758d5d1acfdea66d142ad89951315799ac723df6fef9b5234a8f155a"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/markers.test.ts",
       "source_blob_oid": "bb617a76d736db8bca0b3589586024ab8dc4a98e",
       "source_content_sha256": "550b227a7c425ec29e53c404a70e68be9371dbc26b77d10bdcdd8820417af84d"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/role-sync.test.ts",
       "source_blob_oid": "287f94817c8b22f2bebe0efcf3a87e5c0f99c87f",
       "source_content_sha256": "8c6bc422bd26136e00cf6b0272bc7d3382a6030356d1f41510acb4af80ac3e69"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/skill-sync.test.ts",
       "source_blob_oid": "a0ed8da1da33d1b168c531b04bfebea814aed8fd",
       "source_content_sha256": "76de6d72c6d2a1a876c8c8c3fa37819c822e9721a796ddbc926876eee26a316d"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/adapters/workflow-sync.test.ts",
       "source_blob_oid": "e6a43162c202eac66e61f5d9cc40b33329f20a74",
       "source_content_sha256": "6f19cc58289dc49c50a140ba14acbd89a5a208161121cfda791c96006c57ce71"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/command-spawn-boundary.test.ts",
       "source_blob_oid": "e36886dbb9751bf0d91ca02c0aa6f85125ee8ee7",
       "source_content_sha256": "d5008abcd4f854084f7930ff8fd209984162c3d227511123181bb6a3378265d5"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/default-roles.test.ts",
       "source_blob_oid": "724d3f9891234d608637f15a125426134b5b1c76",
       "source_content_sha256": "fa660f5b8d9f2e618d3d8a378316602603d9fe8bc2e810e6a1fcc8f111e9e313"
@@ -962,126 +962,126 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/roles.test.ts",
       "source_blob_oid": "a0aabf355d7d381c99668ea7f3f72ae4ef335a1d",
       "source_content_sha256": "676e21dc5202c87205fd35a9879d8c95469ee5ef3e8b50502e39a84f6aa7e370"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. echo-home onboarding / external-config-sync layer (adapter-sync, roles, scaffold, external-tool config adapters); not imported by the context core, reaches assets/echo-roles (outside the 20 sealed roots), and AC2 scopes src/ to context substrate (capture/normalize/storage/trace/retrieval/health/context-MCP), not onboarding. [AC2 scope + outside-roots + sibling-reach]",
       "path": "tests/echo-home/scaffold.test.ts",
       "source_blob_oid": "d0f7cc55efdd9a2f26cb7eece9f42cc72e1b844c",
       "source_content_sha256": "ca35ee8e46422dd0e0b66662ef3258925c47ca23ac778478182c92a20508dc10"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/adapter-cache.test.ts",
       "source_blob_oid": "620666a157b65f9e927418994defe8def4e7fd89",
       "source_content_sha256": "1160a7e866ef915f4d8eedc826a31e0070b640d44212832c5fc8cbe30fa9b9fb"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/detect-agents.test.ts",
       "source_blob_oid": "dca3b3810a435c1759146b8830657402d56cd9cd",
       "source_content_sha256": "77797f9fafcdf0e29e64d9ff9e307c35428b77642a8b67fa22753430b3c8e3d0"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/detect-projects.test.ts",
       "source_blob_oid": "d427b608a8954f181d71ae8b97f4db041ec537bf",
       "source_content_sha256": "d7777755fa2180b94c85694aeb53da8603d2dadc515039f45eae5820804f99f5"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/probe.test.ts",
       "source_blob_oid": "4209e75ff315474c3b27632695299ba1e93143c1",
       "source_content_sha256": "d24a4c907140d9dafb544dd282c10f778a2105073ab571823887f6a9ec661e6c"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/render-echo-section.test.ts",
       "source_blob_oid": "b157d2cc41f8da0cb67f23f99a903b3eaf7aa156",
       "source_content_sha256": "ca816f7cd90e554c3feac07c379fe4aa21e94c9a08f7df8ee4055d9b227ea371"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/run-wizard.test.ts",
       "source_blob_oid": "d7f11c5bcd47a113c2e2df6c30225d07205d137d",
       "source_content_sha256": "4307d300fdf4476adfc47985bf851bcf4eb295c85a4d81b41e403dd8f0d17366"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Onboarding wizard subtree; AC6 names echo-home/wizard/detect-agents, the subtree reaches src/daemon (outside the 20 sealed roots), and onboarding is not context substrate per AC2. [AC6 + outside-roots + AC2]",
       "path": "tests/echo-home/wizard/wire.test.ts",
       "source_blob_oid": "75c6cd3956c3a88c7b12445944bed70df2416485",
       "source_content_sha256": "ffba1081046fdaaaea3b2c0088ee463287c56e1f407f86a93c5906f8b1a37677"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Reaches src/brain (echo-brain / item-133 territory), which is outside the 20 sealed roots of the echo-context closure. [outside-roots + sibling-reach]",
       "path": "tests/enrich/brain-retrieval-capture.test.ts",
       "source_blob_oid": "4a527d3a7134019c5bd33a3b4a73f7e9e8dd3dad",
       "source_content_sha256": "a0f576e4fe433d9a1e56e260dc8d3f813ed67ca01e6310c4d48d179bff38e33a"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "tests/enrich/decision-drift.test.ts",
       "source_blob_oid": "7801f5faa3e32a22e48daf041c7df303acaa67a3",
       "source_content_sha256": "3e5d54d98a17fd608aef9e5ae83f131cb03a64ed8cc783debc949097fe2daa75"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "tests/enrich/granola-intake-candidates.test.ts",
       "source_blob_oid": "9303e5d806875455a1a7ed535f4117363c674f5a",
       "source_content_sha256": "c19d0e8c5eb8b5aacdc795cca48592227e349f3c5a25959e953733f04a91c888"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Reaches a forbidden capability or a path outside the 20 sealed roots. [outside-roots or excluded-module]",
       "path": "tests/enrich/granola-intake-card-atom.test.ts",
       "source_blob_oid": "e68100a48d96013b6af8d5feae78b3437ae21e55",
       "source_content_sha256": "92ffab6e4f3ef56ff9ff1a5cb4a029499f2f8d3a70d790ae1ed76309e124675c"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Reaches a forbidden capability or a path outside the 20 sealed roots. [outside-roots or excluded-module]",
       "path": "tests/enrich/granola-intake-cutoff-clock.test.ts",
       "source_blob_oid": "e60aa2f01eb2f82e6c6c3ec71bb775e3e8b5765e",
       "source_content_sha256": "ece8f4273b65576b6c7dc595d3acd9d5d6af7fbd9954f123639d62f98fa6bece"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "tests/enrich/granola-intake-seed-store.test.ts",
       "source_blob_oid": "230f0bdeacbae6fd666dc600f2a9b12722c50ba9",
       "source_content_sha256": "e997992f66b97fb9de55076ec873e7e8f5de05422143d018711bed30b07a0eb4"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Reaches a forbidden capability or a path outside the 20 sealed roots. [outside-roots or excluded-module]",
       "path": "tests/enrich/granola-signals.test.ts",
       "source_blob_oid": "b83e8e31ac3a7a770452dc0cd456bfa8f3e413cf",
       "source_content_sha256": "23b3308bffe82f455ab688a647f42678db792f24e39abc3ef9cdd394c801736b"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "tests/enrich/post-meeting-brief.test.ts",
       "source_blob_oid": "af4cd38c50eeafe6a1f8f331aa747af17dc602df",
       "source_content_sha256": "7ced22b1b5799a6691c0a8f6f9d71234b997ec42f5399a3e9060d56e0a82f538"
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Product enrichment worker/extractor (decision drift, Granola intake candidates/seed store, signal worker CLI, post-meeting brief, worker heartbeat, dispatch of those workers); AC6 names decision-drift/granola-intake-candidates/post-meeting-brief, AC5 marks post-meeting-brief item-133 product-owned, AC2 forbids decision/rationale/action extraction + briefs. [AC2/AC5 forbidden-capability + AC6]",
       "path": "tests/enrich/worker-heartbeat.test.ts",
       "source_blob_oid": "de2c4b272f26447c129da07fa78ed4514680d2ff",
       "source_content_sha256": "e5d2555c47919dc376031bc3954cf0a1917ef55047093c02bd94a4edac80eb83"
@@ -1172,7 +1172,7 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Reaches a forbidden capability or a path outside the 20 sealed roots. [outside-roots or excluded-module]",
       "path": "tests/mcp/pending-decisions.test.ts",
       "source_blob_oid": "e3fefc994489fa7026ec663bba0c8e9903c4a0ef",
       "source_content_sha256": "0cf7db3beb5e9ddd855337ca2548eae827cd8767bbe9fad5407fe6fc345e80cf"
@@ -1185,7 +1185,7 @@
       "source_blob_oid": "d4538161ad6600605c8730f67dd46f7460f0f66f",
       "source_content_sha256": "6a230c35697649025f1a7e5ce59f7f77d1e28a1a00e83cf2d9894a72375a0fb6",
       "summary": "Drop the removed enable_deadlines option from startMcpServer calls.",
-      "target_content_sha256": "51ae54261f5cbbaff423f204230b92f4d324af968af4ce768f4ce3a1f983ff04",
+      "target_content_sha256": "c3e2dfa2873aa69c571a0c44c0bb52863d8432a73b417ef110d871cb267fb279",
       "target_path": "tests/mcp/recent-calls-endpoint.test.ts"
     },
     {
@@ -1236,7 +1236,7 @@
     },
     {
       "disposition": "excluded",
-      "excluded_reason": "forbidden-capability module or its test (product/loop), onboarding/config-sync, or reaches outside the sealed roots",
+      "excluded_reason": "Test of an excluded module. Loop-coordination / product-decision MCP tool; AC6 excludes the coord/product tool files under src/mcp, and AC2 forbids loop coordination + product decision/rationale/action extraction tools. [AC2 forbidden-capability + AC6]",
       "path": "tests/mcp/tools/list-task-states-batching.test.ts",
       "source_blob_oid": "3cc57382c72162915593c3edb9475a35fc50d488",
       "source_content_sha256": "0a964baff6ab030295c070c928e6b68ee9673a3e6ec04533680486a997a47cb8"

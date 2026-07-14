@@ -1,0 +1,34 @@
+{
+  "ci": {
+    "command": "npm ci --offline --ignore-scripts --no-audit --no-fund",
+    "exit": 0,
+    "packages_added": 290,
+    "scripts_executed": []
+  },
+  "network_denial": {
+    "direct_ip_tcp": "FAIL-EPERM",
+    "dns": "FAIL-ENOTFOUND",
+    "https": "FAIL-ENOTFOUND",
+    "loopback_control": {
+      "inside_profile": "LISTEN-DENIED-EPERM",
+      "outside_profile": "ACCEPT"
+    }
+  },
+  "rebuild": {
+    "argv_summary": "node-gyp rebuild with npm_config_nodedir=/usr/local/Cellar/node@22/22.22.1_1",
+    "command": "npm rebuild better-sqlite3 --offline --foreground-scripts --build-from-source",
+    "exit": 0,
+    "produced": [
+      {
+        "path": "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+        "sha256": "289ac2671fc501b275af7ce170ea2ef84e07be7e2a4a403aaa055cef02018557"
+      }
+    ],
+    "script_executed": "better-sqlite3 install/rebuild (node-gyp build-from-source)"
+  },
+  "schema": "lifecycle-observed.v1",
+  "scripts_executed_total": [
+    "better-sqlite3"
+  ],
+  "smoke": "better-sqlite3 in-memory db open/insert/select OK under deny-network"
+}

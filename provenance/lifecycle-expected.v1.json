@@ -1,0 +1,46 @@
+{
+  "allowed_to_execute": [
+    "better-sqlite3"
+  ],
+  "expected_outputs": [
+    "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+  ],
+  "hooks_in_tree": [
+    {
+      "has_install_script": true,
+      "integrity": "sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==",
+      "name": "better-sqlite3",
+      "resolved": "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-12.11.1.tgz",
+      "version": "12.11.1"
+    },
+    {
+      "has_install_script": true,
+      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
+      "name": "esbuild",
+      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz",
+      "version": "0.28.1"
+    },
+    {
+      "has_install_script": true,
+      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+      "name": "fsevents",
+      "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+      "version": "2.3.3"
+    }
+  ],
+  "install_command": "npm ci --offline --ignore-scripts --no-audit --no-fund",
+  "must_not_execute": [
+    "esbuild",
+    "fsevents"
+  ],
+  "network": "deny (sandbox-exec (version 1) (allow default) (deny network*)); DNS + direct-IP + https must fail inside",
+  "npm_config_nodedir": "/usr/local/Cellar/node@22/22.22.1_1",
+  "policy": "Offline-after-cache-fill. npm ci runs with --ignore-scripts (no lifecycle script executes during ci). Only the pinned better-sqlite3 rebuild is allowed to execute, via an explicit `npm rebuild better-sqlite3 --offline --foreground-scripts --build-from-source` with npm_config_nodedir pinned. esbuild and fsevents carry install scripts in the lock but are NOT executed (their platform binaries ship as optional-dependency packages, not via scripts).",
+  "rebuild_command": "npm rebuild better-sqlite3 --offline --foreground-scripts --build-from-source",
+  "schema": "lifecycle-expected.v1",
+  "toolchain_inputs": {
+    "node": "22.22.1",
+    "nodedir": "/usr/local/Cellar/node@22/22.22.1_1",
+    "npm": "10.9.4"
+  }
+}
