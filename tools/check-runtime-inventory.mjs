@@ -391,6 +391,12 @@ function analyzeEntrypoint(entrypoint) {
     const inspectRootImports = (embeddedSourceFile) => {
       const inspect = (node) => {
         if (ts.isStringLiteralLike(node)) inspectPackagePath(node.text);
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+          const specifier = literalValue(node.moduleSpecifier);
+          if (specifier === null) die(`computed embedded import in ${file}: ${nodeText(node, embeddedSourceFile)}`);
+          if (specifier.startsWith('node:')) add(file, 'node_builtin', specifier);
+          else if (!specifier.startsWith('.')) addBare(file, specifier);
+        }
         if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'rootImport') {
           const specifier = node.arguments.length === 1 ? literalValue(node.arguments[0]) : null;
           if (specifier === null) die(`computed rootImport in ${file}: ${nodeText(node, embeddedSourceFile)}`);
