@@ -36,16 +36,18 @@ describe('AC6/AC7 — object closure', () => {
     expect(all).toEqual(reachable);
   });
 
-  it('every tracked file is in the target-only ∪ source-extraction allowlist (exact-HEAD safety)', async () => {
+  it('the tracked file set EXACTLY equals the target-only(38) ∪ source-extraction(152) partition', async () => {
     const { readFileSync } = await import('node:fs');
-    const tracked = git(['ls-files']).split('\n').filter(Boolean);
+    const tracked = new Set(git(['ls-files']).split('\n').filter(Boolean));
     const policy = JSON.parse(readFileSync(join(ROOT, 'provenance/target-only-policy.v1.json'), 'utf8')) as { target_only_paths: string[] };
     const extraction = JSON.parse(readFileSync(join(ROOT, 'provenance/source-extraction.v1.json'), 'utf8')) as { rows: { path: string }[] };
     const allowed = new Set([...policy.target_only_paths, ...extraction.rows.map((r) => r.path)]);
-    const unexpected = tracked.filter((f) => !allowed.has(f));
-    // No tracked file may fall outside the allowlist. (Completeness — that every
-    // allowlisted target-only path EXISTS — closes with AC8's three files; until
-    // then this one-directional check guards against stray tracked files.)
-    expect(unexpected).toEqual([]);
+    // Exact-HEAD equality (both directions): no stray tracked file, and every
+    // allowlisted path is present.
+    expect([...tracked].filter((f) => !allowed.has(f))).toEqual([]);
+    expect([...allowed].filter((f) => !tracked.has(f))).toEqual([]);
+    expect(tracked.size).toBe(190);
+    expect(policy.target_only_paths.length).toBe(38);
+    expect(extraction.rows.length).toBe(152);
   });
 });
