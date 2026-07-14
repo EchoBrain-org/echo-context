@@ -6,7 +6,279 @@
     "response_body_bytes": 262144,
     "request_deadline_ms": 5000,
     "graceful_shutdown_ms": 5000,
-    "max_atom_ids": 100
+    "max_atom_ids": 50,
+    "default_wait_seconds": 1,
+    "max_wait_seconds": 4
+  },
+  "definitions": {
+    "nullableString": {
+      "anyOf": [{ "type": "string" }, { "type": "null" }]
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "metadataMatchValue": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      ]
+    },
+    "metadataMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspace_id": { "$ref": "#/$defs/metadataMatchValue" },
+        "composer_id": { "$ref": "#/$defs/metadataMatchValue" },
+        "session_id": { "$ref": "#/$defs/metadataMatchValue" },
+        "repo_root": { "$ref": "#/$defs/metadataMatchValue" },
+        "source": { "$ref": "#/$defs/metadataMatchValue" },
+        "signal_type": { "$ref": "#/$defs/metadataMatchValue" },
+        "canonical_subject": { "$ref": "#/$defs/metadataMatchValue" },
+        "granola_atom_type": { "$ref": "#/$defs/metadataMatchValue" },
+        "note_id": { "$ref": "#/$defs/metadataMatchValue" },
+        "dedupe_key": { "$ref": "#/$defs/metadataMatchValue" },
+        "parent_dedupe_key": { "$ref": "#/$defs/metadataMatchValue" },
+        "extraction_run_id": { "$ref": "#/$defs/metadataMatchValue" }
+      }
+    },
+    "searchMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "content": { "type": "string" },
+        "bytes_elided": { "type": "integer", "minimum": 0 },
+        "metadata": { "type": "object" },
+        "metadata_bytes_elided": { "type": "integer", "minimum": 0 },
+        "metadata_keys_elided": { "type": "array", "items": { "type": "string" } },
+        "metadata_keys_projected": { "type": "array", "items": { "type": "string" } },
+        "truncations": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "source", "timestamp", "content", "truncations"]
+    },
+    "artifactHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "type": { "type": "string" },
+        "id": { "type": "string" }
+      },
+      "required": ["provider", "type", "id"]
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "provider": { "type": "string" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "locator": { "type": "string" }
+      },
+      "required": ["type", "provider", "id"]
+    },
+    "timeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "occurred_at": { "type": "string" },
+        "observed_at": { "type": "string" },
+        "duration_ms": { "type": "number", "minimum": 0 }
+      },
+      "required": ["occurred_at"]
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "string" },
+        "surface": { "type": "string" },
+        "account": { "type": "string" },
+        "raw_pointer": { "type": "string" }
+      },
+      "required": ["app", "raw_pointer"]
+    },
+    "actorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "provider": { "type": "string" }
+      },
+      "required": ["role"]
+    },
+    "actionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "verb": { "type": "string" },
+        "input": { "type": "string" },
+        "output": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["kind"]
+    },
+    "contextRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": { "type": "array", "items": { "type": "string" } },
+        "selected": { "type": "string" },
+        "ambient": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "snapshotRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string" },
+        "hash": { "type": "string" },
+        "summary": { "type": "string" }
+      },
+      "required": ["artifact_id"]
+    },
+    "deltaRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string" },
+        "kind": { "type": "string" },
+        "detail": { "type": "string" }
+      },
+      "required": ["artifact_id", "kind"]
+    },
+    "observedState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "snapshot": { "$ref": "#/$defs/snapshotRef" } },
+          "required": ["snapshot"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "delta": { "$ref": "#/$defs/deltaRef" } },
+          "required": ["delta"]
+        }
+      ]
+    },
+    "conversationRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "session_id": { "type": "string" },
+        "turn_index": { "type": "integer" },
+        "parent_event_id": { "type": "string" }
+      },
+      "required": ["provider", "session_id"]
+    },
+    "provenanceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_event_id": { "type": "string" },
+        "raw_payload_hash": { "type": "string" },
+        "extractor_version": { "type": "string" },
+        "redacted_fields": { "type": "array", "items": { "type": "string" } },
+        "parse_warnings": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["source_event_id", "raw_payload_hash", "extractor_version"]
+    },
+    "normalizedContextEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": 1 },
+        "id": { "type": "string" },
+        "time": { "$ref": "#/$defs/timeRef" },
+        "source": { "$ref": "#/$defs/sourceRef" },
+        "actors": { "type": "array", "items": { "$ref": "#/$defs/actorRef" } },
+        "action": { "$ref": "#/$defs/actionRef" },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifactRef" } },
+        "context": { "$ref": "#/$defs/contextRef" },
+        "state": { "$ref": "#/$defs/observedState" },
+        "conversation": { "$ref": "#/$defs/conversationRef" },
+        "open_loop_hints": { "type": "array", "items": { "type": "string" } },
+        "provenance": { "$ref": "#/$defs/provenanceRef" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["schema_version", "id", "time", "source", "actors", "action", "artifacts", "provenance"]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": { "const": "shared_artifact" },
+        "artifact_ids": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      },
+      "required": ["from", "to", "kind", "artifact_ids", "confidence"]
+    },
+    "openLoopHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "atom_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["ends_with_question", "unresolved_assistant_q", "contains_todo", "explicit_followup"] },
+        "text": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "resolved": { "type": "boolean" },
+        "resolved_by_atom_id": { "type": "string" }
+      },
+      "required": ["atom_id", "kind", "text", "confidence", "resolved"]
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": { "type": "string" },
+        "rank": { "type": "integer", "minimum": 1 },
+        "rank_reason": { "type": "array", "items": { "type": "string" } },
+        "label": { "type": "string" },
+        "anchor_artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifactRef" } },
+        "atom_ids": { "type": "array", "items": { "type": "string" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "open_loop_hints": { "type": "array", "items": { "$ref": "#/$defs/openLoopHint" } },
+        "source_breakdown": { "$ref": "#/$defs/countMap" },
+        "time_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "from": { "type": "string" }, "to": { "type": "string" } },
+          "required": ["from", "to"]
+        }
+      },
+      "required": ["cluster_id", "rank", "rank_reason", "anchor_artifacts", "atom_ids", "edges", "open_loop_hints", "source_breakdown", "time_range"]
+    },
+    "getAtomsAtom": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "content": { "type": "string" },
+        "metadata": { "type": "object" },
+        "truncations": { "type": "array", "items": { "type": "string" } },
+        "content_bytes_elided": { "type": "integer", "minimum": 0 },
+        "metadata_bytes_elided": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "source", "timestamp", "truncations"]
+    }
   },
   "endpoints": {
     "GET /v1/ping": {
@@ -43,19 +315,47 @@
         "additionalProperties": false,
         "properties": {
           "query": { "type": "string", "maxLength": 4096 },
-          "source_app": { "type": "string", "maxLength": 128 },
+          "source_app": { "type": "string", "enum": ["cursor", "claude_code", "codex", "git", "granola"] },
           "source_prefix": { "type": "string", "maxLength": 4096 },
           "source": { "type": "string", "maxLength": 4096 },
-          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
           "cursor": { "type": "string", "maxLength": 4096 },
           "repo_path": { "type": "string", "maxLength": 4096 },
-          "metadata_match": { "type": "object", "maxProperties": 16 },
+          "metadata_match": { "$ref": "#/$defs/metadataMatch" },
           "since": { "type": "string", "maxLength": 64 },
           "until": { "type": "string", "maxLength": 64 }
         },
         "required": []
       },
-      "response": { "type": "object", "maxProperties": 64 }
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "matches": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/searchMatch" } },
+          "total_returned": { "type": "integer", "minimum": 0, "maximum": 50 },
+          "limit_applied": { "type": "integer", "minimum": 1, "maximum": 50 },
+          "next_cursor": { "$ref": "#/$defs/nullableString" },
+          "query_echo": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "query": { "$ref": "#/$defs/nullableString" },
+              "source_app": { "anyOf": [{ "type": "string", "enum": ["cursor", "claude_code", "codex", "git", "granola"] }, { "type": "null" }] },
+              "source_prefix": { "$ref": "#/$defs/nullableString" },
+              "source": { "$ref": "#/$defs/nullableString" },
+              "since": { "$ref": "#/$defs/nullableString" },
+              "until": { "$ref": "#/$defs/nullableString" },
+              "cursor": { "$ref": "#/$defs/nullableString" },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
+              "repo_path": { "$ref": "#/$defs/nullableString" },
+              "metadata_match": { "anyOf": [{ "$ref": "#/$defs/metadataMatch" }, { "type": "null" }] }
+            },
+            "required": ["query", "source_app", "source_prefix", "source", "since", "until", "cursor", "limit", "repo_path", "metadata_match"]
+          },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["matches", "total_returned", "limit_applied", "next_cursor", "query_echo", "warnings"]
+      }
     },
     "POST /v1/clusters": {
       "request": {
@@ -71,24 +371,68 @@
         },
         "required": []
       },
-      "response": { "type": "object", "maxProperties": 64 }
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": { "const": 1 },
+          "tool": { "const": "get_recent_work_context" },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "since": { "type": "string" },
+              "until": { "type": "string" },
+              "artifact_hint": { "anyOf": [{ "$ref": "#/$defs/artifactHint" }, { "type": "null" }] },
+              "format": { "type": "string", "enum": ["minimal", "skeleton", "full"] },
+              "window_hours": { "type": "number", "exclusiveMinimum": 0 },
+              "repo_path": { "$ref": "#/$defs/nullableString" }
+            },
+            "required": ["since", "until", "artifact_hint", "format", "window_hours", "repo_path"]
+          },
+          "clusters": { "type": "array", "items": { "$ref": "#/$defs/cluster" } },
+          "atoms": { "type": "object", "maxProperties": 100, "additionalProperties": { "$ref": "#/$defs/normalizedContextEvent" } },
+          "truncation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "atoms_returned": { "type": "integer", "minimum": 0 },
+              "atoms_total_in_window": { "type": "integer", "minimum": 0 },
+              "clusters_returned": { "type": "integer", "minimum": 0 },
+              "clusters_total": { "type": "integer", "minimum": 0 },
+              "truncated": { "type": "boolean" },
+              "source_breakdown": { "$ref": "#/$defs/countMap" }
+            },
+            "required": ["atoms_returned", "atoms_total_in_window", "clusters_returned", "clusters_total", "truncated"]
+          },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["schema_version", "tool", "query", "clusters", "atoms", "truncation", "warnings"]
+      }
     },
     "POST /v1/atoms": {
       "request": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "atom_ids": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
-          "format": { "type": "string", "enum": ["minimal", "full"] },
-          "prefer": { "type": "string", "maxLength": 64 }
+          "atom_ids": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+          "format": { "const": "minimal" },
+          "prefer": { "type": "string", "enum": ["as_requested", "newest_first"] }
         },
         "required": ["atom_ids"]
       },
       "response": {
         "type": "object",
         "additionalProperties": false,
-        "properties": { "atoms": { "type": "array", "maxItems": 100 } },
-        "required": ["atoms"]
+        "properties": {
+          "schema_version": { "const": 1 },
+          "tool": { "const": "get_atoms" },
+          "atoms": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/getAtomsAtom" } },
+          "atoms_dropped": { "type": "integer", "minimum": 0, "maximum": 50 },
+          "atoms_dropped_ids": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["schema_version", "tool", "atoms", "atoms_dropped", "atoms_dropped_ids", "warnings"]
       }
     },
     "POST /v1/wait": {
@@ -99,14 +443,37 @@
           "sources": { "type": "array", "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
           "source_prefix": { "type": "string", "minLength": 1, "maxLength": 4096 },
           "since": { "type": "string", "minLength": 1, "maxLength": 64 },
-          "timeout": { "type": "number", "minimum": 0, "maximum": 60 },
+          "timeout": { "type": "number", "minimum": 0, "maximum": 4 },
           "repo_path": { "type": "string", "maxLength": 4096 }
         },
         "required": ["since"],
-        "anyOf": [{ "required": ["sources"] }, { "required": ["source_prefix"] }]
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "sources": { "type": "array", "minItems": 1 } },
+            "required": ["sources"]
+          },
+          {
+            "type": "object",
+            "properties": { "source_prefix": { "type": "string", "minLength": 1 } },
+            "required": ["source_prefix"]
+          }
+        ]
       },
-      "response": { "type": "object", "maxProperties": 64 }
+      "response": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": { "const": 1 },
+          "tool": { "const": "wait_for_new_turns" },
+          "turn_ids": { "type": "array", "items": { "type": "string" } },
+          "next_since": { "type": "string" },
+          "timed_out": { "type": "boolean" },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["schema_version", "tool", "turn_ids", "next_since", "timed_out", "warnings"]
+      }
     }
   },
-  "notes": "Capture is service-only. Request bodies, result bytes, atom IDs, and deadlines are bounded; atoms use Storage.getByIds rather than whole-store scans."
+  "notes": "Capture is service-only. Request bodies, result bytes, atom IDs, and deadlines are bounded; atoms use the existing getAtoms projection abstraction (and therefore Storage.getByIds); wait duration is capped below the HTTP deadline so its poll loop completes before the request can time out."
 }

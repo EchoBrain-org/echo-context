@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,70 @@ interface RunningChild {
 let running: RunningChild | undefined;
 let base = '';
 const scratchRoots = new Set<string>();
+
+function readinessPromise(
+  child: ChildProcess,
+  stderr: () => string,
+): { ready: Promise<Ready>; extraReadyBytes: () => string } {
+  let extraReadyBytes = '';
+  const ready = new Promise<Ready>((resolve, reject) => {
+    let buffer = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) reject(new Error(`service readiness timeout; stderr=${stderr().slice(-4096)}`));
+    }, 10_000);
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    const fd3 = child.stdio[3] as NodeJS.ReadableStream;
+    fd3.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const newline = buffer.indexOf('\n');
+      if (newline < 0) return;
+      const line = buffer.slice(0, newline);
+      extraReadyBytes = buffer.slice(newline + 1);
+      finish(() => {
+        try {
+          const parsed = JSON.parse(line) as Partial<Ready>;
+          const canonical = `${JSON.stringify(parsed)}\n`;
+          if (canonical !== `${line}\n`) throw new Error('readiness record is not canonical JSON-LF');
+          if (
+            Object.keys(parsed).join(',') !== 'host,port,pid' ||
+            parsed.host !== '127.0.0.1' ||
+            !Number.isInteger(parsed.port) ||
+            parsed.port! < 1 ||
+            parsed.port! > 65535 ||
+            parsed.pid !== child.pid
+          ) {
+            throw new Error('readiness record does not identify the loopback process-group leader');
+          }
+          resolve(parsed as Ready);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    child.once('error', (error) => finish(() => reject(error)));
+    child.once('exit', (code, signal) =>
+      finish(() => reject(new Error(`service exited before readiness: code=${code} signal=${signal}; stderr=${stderr()}`))),
+    );
+  });
+  return { ready, extraReadyBytes: () => extraReadyBytes };
+}
+
+function teardownOnReadinessFailure(child: ChildProcess, ready: Promise<Ready>): Promise<Ready> {
+  return ready.catch(async (readinessError: unknown) => {
+    try {
+      await terminateGroup(child, false);
+    } catch (teardownError) {
+      throw new AggregateError([readinessError, teardownError], 'readiness rejected and child teardown failed');
+    }
+    throw readinessError;
+  });
+}
 
 function sanitizedEnvironment(home: string, additions: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const paths = {
@@ -51,7 +115,6 @@ function spawnService(options: { host?: string; envAdditions?: NodeJS.ProcessEnv
   const home = mkdtempSync(join(tmpdir(), 'echo-ctx-service-'));
   scratchRoots.add(home);
   let stderr = '';
-  let extraReadyBytes = '';
   const child = spawn(
     NODE,
     [
@@ -80,42 +143,14 @@ function spawnService(options: { host?: string; envAdditions?: NodeJS.ProcessEnv
       try { process.kill(-(child.pid ?? 0), 'SIGKILL'); } catch {}
     }
   });
-  const readyPromise = new Promise<Ready>((resolve, reject) => {
-    let buffer = '';
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) reject(new Error(`service readiness timeout; stderr=${stderr.slice(-4096)}`));
-    }, 10_000);
-    const finish = (action: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    const fd3 = child.stdio[3] as NodeJS.ReadableStream;
-    fd3.on('data', (chunk) => {
-      buffer += chunk.toString('utf8');
-      const newline = buffer.indexOf('\n');
-      if (newline < 0) return;
-      const line = buffer.slice(0, newline);
-      extraReadyBytes += buffer.slice(newline + 1);
-      finish(() => {
-        try {
-          const parsed = JSON.parse(line) as Ready;
-          const canonical = `${JSON.stringify(parsed)}\n`;
-          if (canonical !== `${line}\n`) throw new Error('readiness record is not canonical JSON-LF');
-          resolve(parsed);
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-    child.once('error', (error) => finish(() => reject(error)));
-    child.once('exit', (code, signal) =>
-      finish(() => reject(new Error(`service exited before readiness: code=${code} signal=${signal}; stderr=${stderr}`))),
-    );
-  });
-  return { child, home, readyPromise, stderr: () => stderr, extraReadyBytes: () => extraReadyBytes };
+  const readiness = readinessPromise(child, () => stderr);
+  return {
+    child,
+    home,
+    readyPromise: teardownOnReadinessFailure(child, readiness.ready),
+    stderr: () => stderr,
+    extraReadyBytes: readiness.extraReadyBytes,
+  };
 }
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }> {
@@ -208,7 +243,7 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(Buffer.byteLength(running!.stderr())).toBeLessThanOrEqual(STDERR_LIMIT);
   });
 
-  it('validates ping, capture, search, clustering, bounded getByIds atoms, and a real 100ms wait', async () => {
+  it('validates exact search/cluster/wait shapes and projects bounded getByIds atoms', async () => {
     const ping = await fetchJson('/v1/ping');
     expect(ping.status).toBe(200);
     expect(ping.json).toMatchObject({ pong: true });
@@ -222,14 +257,43 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(capture.status).toBe(200);
     const id = capture.json.id as string;
     expect(typeof id).toBe('string');
+    const newerCapture = await post('/v1/capture', {
+      source: 'claude_code:/svc',
+      timestamp: '2026-07-01T00:00:01.000Z',
+      content: 'beta service capture',
+      metadata: { repo_root: '/svc' },
+    });
+    expect(newerCapture.status).toBe(200);
+    const newerId = newerCapture.json.id as string;
 
     const search = await post('/v1/search', { query: 'alpha', limit: 10 });
     expect(search.status).toBe(200);
+    expect(Object.keys(search.json).sort()).toEqual([
+      'limit_applied', 'matches', 'next_cursor', 'query_echo', 'total_returned', 'warnings',
+    ]);
     expect((search.json.matches as { id: string }[]).map((match) => match.id)).toContain(id);
-    const atoms = await post('/v1/atoms', { atom_ids: [id], format: 'minimal' });
+    const atoms = await post('/v1/atoms', {
+      atom_ids: [id, newerId],
+      format: 'minimal',
+      prefer: 'newest_first',
+    });
     expect(atoms.status).toBe(200);
-    expect((atoms.json.atoms as { id: string }[]).map((atom) => atom.id)).toEqual([id]);
-    expect((await post('/v1/clusters', { limit: 10, format: 'minimal' })).status).toBe(200);
+    expect(atoms.json).toMatchObject({
+      schema_version: 1,
+      tool: 'get_atoms',
+      atoms_dropped: 0,
+      atoms_dropped_ids: [],
+      warnings: [],
+    });
+    expect((atoms.json.atoms as { id: string; truncations: string[] }[]).map((atom) => atom.id)).toEqual([newerId, id]);
+    expect((atoms.json.atoms as { truncations: string[] }[]).every((atom) => Array.isArray(atom.truncations))).toBe(true);
+
+    const clusters = await post('/v1/clusters', { limit: 10, format: 'minimal' });
+    expect(clusters.status).toBe(200);
+    expect(Object.keys(clusters.json).sort()).toEqual([
+      'atoms', 'clusters', 'query', 'schema_version', 'tool', 'truncation', 'warnings',
+    ]);
+    expect(clusters.json).toMatchObject({ schema_version: 1, tool: 'get_recent_work_context' });
 
     const started = performance.now();
     const wait = await post('/v1/wait', {
@@ -239,15 +303,38 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     });
     const elapsed = performance.now() - started;
     expect(wait.status).toBe(200);
-    expect(wait.json).toMatchObject({ timed_out: true });
+    expect(wait.json).toEqual({
+      schema_version: 1,
+      tool: 'wait_for_new_turns',
+      turn_ids: [],
+      next_since: '2026-07-01T00:00:00.000Z',
+      timed_out: true,
+      warnings: [],
+    });
     expect(elapsed).toBeGreaterThanOrEqual(75);
     expect(elapsed).toBeLessThan(1_000);
+
+    const defaultStarted = performance.now();
+    const defaultWait = await post('/v1/wait', {
+      source_prefix: 'nope-default:',
+      since: '2026-07-01T00:00:00.000Z',
+    });
+    const defaultElapsed = performance.now() - defaultStarted;
+    expect(defaultWait.status).toBe(200);
+    expect(defaultWait.json).toMatchObject({ timed_out: true, turn_ids: [] });
+    expect(defaultElapsed).toBeGreaterThanOrEqual(750);
+    expect(defaultElapsed).toBeLessThan(2_000);
   });
 
   it('rejects schema violations before storage and enforces content type/ID caps', async () => {
     expect((await post('/v1/capture', { source: 'x', content: 'missing timestamp' })).status).toBe(400);
     expect((await post('/v1/search', { query: 'x', not_a_field: true })).status).toBe(400);
-    expect((await post('/v1/atoms', { atom_ids: Array.from({ length: 101 }, (_, index) => `id-${index}`) })).status).toBe(400);
+    expect((await post('/v1/search', { source_app: 'not-an-app' })).status).toBe(400);
+    expect((await post('/v1/atoms', { atom_ids: Array.from({ length: 51 }, (_, index) => `id-${index}`) })).status).toBe(400);
+    expect((await post('/v1/atoms', { atom_ids: [] })).status).toBe(400);
+    expect((await post('/v1/atoms', { atom_ids: ['x'], format: 'full' })).status).toBe(400);
+    expect((await post('/v1/atoms', { atom_ids: ['x'], prefer: 'oldest_first' })).status).toBe(400);
+    expect((await post('/v1/wait', { source_prefix: 'x:', since: '2026-07-01T00:00:00.000Z', timeout: 4.1 })).status).toBe(400);
     expect((await fetchJson('/v1/search', { method: 'POST', body: '{}' })).status).toBe(415);
   });
 
@@ -260,16 +347,23 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(oversized.status).toBe(413);
 
     const ids: string[] = [];
-    for (let index = 0; index < 5; index++) {
+    const largeMetadata = Object.fromEntries(
+      Array.from({ length: 55 }, (_, index) => [`field_${index}`, 'm'.repeat(900)]),
+    );
+    for (let index = 0; index < 6; index++) {
       const captured = await post('/v1/capture', {
         source: `fixture:${index}`,
         timestamp: `2026-07-01T00:00:0${index}.000Z`,
-        content: 'z'.repeat(59_000),
+        content: `response-cap-marker ${index}`,
+        metadata: largeMetadata,
       });
       expect(captured.status).toBe(200);
       ids.push(captured.json.id as string);
     }
-    expect((await post('/v1/atoms', { atom_ids: ids })).status).toBe(507);
+    expect((await post('/v1/search', { query: 'response-cap-marker', limit: 10 })).status).toBe(507);
+    const projected = await post('/v1/atoms', { atom_ids: ids, format: 'minimal' });
+    expect(projected.status).toBe(200);
+    expect(projected.json).toMatchObject({ atoms: [], atoms_dropped: 6, atoms_dropped_ids: ids });
   });
 
   it('fails a slow partial body at the committed 5s request deadline', async () => {
@@ -293,6 +387,27 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(response).toContain('408');
     expect(response).toContain('request deadline exceeded');
   }, 7_000);
+
+  it('tears down the retained child whenever readiness validation rejects', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'echo-ctx-invalid-ready-'));
+    scratchRoots.add(home);
+    let stderr = '';
+    const child = spawn(
+      NODE,
+      ['-e', "process.on('SIGTERM',()=>process.exit(0));require('fs').writeSync(3,'{}\\n');setInterval(()=>{},1000)"],
+      {
+        detached: true,
+        env: sanitizedEnvironment(home),
+        stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
+      },
+    );
+    child.stderr?.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    const readiness = readinessPromise(child, () => stderr);
+    await expect(teardownOnReadinessFailure(child, readiness.ready)).rejects.toThrow(
+      'readiness record does not identify the loopback process-group leader',
+    );
+    expect(groupExists(child.pid!)).toBe(false);
+  });
 
   it('refuses a poisoned inherited environment and any non-loopback host', async () => {
     for (const variant of [

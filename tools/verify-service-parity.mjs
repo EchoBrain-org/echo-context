@@ -8,11 +8,12 @@ import Ajv from 'ajv';
 
 const API_PATH = new URL('../schemas/service-api.v1.json', import.meta.url);
 const API = JSON.parse(readFileSync(API_PATH, 'utf8'));
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: true });
+const compileContract = (schema) => ajv.compile({ ...schema, $defs: API.definitions });
 const validators = new Map(
   Object.entries(API.endpoints).map(([route, contract]) => [
     route,
-    { request: ajv.compile(contract.request), response: ajv.compile(contract.response) },
+    { request: compileContract(contract.request), response: compileContract(contract.response) },
   ]),
 );
 
@@ -32,6 +33,16 @@ if (!HOME || !isAbsolute(HOME)) bootFail('--home must be an absolute scratch pat
 if (HOST !== '127.0.0.1') bootFail('refusing non-loopback host');
 if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) bootFail('--port must be 0..65535');
 if (!Number.isInteger(READY_FD) || READY_FD < 3) bootFail('--ready-fd must be >=3');
+if (
+  !Number.isFinite(API.limits.default_wait_seconds) ||
+  API.limits.default_wait_seconds < 0 ||
+  !Number.isFinite(API.limits.max_wait_seconds) ||
+  API.limits.max_wait_seconds < 0 ||
+  API.limits.default_wait_seconds > API.limits.max_wait_seconds ||
+  API.limits.max_wait_seconds * 1000 + 500 > API.limits.request_deadline_ms
+) {
+  bootFail('committed wait cap must leave at least 500ms inside the request deadline');
+}
 
 const poison = Object.keys(process.env).filter(
   (key) =>
@@ -54,6 +65,7 @@ process.env.ECHO_CONTEXT_HOME = HOME;
 const { SqliteStorage } = await import('../src/storage/sqlite.js');
 const { searchMemories } = await import('../src/mcp/tools/search-memories.js');
 const { getRecentWorkContext } = await import('../src/mcp/internal/cluster-engine.js');
+const { getAtoms } = await import('../src/mcp/tools/get-atoms.js');
 const { waitForNewTurns } = await import('../src/mcp/tools/wait-for-new-turns.js');
 const storage = new SqliteStorage(join(HOME, 'context.db'));
 
@@ -83,6 +95,7 @@ function contractError(validate) {
   return ajv.errorsText(validate.errors, { separator: '; ' });
 }
 function sendContractResponse(route, response, status, value) {
+  if (response.writableEnded || response.destroyed) return;
   const validate = validators.get(route)?.response;
   if (!validate || !validate(value)) {
     errorResponse(response, 500, `response schema violation: ${validate ? contractError(validate) : 'missing route validator'}`);
@@ -145,8 +158,14 @@ const server = createServer((request, response) => {
       }
       if (route === 'POST /v1/search') return sendContractResponse(route, response, 200, await searchMemories(storage, body));
       if (route === 'POST /v1/clusters') return sendContractResponse(route, response, 200, await getRecentWorkContext(storage, body));
-      if (route === 'POST /v1/atoms') return sendContractResponse(route, response, 200, { atoms: await storage.getByIds(body.atom_ids) });
-      if (route === 'POST /v1/wait') return sendContractResponse(route, response, 200, await waitForNewTurns(storage, body));
+      if (route === 'POST /v1/atoms') return sendContractResponse(route, response, 200, await getAtoms(storage, body));
+      if (route === 'POST /v1/wait') {
+        const waitParams = {
+          ...body,
+          timeout: body.timeout ?? API.limits.default_wait_seconds,
+        };
+        return sendContractResponse(route, response, 200, await waitForNewTurns(storage, waitParams));
+      }
       throw new Error(`unhandled committed route: ${route}`);
     } catch (error) {
       errorResponse(response, 500, error instanceof Error ? error.message : String(error));
