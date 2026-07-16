@@ -79,8 +79,8 @@
       "path": "tools/release-publication-controller.mjs"
     },
     {
-      "blob_oid": "abfa95fea29a77e13ee5a242989a8bd08019b219",
-      "content_sha256": "e33937d69b5f94a7c29a0ba441768462fd872efbcfd84888b23137c04f82a93e",
+      "blob_oid": "fb3c08db6301617d8932eb05c0f87db04cf2b2d6",
+      "content_sha256": "5512e212b6242112d32db20dee202c62dd6df78dd1f80ab68f19198a383ceea5",
       "mode": "100644",
       "path": "tools/secret-scan.mjs"
     },
