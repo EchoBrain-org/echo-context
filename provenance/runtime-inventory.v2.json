@@ -49,14 +49,20 @@
       "path": "tools/emit-source-inventory.mjs"
     },
     {
-      "blob_oid": "4408beb31ae804703de82ad7ba7cbba522ae4de8",
-      "content_sha256": "333ff29ffcfe87b4419cd0a0625104e3c2a3668d9c823287e1747682db4088ff",
+      "blob_oid": "bda929d0e3a41656c286dd38521f387fc9806fb1",
+      "content_sha256": "431fbcb6922466839abe0436594b98ce67e58030149944df0a9383c9ee57fcd4",
       "mode": "100755",
       "path": "tools/fresh-clone-acceptance.sh"
     },
     {
-      "blob_oid": "4068e46bc5e4208d3e1e5cf199f403b8f1e9f23f",
-      "content_sha256": "a623b3a0d2d8ba6950a32b89b6004bab990c25cb6344594ac7bf6cdde972f3c7",
+      "blob_oid": "d72ec7271f594413b5f538b85b7279504e883e5a",
+      "content_sha256": "4dfdcd522e40dbe823404bc34a923e2bdaf7656e23ea487495deea8a0df5f0fd",
+      "mode": "100644",
+      "path": "tools/fresh-clone-cleanup.mjs"
+    },
+    {
+      "blob_oid": "d2e336a6c4d7b4e0116ceaf98b89bc7b07b963bd",
+      "content_sha256": "b3848aa40c605b6d7e2dd19d387a5a6710372a2a22ee155ee08082e719eee6b1",
       "mode": "100644",
       "path": "tools/fresh-clone-verifier.mjs"
     },
@@ -73,14 +79,14 @@
       "path": "tools/install-gitleaks.sh"
     },
     {
-      "blob_oid": "a1386a794f1cd3f630e9d75380e0ca387578da90",
-      "content_sha256": "80be808889a321142a8794ba7c59d2ed4caa8744fbc63a15a6f338f17fe5dfe4",
+      "blob_oid": "8c64ec17512d97771db287920bd931dfa36e85e5",
+      "content_sha256": "e9377b8ca6745d43f1d39759389b56840c017fb162a1bc437c222a6db5b81173",
       "mode": "100644",
-      "path": "tools/release-publication-controller.mjs"
+      "path": "tools/repository-bootstrap-gate.mjs"
     },
     {
-      "blob_oid": "fb3c08db6301617d8932eb05c0f87db04cf2b2d6",
-      "content_sha256": "5512e212b6242112d32db20dee202c62dd6df78dd1f80ab68f19198a383ceea5",
+      "blob_oid": "5512afddb382668aea797eb4372936b0f9dc6ec5",
+      "content_sha256": "059e2d9584e3ead8a063bc0b785095233dd55e8b4b7d63165bc4659bd8f1728c",
       "mode": "100644",
       "path": "tools/secret-scan.mjs"
     },
@@ -97,18 +103,6 @@
       "path": "tools/verify-context-tools.mjs"
     },
     {
-      "blob_oid": "15e402c0478fa608366192877fa1ac3748e1d5cf",
-      "content_sha256": "4fdf6050ee96a9b37efae2ad05c5065fdbfcfbf7f246467b8f70b74346723948",
-      "mode": "100644",
-      "path": "tools/verify-hosting-controls.mjs"
-    },
-    {
-      "blob_oid": "b7b052615f969f6ebd508f0349332c9faef08a22",
-      "content_sha256": "abc7dfb350a52e6ab3d31e979ad196a28cc7ea952113ec16b86493be8258cc00",
-      "mode": "100644",
-      "path": "tools/verify-release-bundle.mjs"
-    },
-    {
       "blob_oid": "1ac8fe7564f5e92a01371961d1deea9a3fc125fa",
       "content_sha256": "9bfd370f3ec4779916c7b07b34dbd7f600b26d84fd8feed31e5e8e9a3d6c5e79",
       "mode": "100644",
@@ -119,18 +113,6 @@
       "content_sha256": "3fb8a7f6bf8fcec67cfdf7ceb29635bdc255e27b9f1faf1a85843a0cb1329508",
       "mode": "100644",
       "path": "tools/verify-source-artifact.mjs"
-    },
-    {
-      "blob_oid": "9be9b7d89e291fa065d167d1fd85cc803c35ade3",
-      "content_sha256": "b5caaede36299fa8d67da79973adf6f55bbc4cc70a969096925ae50ca1b1bdbf",
-      "mode": "100644",
-      "path": "tools/verify-workflow-artifact-metadata.mjs"
-    },
-    {
-      "blob_oid": "84a0cde4414e08be4a9e9f2dc7128b4f0b6bb801",
-      "content_sha256": "84b676895fc6ba5e0205dbb2badcb1ad4d6769e46bd87d997f1d1708685ab817",
-      "mode": "100644",
-      "path": "tools/write-release-tuple.mjs"
     },
     {
       "blob_oid": "4fcd498870ae7d9d2ad81164c7db6263e90c03da",

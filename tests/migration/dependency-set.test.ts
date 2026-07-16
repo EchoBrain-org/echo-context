@@ -59,9 +59,12 @@ describe('AC2 — successor runtime dependency set', () => {
     expect(manifest.schema).toBe('runtime-inventory.v2');
     expect(Object.fromEntries(manifest.scripts.map((row) => [row.name, row.command]))).toEqual(pkg.scripts);
     for (const path of [
-      'tools/build-source-artifact.mjs', 'tools/verify-source-artifact.mjs', 'tools/release-publication-controller.mjs',
-      'tools/secret-scan.sh', 'tools/fresh-clone-verifier.mjs', 'tsconfig.json', 'vitest.ci.config.ts',
+      'tools/build-source-artifact.mjs', 'tools/verify-source-artifact.mjs',
+      'tools/repository-bootstrap-gate.mjs', 'tools/secret-scan.sh',
+      'tools/fresh-clone-acceptance.sh', 'tools/fresh-clone-verifier.mjs',
+      'tools/fresh-clone-cleanup.mjs', 'tsconfig.json', 'vitest.ci.config.ts',
     ]) expect(manifest.executable_sources.some((row) => row.path === path), path).toBe(true);
+    expect(manifest.executable_sources.some((row) => row.path === 'tools/release-publication-controller.mjs')).toBe(false);
     expect(manifest.system_helpers).toEqual(['git', 'gitleaks', 'node', 'npm']);
     const closure = new Map(manifest.npm_closure.map((row) => [row.lock_path, row]));
     for (const path of ['node_modules/better-sqlite3', 'node_modules/typescript', 'node_modules/vitest', 'node_modules/tsx', 'node_modules/esbuild']) {
