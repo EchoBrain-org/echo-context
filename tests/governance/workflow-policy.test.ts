@@ -48,6 +48,7 @@ describe('AC4/AC6 — workflow policy', () => {
     expect(scan).toContain('fetch-depth: 0');
     expect(scan).toContain("'+refs/heads/*:refs/remotes/origin/*'");
     expect(scan).toContain("'+refs/tags/*:refs/tags/*'");
+    expect(scan).toContain("'+refs/*:refs/echo-scan/*'");
     expect(scan).toContain('tools/install-gitleaks.sh');
     expect(scan).toContain('tools/secret-scan.sh');
     expect(readFileSync(join(ROOT, 'tools/secret-scan.mjs'), 'utf8')).toContain("--log-opts=--all");

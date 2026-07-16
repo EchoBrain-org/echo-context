@@ -23,7 +23,7 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@10.9.4 && test "$(npm --version)" = "10.9.4"
       - name: Fetch complete source refs
-        run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' && test "$(git rev-parse --is-shallow-repository)" = false
+        run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' '+refs/*:refs/echo-scan/*' && test "$(git rev-parse --is-shallow-repository)" = false
       - name: Install pinned secret scanner
         run: tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
       - name: Exact clean-clone source acceptance
@@ -42,7 +42,7 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@10.9.4 && test "$(npm --version)" = "10.9.4"
       - name: Fetch complete source refs
-        run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' && test "$(git rev-parse --is-shallow-repository)" = false
+        run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' '+refs/*:refs/echo-scan/*' && test "$(git rev-parse --is-shallow-repository)" = false
       - name: Install pinned secret scanner
         run: tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
       - name: Exact clean-clone source acceptance

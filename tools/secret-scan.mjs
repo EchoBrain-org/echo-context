@@ -47,6 +47,7 @@ function validateContract(contract) {
 function git(args, options = {}) {
   return execFileSync('git', ['-C', ROOT, ...args], {
     encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_OPTIONAL_LOCKS: '0' },
     ...options,
@@ -58,25 +59,35 @@ function preflightHistory() {
   git(['fsck', '--full']);
   const remote = git(['remote', 'get-url', 'origin']).trim();
   if (!remote) die('origin is required for complete-ref preflight');
-  const listed = execFileSync('git', ['ls-remote', '--heads', '--tags', '--refs', 'origin'], {
+  const listed = execFileSync('git', ['ls-remote', 'origin'], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   }).split('\n').filter(Boolean).map((line) => {
-    const match = /^([0-9a-f]{40})\t(refs\/(?:heads|tags)\/.+)$/.exec(line);
+    const match = /^([0-9a-f]{40})\t(HEAD|refs\/.+)$/.exec(line);
     if (!match) die(`malformed remote ref listing row: ${line}`);
     return { oid: match[1], ref: match[2] };
   });
   for (const { oid, ref } of listed) {
-    const localRef = ref.startsWith('refs/heads/') ? `refs/remotes/origin/${ref.slice('refs/heads/'.length)}` : ref;
-    let localOid;
-    try {
-      localOid = git(['rev-parse', localRef]).trim();
-    } catch {
-      die(`remote ref is absent from checkout: ${ref}`);
+    if (ref === 'HEAD') {
+      if (!listed.some((row) => row.ref.startsWith('refs/') && row.oid === oid)) die('remote HEAD does not resolve to an advertised source ref');
+      git(['cat-file', '-e', `${oid}^{object}`]);
+      continue;
     }
-    if (localOid !== oid) die(`remote ref is incomplete or stale: ${ref}`);
+    const candidates = ref.startsWith('refs/heads/')
+        ? [`refs/remotes/origin/${ref.slice('refs/heads/'.length)}`, `refs/echo-scan/${ref.slice('refs/'.length)}`]
+        : ref.startsWith('refs/tags/')
+          ? [ref, `refs/echo-scan/${ref.slice('refs/'.length)}`]
+          : [ref, `refs/echo-scan/${ref.slice('refs/'.length)}`];
+    const localOid = candidates.map((candidate) => {
+      try {
+        return git(['rev-parse', candidate]).trim();
+      } catch {
+        return null;
+      }
+    }).find((candidateOid) => candidateOid === oid);
+    if (!localOid) die(`remote ref is absent, incomplete, or stale in checkout: ${ref}`);
     git(['cat-file', '-e', `${oid}^{object}`]);
   }
   return listed.length;
