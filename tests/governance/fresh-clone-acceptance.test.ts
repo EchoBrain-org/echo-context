@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error the committed production state machine intentionally remains plain .mjs.
 import { LIMITS, buildEnvironment, createProductionDeps, parseInvocation, raceUntil, runBoundedOperation, runFreshClone } from '../../tools/fresh-clone-verifier.mjs';
@@ -58,7 +59,7 @@ type FixtureOptions = {
   spawn?: (spec: SpawnSpec, index: number) => Promise<Record<string, unknown>> | Record<string, unknown>;
   authenticate?: () => Promise<void> | void;
   createOwnedTemp?: (recordOwnedRoot: (root: string) => void) => string;
-  settleActiveChild?: () => Promise<void> | void;
+  settleActiveChild?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
   authenticateHelper?: () => Promise<void> | void;
   assertGroupAbsent?: () => Promise<void> | void;
   assertPathAbsent?: () => Promise<void> | void;
@@ -70,6 +71,30 @@ type FixtureOptions = {
 };
 
 type ChildMessage = Record<string, unknown> & { type: string };
+
+class FakeStream extends EventEmitter {
+  destroyCalls = 0;
+  endCalls = 0;
+
+  destroy() { this.destroyCalls += 1; }
+  end() { this.endCalls += 1; }
+}
+
+class FakeChild extends EventEmitter {
+  constructor(
+    readonly pid: number | undefined,
+    readonly stdin: FakeStream | null,
+    readonly stdout: FakeStream | null,
+    readonly stderr: FakeStream | null,
+  ) { super(); }
+}
+
+async function expectStillPending(promise: Promise<unknown>) {
+  let settled = false;
+  void promise.then(() => { settled = true; }, () => { settled = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(settled).toBe(false);
+}
 
 function waitForChildMessage(child: ChildProcess, type: string): Promise<ChildMessage> {
   return new Promise((resolve, reject) => {
@@ -165,7 +190,12 @@ function fixture(options: FixtureOptions = {}) {
   const events: string[] = [];
   const spawns: SpawnSpec[] = [];
   const cancellation = options.cancellation ?? cancellationFixture();
-  let active: { completion: Promise<Record<string, unknown>>; cancelAndSettle: (reason: string) => Promise<Record<string, unknown>> } | null = null;
+  let active: {
+    completion: Promise<Record<string, unknown>>;
+    terminalProof: Promise<Record<string, unknown>>;
+    readonly outcomeAt: number | null;
+    cancelAndSettle: (reason: string) => Promise<Record<string, unknown>>;
+  } | null = null;
   const deps = {
     now: options.now ?? (() => 0),
     createCancellation: () => cancellation,
@@ -188,31 +218,44 @@ function fixture(options: FixtureOptions = {}) {
       const index = spawns.length - 1;
       const produced = options.spawn ? options.spawn(spec, index) : successResult(spec, 1000 + spawns.length);
       const completion = Promise.resolve(produced);
+      let resolveTerminalProof!: (result: Record<string, unknown>) => void;
+      const terminalProof = new Promise<Record<string, unknown>>((resolve) => { resolveTerminalProof = resolve; });
+      let terminalResolved = false;
+      let outcomeAt: number | null = null;
       let cancellationPromise: Promise<Record<string, unknown>> | null = null;
+      const observeTerminal = (result: Record<string, unknown>, natural: boolean) => {
+        if (natural && outcomeAt === null && result.directExited === true && result.stdoutClosed === true && result.stderrClosed === true) {
+          outcomeAt = (options.now ?? (() => 0))();
+        }
+        if (!terminalResolved && result.terminal === true && result.pgidAbsent === true && result.stdoutClosed === true && result.stderrClosed === true) {
+          terminalResolved = true;
+          resolveTerminalProof(result);
+          if (active === handle) active = null;
+        }
+      };
       const handle = {
         completion,
+        terminalProof,
+        get outcomeAt() { return outcomeAt; },
         cancelAndSettle: (reason: string) => {
           if (!cancellationPromise) {
             events.push(`cancel-step:${reason}`);
             cancellationPromise = Promise.resolve(options.cancelStep
               ? options.cancelStep(spec, index, reason)
               : successResult(spec, 10_000 + index));
-            cancellationPromise.then((result) => {
-              if (result.terminal === true && result.pgidAbsent === true && active === handle) active = null;
-            }, () => {});
+            cancellationPromise.then((result) => observeTerminal(result, false), () => {});
           }
           return cancellationPromise;
         },
       };
       active = handle;
-      completion.then((result) => {
-        if (result.terminal === true && result.pgidAbsent === true && active === handle) active = null;
-      }, () => {});
+      completion.then((result) => observeTerminal(result, true), () => {});
       return handle;
     },
     settleActiveChild: async () => {
       events.push('settle-active-child');
-      await options.settleActiveChild?.();
+      const injected = await options.settleActiveChild?.();
+      if (injected !== undefined) return injected;
       if (active) return active.cancelAndSettle('cleanup-transition');
       return null;
     },
@@ -429,27 +472,27 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(absenceReads).toBe(1);
   });
 
-  it('blocks helper authentication and cleanup when a post-T child group permanently survives', async () => {
+  it('keeps the same positive-PID handle pending after its settlement envelope, then reports the original outcome', async () => {
+    let release!: (result: Record<string, unknown>) => void;
+    const terminalProof = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });
+    let raceCalls = 0;
     const { deps, events, spawns } = fixture({
-      spawn: (spec, index) => {
-        const result = successResult(spec, 6000 + index);
-        if (spec.argv[1] === 'build:artifact') result.pgidAbsent = false;
-        return result;
+      raceUntil: async () => {
+        raceCalls += 1;
+        return { kind: 'deadline' };
       },
-      cancelStep: () => { throw new Error('permanent-process-group-survivor'); },
-      settleActiveChild: () => { throw new Error('permanent-process-group-survivor'); },
+      spawn: () => terminalProof,
+      cancelStep: () => terminalProof,
     });
-    let thrown: (Error & { cleanupFailure?: string }) | undefined;
-    try {
-      await runFreshClone(ARGS, deps);
-    } catch (error) {
-      thrown = error as Error & { cleanupFailure?: string };
-    }
-    expect(thrown?.message).toContain('cancellation failed to prove');
-    expect(thrown?.cleanupFailure).toContain('permanent-process-group-survivor');
-    expect(events.filter((event) => event === 'settle-active-child')).toHaveLength(1);
-    expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
-    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(0);
+    const run = runFreshClone(ARGS, deps);
+    while (!events.some((event) => event === 'cancel-step:deadline')) await Promise.resolve();
+    expect(raceCalls).toBe(2);
+    await expectStillPending(run);
+    expect(spawns).toHaveLength(1);
+
+    release({ ...successResult(spawns[0], 6000), status: 9 });
+    await expect(run).rejects.toThrow(/failed or did not settle/);
+    expect(events.filter((event) => event === 'cancel-step:deadline')).toHaveLength(1);
   });
 
   it('injects cancellation after T, settles before the sole cleanup child, and never advances the interrupted trace', async () => {
@@ -517,39 +560,106 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(spawns).toEqual([]);
   });
 
-  it.each(['active settlement', 'helper authentication', 'cleanup child', 'path absence'])('bounds never-settling cleanup surface: %s', async (surface) => {
+  it.each(['helper authentication', 'path absence'])('bounds never-settling read-only cleanup surface: %s', async (surface) => {
     const never = () => new Promise<void>(() => {});
-    const { deps, events, spawns } = fixture({
+    const { deps, spawns } = fixture({
       raceUntil: shortRace,
       runBounded: shortRead,
-      settleActiveChild: surface === 'active settlement' ? never : undefined,
       authenticateHelper: surface === 'helper authentication' ? never : undefined,
       assertPathAbsent: surface === 'path absence' ? never : undefined,
-      spawn: (spec, index) => surface === 'cleanup child' && spec.executable === INPUT.nodeBin
-        ? new Promise<Record<string, unknown>>(() => {})
-        : successResult(spec, 11_000 + index),
     });
     await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/deadline|envelope|execution/);
     const cleanupSpawns = spawns.filter((spec) => spec.executable === INPUT.nodeBin);
-    expect(cleanupSpawns).toHaveLength(surface === 'active settlement' || surface === 'helper authentication' ? 0 : 1);
+    expect(cleanupSpawns).toHaveLength(surface === 'helper authentication' ? 0 : 1);
     expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(2);
-    if (surface === 'active settlement') expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
   });
 
-  it('bounds a never-resolving final HEAD and performs no later child', async () => {
-    let heads = 0;
-    const { deps, spawns } = fixture({
-      raceUntil: shortRace,
+  it('keeps cleanup active-child settlement pending past its envelope and never authenticates the helper', async () => {
+    let release!: (result: Record<string, unknown>) => void;
+    const terminalProof = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });
+    let settling = false;
+    const { deps, events, spawns } = fixture({
+      raceUntil: (spec) => settling
+        ? Promise.resolve({ kind: 'deadline' })
+        : raceUntil({ completion: spec.completion as Promise<unknown>, deadline: Number(spec.deadline), now: () => 0, cancellation: spec.cancellation }),
       spawn: (spec, index) => {
-        if (spec.argv.join(' ') === 'rev-parse HEAD') {
-          heads += 1;
-          if (heads === 3) return new Promise<Record<string, unknown>>(() => {});
+        if (spec.argv[1] === 'build:artifact') throw new Error('primary-build-failure');
+        return successResult(spec, 11_000 + index);
+      },
+      settleActiveChild: () => {
+        settling = true;
+        return terminalProof;
+      },
+    });
+    const run = runFreshClone(ARGS, deps);
+    while (!events.includes('settle-active-child')) await Promise.resolve();
+    await expectStillPending(run);
+    expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
+
+    release(successResult(spawns.at(-1)!, 11_900));
+    await expect(run).rejects.toThrow(/primary-build-failure/);
+    expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(0);
+  });
+
+  it('keeps the cleanup child pending past its envelope until its same handle proves terminal', async () => {
+    let release!: (result: Record<string, unknown>) => void;
+    const terminalProof = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });
+    let cleanupStarted = false;
+    const never = new Promise<Record<string, unknown>>(() => {});
+    const { deps, events, spawns } = fixture({
+      raceUntil: (spec) => cleanupStarted
+        ? Promise.resolve({ kind: 'deadline' })
+        : raceUntil({ completion: spec.completion as Promise<unknown>, deadline: Number(spec.deadline), now: () => 0, cancellation: spec.cancellation }),
+      spawn: (spec, index) => {
+        if (spec.executable === INPUT.nodeBin) {
+          cleanupStarted = true;
+          return never;
         }
         return successResult(spec, 12_000 + index);
       },
+      cancelStep: (spec) => spec.executable === INPUT.nodeBin ? terminalProof : successResult(spec, 12_900),
     });
-    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/execution deadline/);
+    const run = runFreshClone(ARGS, deps);
+    while (!events.includes('cancel-step:deadline')) await Promise.resolve();
+    await expectStillPending(run);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(1);
+
+    release(successResult(spawns.at(-1)!, 12_950));
+    await expect(run).rejects.toThrow(/execution deadline/);
+    expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(2);
+  });
+
+  it('keeps a timed-out final HEAD pending until terminal proof and performs no later child', async () => {
+    let heads = 0;
+    let finalHeadStarted = false;
+    let release!: (result: Record<string, unknown>) => void;
+    const terminalProof = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });
+    const never = new Promise<Record<string, unknown>>(() => {});
+    const { deps, events, spawns } = fixture({
+      raceUntil: (spec) => finalHeadStarted
+        ? Promise.resolve({ kind: 'deadline' })
+        : raceUntil({ completion: spec.completion as Promise<unknown>, deadline: Number(spec.deadline), now: () => 0, cancellation: spec.cancellation }),
+      spawn: (spec, index) => {
+        if (spec.argv.join(' ') === 'rev-parse HEAD') {
+          heads += 1;
+          if (heads === 3) {
+            finalHeadStarted = true;
+            return never;
+          }
+        }
+        return successResult(spec, 12_000 + index);
+      },
+      cancelStep: (spec) => spec.argv.join(' ') === 'rev-parse HEAD' && heads === 3
+        ? terminalProof
+        : successResult(spec, 12_900),
+    });
+    const run = runFreshClone(ARGS, deps);
+    while (!events.includes('cancel-step:deadline')) await Promise.resolve();
+    await expectStillPending(run);
     expect(spawns.at(-1)?.argv).toEqual(['rev-parse', 'HEAD']);
+    release(successResult(spawns.at(-1)!, 12_999));
+    await expect(run).rejects.toThrow(/execution deadline/);
     expect(heads).toBe(3);
   });
 
@@ -623,6 +733,103 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     const { deps } = fixture({ now: () => { clockReads += 1; return 0; } });
     await expect(runFreshClone(['--invalid'], deps)).rejects.toThrow(/usage/);
     expect(clockReads).toBe(1);
+  });
+
+  it('makes a synchronous spawn throw a terminal no-PID shape without an exit or group wait', async () => {
+    const signals: string[] = [];
+    const delays: number[] = [];
+    let groupChecks = 0;
+    const deps = createProductionDeps({
+      spawn: () => { throw new Error('sync-spawn-failure'); },
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => { signals.push(signal); },
+      groupExists: () => { groupChecks += 1; return false; },
+      delay: async (milliseconds: number) => { delays.push(milliseconds); },
+    });
+    const handle = deps.startStep({
+      executable: '/missing', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    await expect(handle.completion).resolves.toMatchObject({
+      terminal: true, spawned: false, directExited: false, stdoutClosed: true, stderrClosed: true,
+      pgidAbsent: true, pid: null, lifecycleError: expect.any(Error),
+    });
+    expect(signals).toEqual([]);
+    expect(delays).toEqual([]);
+    expect(groupChecks).toBe(0);
+  });
+
+  it.each([
+    { stdoutMaterialized: false, stderrMaterialized: false },
+    { stdoutMaterialized: true, stderrMaterialized: false },
+    { stdoutMaterialized: false, stderrMaterialized: true },
+    { stdoutMaterialized: true, stderrMaterialized: true },
+  ])('settles async no-PID spawn error only after every materialized stream closes: $stdoutMaterialized/$stderrMaterialized', async ({ stdoutMaterialized, stderrMaterialized }) => {
+    const stdout = stdoutMaterialized ? new FakeStream() : null;
+    const stderr = stderrMaterialized ? new FakeStream() : null;
+    const child = new FakeChild(undefined, new FakeStream(), stdout, stderr);
+    const signals: string[] = [];
+    const delays: number[] = [];
+    let groupChecks = 0;
+    const deps = createProductionDeps({
+      spawn: () => child,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => { signals.push(signal); },
+      groupExists: () => { groupChecks += 1; return false; },
+      delay: async (milliseconds: number) => { delays.push(milliseconds); },
+      pollDelay: async () => {},
+    });
+    const handle = deps.startStep({
+      executable: '/missing', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    child.emit('error', new Error('async-spawn-failure'));
+    if (stdout || stderr) await expectStillPending(handle.completion);
+    expect(stdout?.destroyCalls ?? 0).toBe(stdout ? 1 : 0);
+    expect(stderr?.destroyCalls ?? 0).toBe(stderr ? 1 : 0);
+    stdout?.emit('close');
+    stderr?.emit('close');
+    await expect(handle.completion).resolves.toMatchObject({
+      terminal: true, spawned: false, directExited: false,
+      stdoutClosed: true, stderrClosed: true, pgidAbsent: true,
+      lifecycleError: expect.any(Error),
+    });
+    expect(signals).toEqual([]);
+    expect(delays).toEqual([]);
+    expect(groupChecks).toBe(0);
+    expect(deps.settleActiveChild()).toBeNull();
+  });
+
+  it('starts TERM/five-second/KILL for a pre-T nonzero child outcome whose positive PGID survives', async () => {
+    const stdin = new FakeStream();
+    const stdout = new FakeStream();
+    const stderr = new FakeStream();
+    const child = new FakeChild(42_424, stdin, stdout, stderr);
+    const signals: string[] = [];
+    const delays: number[] = [];
+    let groupAlive = true;
+    const deps = createProductionDeps({
+      spawn: () => child,
+      groupExists: () => groupAlive,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => {
+        signals.push(signal);
+        if (signal === 'SIGKILL') groupAlive = false;
+      },
+      delay: async (milliseconds: number) => { delays.push(milliseconds); },
+      pollDelay: async () => {},
+    });
+    const handle = deps.startStep({
+      executable: '/fixture', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    child.emit('exit', 7, null);
+    stdout.emit('close');
+    stderr.emit('close');
+    await expect(handle.completion).resolves.toMatchObject({
+      terminal: true, spawned: true, directExited: true, status: 7, pgidAbsent: true, pid: 42_424,
+    });
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+    expect(delays).toEqual([LIMITS.terminationGrace]);
+    expect(stdin.endCalls).toBe(1);
+    expect(deps.settleActiveChild()).toBeNull();
   });
 
   it('runs cancellation through TERM, exact grace, conditional KILL, and terminal stream/PGID settlement', async () => {

@@ -277,7 +277,16 @@ async function boundedRead(context, label, deadline, operation) {
 }
 
 function isTerminalRecord(value) {
-  return value?.terminal === true && value.directExited === true && value.stdoutClosed === true && value.stderrClosed === true && value.pgidAbsent === true;
+  if (value?.terminal !== true || value.stdoutClosed !== true || value.stderrClosed !== true || value.pgidAbsent !== true) return false;
+  if (Number.isInteger(value.pid) && value.pid > 0) return value.directExited === true;
+  return value.spawned === false && value.directExited === false && value.lifecycleError != null;
+}
+
+function reportOriginalOutcome(first, terminalValue, handle, executionEnd, label) {
+  if (first.kind === 'deadline' && Number.isFinite(handle.outcomeAt) && handle.outcomeAt <= executionEnd) return terminalValue;
+  if (first.kind === 'error' || first.kind === 'timer_error' || first.kind === 'invalid') throw first.error;
+  if (first.kind === 'cancelled') fail(`${label} cancelled by ${first.signal}`);
+  fail(`${label} execution deadline expired or returned a nonterminal record`);
 }
 
 async function runCancellable(context, label, executionEnd, terminalEnd, start) {
@@ -288,7 +297,8 @@ async function runCancellable(context, label, executionEnd, terminalEnd, start) 
   } catch (error) {
     throw error;
   }
-  if (!handle || typeof handle !== 'object' || !handle.completion || typeof handle.completion.then !== 'function' || typeof handle.cancelAndSettle !== 'function') {
+  if (!handle || typeof handle !== 'object' || !handle.completion || typeof handle.completion.then !== 'function'
+      || !handle.terminalProof || typeof handle.terminalProof.then !== 'function' || typeof handle.cancelAndSettle !== 'function') {
     fail(`${label} adapter did not synchronously return a cancellable single-flight handle`);
   }
 
@@ -304,12 +314,17 @@ async function runCancellable(context, label, executionEnd, terminalEnd, start) 
   }
   const cancellationEnd = Math.min(terminalEnd, context.deps.now() + LIMITS.settlement);
   const terminal = await context.deps.raceUntil({ completion: settlement, deadline: cancellationEnd, cancellation: null });
-  if (terminal.kind !== 'complete' || !isTerminalRecord(terminal.value)) {
-    fail(`${label} cancellation failed to prove direct exit, stream closure, and PGID absence`);
+  let terminalValue;
+  if (terminal.kind === 'complete' && isTerminalRecord(terminal.value)) {
+    terminalValue = terminal.value;
+  } else {
+    // The orchestration envelope bounds when cancellation starts, not when it is
+    // safe to abandon a live process group. Keep awaiting this exact handle's
+    // terminal-only proof after the envelope expires.
+    terminalValue = await handle.terminalProof;
   }
-  if (first.kind === 'error' || first.kind === 'timer_error' || first.kind === 'invalid') throw first.error;
-  if (first.kind === 'cancelled') fail(`${label} cancelled by ${first.signal}`);
-  fail(`${label} execution deadline expired or returned a nonterminal record`);
+  if (!isTerminalRecord(terminalValue)) fail(`${label} cancellation failed to prove a terminal child shape`);
+  return reportOriginalOutcome(first, terminalValue, handle, executionEnd, label);
 }
 
 function validateResult(result, label) {
@@ -374,6 +389,20 @@ export async function runFreshClone(argv, injected) {
     const outcome = await deps.raceUntil({ completion, deadline, cancellation: null });
     if (outcome.kind === 'complete') {
       if (outcome.value === null || outcome.value === undefined || isTerminalRecord(outcome.value)) return;
+      fail('active-child settlement returned a nonterminal record');
+    }
+    // A cleanup deadline cannot authorize abandoning the child that cleanup is
+    // waiting on. The production settlement Promise resolves only with terminal
+    // proof, so retain this same Promise until that proof arrives, then report
+    // the original envelope/error outcome without authenticating the helper.
+    let terminalValue;
+    try {
+      terminalValue = await completion;
+    } catch (error) {
+      if (outcome.kind === 'error' || outcome.kind === 'timer_error' || outcome.kind === 'invalid') throw outcome.error;
+      throw error;
+    }
+    if (terminalValue !== null && terminalValue !== undefined && !isTerminalRecord(terminalValue)) {
       fail('active-child settlement returned a nonterminal record');
     }
     if (outcome.kind === 'error' || outcome.kind === 'timer_error' || outcome.kind === 'invalid') throw outcome.error;
@@ -490,30 +519,62 @@ function notify(record) {
   record.waiters.clear();
 }
 
+function hasPositivePid(pid) {
+  return Number.isInteger(pid) && pid > 0;
+}
+
 function processRecordTerminal(record, runtime) {
+  if (!record.spawned) return record.spawnError !== null && record.stdoutClosed && record.stderrClosed;
   return record.directExited && record.stdoutClosed && record.stderrClosed && !runtime.groupExists(record.pid);
 }
 
 async function waitForTerminal(record, timeoutMs, runtime) {
-  const deadline = runtime.now() + timeoutMs;
-  while (!processRecordTerminal(record, runtime)) {
+  const deadline = timeoutMs === Infinity ? Infinity : runtime.now() + timeoutMs;
+  while (true) {
+    try {
+      if (processRecordTerminal(record, runtime)) return true;
+    } catch (error) {
+      record.settlementError = record.settlementError ?? error;
+    }
     const remaining = deadline - runtime.now();
     if (remaining <= 0) return false;
-    await Promise.race([
-      new Promise((resolve) => record.waiters.add(resolve)),
-      runtime.pollDelay(Math.min(25, remaining)),
-    ]);
+    let wake;
+    const changed = new Promise((resolve) => {
+      wake = resolve;
+      record.waiters.add(resolve);
+    });
+    try {
+      await Promise.race([changed, runtime.pollDelay(Math.min(25, remaining))]);
+    } catch (error) {
+      record.settlementError = record.settlementError ?? error;
+    } finally {
+      record.waiters.delete(wake);
+    }
   }
-  return true;
 }
 
 function closeStdin(record) {
   if (record.stdinClosed) return;
   record.stdinClosed = true;
   try {
-    record.child.stdin.end();
+    record.child.stdin?.end?.();
   } catch (error) {
     record.closeError = error;
+  }
+}
+
+function closePreSpawnStreams(record) {
+  for (const [stream, closedKey, requestedKey] of [
+    [record.stdoutStream, 'stdoutClosed', 'stdoutCloseRequested'],
+    [record.stderrStream, 'stderrClosed', 'stderrCloseRequested'],
+  ]) {
+    if (!stream || record[closedKey] || record[requestedKey]) continue;
+    record[requestedKey] = true;
+    try {
+      stream.destroy();
+    } catch (error) {
+      record.closeError = record.closeError ?? error;
+    }
   }
 }
 
@@ -522,6 +583,13 @@ async function terminateRecord(record, runtime) {
   record.termination = (async () => {
     const errors = [];
     closeStdin(record);
+    if (!record.spawned) {
+      closePreSpawnStreams(record);
+      await waitForTerminal(record, Infinity, runtime);
+      if (record.closeError) errors.push(record.closeError);
+      if (errors.length > 0) throw new AggregateError(errors, 'pre-spawn stream settlement failed');
+      return;
+    }
     try {
       runtime.signalGroup(record.pid, 'SIGTERM');
     } catch (error) {
@@ -538,9 +606,13 @@ async function terminateRecord(record, runtime) {
       errors.push(error);
     }
     try {
-      if (!await waitForTerminal(record, LIMITS.reap, runtime)) errors.push(new Error('direct child, streams, or process group survived settlement'));
+      if (!await waitForTerminal(record, LIMITS.reap, runtime)) {
+        errors.push(new Error('direct child, streams, or process group survived the settlement envelope'));
+        await waitForTerminal(record, Infinity, runtime);
+      }
     } catch (error) {
       errors.push(error);
+      await waitForTerminal(record, Infinity, runtime);
     }
     if (record.closeError) errors.push(record.closeError);
     if (errors.length > 0) throw new AggregateError(errors, 'child termination ceremony failed');
@@ -560,16 +632,49 @@ function startManaged(spec, state, runtime) {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch (error) {
-    throw error;
+    const result = Object.freeze({
+      terminal: true,
+      spawned: false,
+      directExited: false,
+      stdoutClosed: true,
+      stderrClosed: true,
+      status: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      outputOverflow: false,
+      pgidAbsent: true,
+      pid: null,
+      lifecycleError: error,
+    });
+    const terminalProof = Promise.resolve(result);
+    let outcomeAt;
+    try { outcomeAt = runtime.now(); } catch { outcomeAt = null; }
+    return Object.freeze({
+      completion: terminalProof,
+      terminalProof,
+      get outcomeAt() { return outcomeAt; },
+      cancelAndSettle: () => terminalProof,
+    });
   }
 
+  if (!child || typeof child !== 'object') fail('spawn adapter did not return a child object');
+  const pid = child.pid;
+  const spawned = hasPositivePid(pid);
+  const stdoutStream = child.stdout ?? null;
+  const stderrStream = child.stderr ?? null;
   const record = {
     child,
-    pid: child.pid,
+    pid,
+    spawned,
     directExited: false,
-    stdoutClosed: false,
-    stderrClosed: false,
-    stdinClosed: false,
+    stdoutStream,
+    stderrStream,
+    stdoutClosed: stdoutStream === null,
+    stderrClosed: stderrStream === null,
+    stdoutCloseRequested: false,
+    stderrCloseRequested: false,
+    stdinClosed: child.stdin == null,
     status: null,
     signal: null,
     stdout: [],
@@ -581,14 +686,19 @@ function startManaged(spec, state, runtime) {
     spawnError: null,
     streamError: null,
     closeError: null,
+    settlementError: null,
     termination: null,
+    cancellation: null,
+    cancellationStarted: false,
+    outcomeAt: null,
+    completed: false,
     waiters: new Set(),
   };
   let resolveCompletion;
   const completion = new Promise((resolve) => { resolveCompletion = resolve; });
-  let pollTimer;
   const result = () => ({
-    terminal: processRecordTerminal(record, runtime),
+    terminal: true,
+    spawned: record.spawned,
     directExited: record.directExited,
     stdoutClosed: record.stdoutClosed,
     stderrClosed: record.stderrClosed,
@@ -597,30 +707,36 @@ function startManaged(spec, state, runtime) {
     stdout: Buffer.concat(record.stdout).toString('utf8'),
     stderr: Buffer.concat(record.stderr).toString('utf8'),
     outputOverflow: record.outputOverflow,
-    pgidAbsent: !runtime.groupExists(record.pid),
+    pgidAbsent: true,
     pid: record.pid,
-    lifecycleError: record.spawnError ?? record.streamError ?? record.closeError ?? null,
+    lifecycleError: record.spawnError ?? record.streamError ?? record.closeError ?? record.settlementError ?? null,
   });
   const completeIfTerminal = () => {
     notify(record);
-    if (record.completed || !processRecordTerminal(record, runtime)) return false;
+    if (record.completed) return true;
+    try {
+      if (!processRecordTerminal(record, runtime)) return false;
+    } catch (error) {
+      record.settlementError = record.settlementError ?? error;
+      return false;
+    }
     record.completed = true;
-    if (pollTimer !== undefined) runtime.clearTimer(pollTimer);
     if (state.active === handle) state.active = null;
     resolveCompletion(result());
     return true;
   };
-  const pollForNaturalGroupExit = () => {
-    if (completeIfTerminal() || record.completed || !record.directExited || !record.stdoutClosed || !record.stderrClosed) return;
-    try {
-      pollTimer = runtime.setTimer(pollForNaturalGroupExit, 25);
-    } catch (error) {
-      record.streamError = record.streamError ?? error;
-    }
-  };
   const changed = () => {
     notify(record);
-    pollForNaturalGroupExit();
+    if (!record.spawned) {
+      completeIfTerminal();
+      return;
+    }
+    if (!record.directExited || !record.stdoutClosed || !record.stderrClosed) return;
+    if (record.outcomeAt === null && !record.cancellationStarted) {
+      try { record.outcomeAt = runtime.now(); } catch (error) { record.settlementError = record.settlementError ?? error; }
+    }
+    if (completeIfTerminal() || record.cancellationStarted) return;
+    queueMicrotask(() => { void handle.cancelAndSettle('surviving-process-group').catch(() => {}); });
   };
   const capture = (target) => (chunk) => {
     record.outputBytes += chunk.length;
@@ -633,30 +749,14 @@ function startManaged(spec, state, runtime) {
     }
     target.push(Buffer.from(chunk));
   };
-  child.stdout.on('data', capture(record.stdout));
-  child.stderr.on('data', capture(record.stderr));
-  child.stdout.once('error', (error) => { record.streamError = error; changed(); });
-  child.stderr.once('error', (error) => { record.streamError = error; changed(); });
-  child.stdout.once('close', () => { record.stdoutClosed = true; changed(); });
-  child.stderr.once('close', () => { record.stderrClosed = true; changed(); });
-  child.stdin.once('error', (error) => { record.closeError = error; notify(record); });
-  child.once('error', (error) => {
-    record.spawnError = error;
-    if (!Number.isInteger(record.pid)) record.directExited = true;
-    changed();
-  });
-  child.once('exit', (status, signal) => {
-    record.status = status;
-    record.signal = signal;
-    record.directExited = true;
-    changed();
-  });
-
   const handle = {
     completion,
+    terminalProof: completion,
+    get outcomeAt() { return record.outcomeAt; },
     cancelAndSettle(reason) {
       if (record.cancellation) return record.cancellation;
       record.cancellationReason = reason;
+      record.cancellationStarted = true;
       record.cancellation = (async () => {
         let settlementError;
         try {
@@ -664,9 +764,8 @@ function startManaged(spec, state, runtime) {
         } catch (error) {
           settlementError = error;
         }
-        const terminal = processRecordTerminal(record, runtime);
-        if (!terminal) throw settlementError ?? new Error('child remained nonterminal after cancellation ceremony');
-        if (settlementError) record.streamError = record.streamError ?? settlementError;
+        await waitForTerminal(record, Infinity, runtime);
+        if (settlementError) record.settlementError = record.settlementError ?? settlementError;
         completeIfTerminal();
         return result();
       })();
@@ -674,7 +773,30 @@ function startManaged(spec, state, runtime) {
     },
   };
   state.active = handle;
-  completeIfTerminal();
+  stdoutStream?.on('data', capture(record.stdout));
+  stderrStream?.on('data', capture(record.stderr));
+  stdoutStream?.once('error', (error) => { record.streamError = error; changed(); });
+  stderrStream?.once('error', (error) => { record.streamError = error; changed(); });
+  stdoutStream?.once('close', () => { record.stdoutClosed = true; changed(); });
+  stderrStream?.once('close', () => { record.stderrClosed = true; changed(); });
+  child.stdin?.once?.('error', (error) => { record.closeError = error; notify(record); });
+  child.once('error', (error) => {
+    record.spawnError = error;
+    if (!record.spawned) {
+      if (record.outcomeAt === null && !record.cancellationStarted) {
+        try { record.outcomeAt = runtime.now(); } catch (clockError) { record.settlementError = record.settlementError ?? clockError; }
+      }
+      closePreSpawnStreams(record);
+    }
+    changed();
+  });
+  child.once('exit', (status, signal) => {
+    record.status = status;
+    record.signal = signal;
+    if (record.spawned) record.directExited = true;
+    changed();
+  });
+  changed();
   return handle;
 }
 
