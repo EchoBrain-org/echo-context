@@ -38,7 +38,8 @@ if [ "$actual_archive_sha" != "$archive_sha" ]; then
   exit 1
 fi
 tar -xzf "$archive" -C "$out" gitleaks
-expected_binary_sha=$(node -e 'const c=require(process.argv[1]);process.stdout.write(c.binary_sha256[process.argv[2]]||"")' "$(dirname "$0")/secret-scan-contract.json" "$os-$contract_arch")
+tool_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+expected_binary_sha=$(node -e 'const c=require(process.argv[1]);process.stdout.write(c.binary_sha256[process.argv[2]]||"")' "$tool_dir/secret-scan-contract.json" "$os-$contract_arch")
 actual_binary_sha=$(node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$out/gitleaks")
 if [ -z "$expected_binary_sha" ] || [ "$actual_binary_sha" != "$expected_binary_sha" ]; then
   echo "gitleaks binary digest mismatch" >&2
