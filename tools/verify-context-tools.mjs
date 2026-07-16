@@ -18,7 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-const NODE = '/usr/local/bin/node';
+const NODE = process.execPath;
 const GIT = '/usr/local/bin/git';
 const NPM_CLI = '/usr/local/lib/node_modules/npm/bin/npm-cli.js';
 const SANDBOX_EXEC = '/usr/bin/sandbox-exec';

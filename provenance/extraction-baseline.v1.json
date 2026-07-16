@@ -1,0 +1,1349 @@
+{
+  "baseline_commit": "0cf7b006eba665c0bf55e82ff04da70f19f01ebb",
+  "baseline_tree": "70c5cf8352652b3c4c1dce68cd1a5e40d44e4b05",
+  "evidence": {
+    "independent_review": {
+      "path": "raw/internal/migrations/2026-07-13-135-echo-context-review.md",
+      "sha256": "0125d26b2192a4bacbfa347c25fa592a5255a37aced46cc09877e639b5dcfa60"
+    },
+    "migration_record": {
+      "path": "raw/internal/migrations/2026-07-13-135-echo-context.md",
+      "sha256": "eed83d4ad6d6706a3b2b1a454716f4344016481ba6108257b9f46f9055b0cc28"
+    }
+  },
+  "inventory_sha256": "42b2d813008bbba96d7c325a6aead38fd755e6488a66615aa99303f3ba6be58a",
+  "path_count": 190,
+  "paths": [
+    {
+      "blob_oid": "4c8ebfd3d6fdba768735f8fdc002593ac204308f",
+      "content_sha256": "9fea2b1886cca66fcfbc8dcf241a287075b6bee68328af16300eeee196df138f",
+      "mode": "100644",
+      "path": "README.md",
+      "size": 3058
+    },
+    {
+      "blob_oid": "998163099911f291583a514b04f1c604a6cbad13",
+      "content_sha256": "db6eab7d3046f6925ac9a58bf4ff13bf321547c2b74903acde71821f4c09ce37",
+      "mode": "100644",
+      "path": "context-tools.v1.json",
+      "size": 436
+    },
+    {
+      "blob_oid": "f7a3a7954398946755ffe01e816bf49deff4a26f",
+      "content_sha256": "4c5639f08feb5d64a7659e154fbe9c0f4f44deaa5c91ff5f1edee8aacf8568e5",
+      "mode": "100644",
+      "path": "package-lock.json",
+      "size": 162813
+    },
+    {
+      "blob_oid": "96b518003ac56fa2bcdd483b183921bf6b87250a",
+      "content_sha256": "99efa7b4bd754cf5b6794267da136aa85820577e7ec53d619a91c7127fcb8ce2",
+      "mode": "100644",
+      "path": "package.json",
+      "size": 1111
+    },
+    {
+      "blob_oid": "3c01a82f7ab71075edf8a86d064cbbc3bdc01a78",
+      "content_sha256": "0c9662184b7b234c1c72fc1a814c14d57e775d6d8d5ec51bfd5fbe3f5397b02a",
+      "mode": "100644",
+      "path": "provenance/context-tool-parity.v1.json",
+      "size": 146918
+    },
+    {
+      "blob_oid": "062eb6caa79bd89fbf0516860914299b73edea37",
+      "content_sha256": "be8f50ec9be562201616845a47e5990722cd1aaeb0140104a474067178b58151",
+      "mode": "100644",
+      "path": "provenance/lifecycle-expected.v1.json",
+      "size": 2132
+    },
+    {
+      "blob_oid": "600af22dd174c27f332a11669d5f595609aa9f23",
+      "content_sha256": "ed3b7eb844239a98e83189462cdfe3beedc07e06f02ac93c716f5c3d19135697",
+      "mode": "100644",
+      "path": "provenance/lifecycle-observed.v1.json",
+      "size": 1278
+    },
+    {
+      "blob_oid": "3e583e4f0b665fb90d46422b0db9f947792153cc",
+      "content_sha256": "4341f8703999c60c570c89c34abe7d6955477477aac4c743afba740dab9b5c7d",
+      "mode": "100644",
+      "path": "provenance/native-toolchain.v1.json",
+      "size": 591
+    },
+    {
+      "blob_oid": "6bd7dcdd1ee954baf6650f0ac2ffb94f96c2e328",
+      "content_sha256": "7e847de868b6747660e671c3330f47b255b31f8e68c7abc2586351135c70b103",
+      "mode": "100644",
+      "path": "provenance/parity-matrix.v1.json",
+      "size": 118611
+    },
+    {
+      "blob_oid": "d88a5f2d929dbf8c5e6aaa9c2398f9863dfac6d4",
+      "content_sha256": "29512b101dc672aec83102f147b60c04dd694b1602479024299b228becf95caf",
+      "mode": "100644",
+      "path": "provenance/runtime-inventory.v1.json",
+      "size": 183142
+    },
+    {
+      "blob_oid": "2cc10a381df83e2b0e4b6c65b49b1390ca7c7960",
+      "content_sha256": "5cd0c084f70aeab7a59e5dfc97c16bebf728ff1d1ab85485454704960a7f436b",
+      "mode": "100644",
+      "path": "provenance/schemas/context-tool-parity.v1.schema.json",
+      "size": 11930
+    },
+    {
+      "blob_oid": "f4016a7a9a44042c042590f88e8130893213c06b",
+      "content_sha256": "1a2eeff933d8f8dbdb66c18141b8a786496fe29132e6d17f24790c788c7fdae2",
+      "mode": "100644",
+      "path": "provenance/schemas/lifecycle-expected.v1.schema.json",
+      "size": 916
+    },
+    {
+      "blob_oid": "c1584bb33a1955e6feff705e5d69558bd1d2de14",
+      "content_sha256": "63e345c9d1afc1fc7ae77a07ac0d7f46c4b0294f0ddb88c79ee211b7385254cf",
+      "mode": "100644",
+      "path": "provenance/schemas/lifecycle-observed.v1.schema.json",
+      "size": 561
+    },
+    {
+      "blob_oid": "6000c8da28354613806b2fdb3b85743ea33cc46b",
+      "content_sha256": "3a19d84dee828926df17fcc45c61183b90116273e5dd6541f1f39e158fc5f0fc",
+      "mode": "100644",
+      "path": "provenance/schemas/native-toolchain.v1.schema.json",
+      "size": 932
+    },
+    {
+      "blob_oid": "6c453054b202bb58870eca2a17df66ae34a3e023",
+      "content_sha256": "0e87797f0b9d2a8f318d0e7ee7ad1da66194269e443d47665f60da8eb211efdb",
+      "mode": "100644",
+      "path": "provenance/schemas/parity-matrix.v1.schema.json",
+      "size": 4370
+    },
+    {
+      "blob_oid": "2665b18665d6269452df5d8cff1fd2f5dbd53e17",
+      "content_sha256": "537819a7f209225062c385a10e8b02a5dca33c5272375cd35565de5bfc02a57e",
+      "mode": "100644",
+      "path": "provenance/schemas/runtime-inventory.v1.schema.json",
+      "size": 4141
+    },
+    {
+      "blob_oid": "b8cae919a59d58c43bb713d8fe16981f71714834",
+      "content_sha256": "e29d0b865fc83524784c829012ccd3f9961a632b84fdfea9fc92b21ad31aeb30",
+      "mode": "100644",
+      "path": "provenance/schemas/source-evidence.v1.schema.json",
+      "size": 1323
+    },
+    {
+      "blob_oid": "608a6475c255687dd94ab49137b1e40aae98fc6a",
+      "content_sha256": "e959cc880b2a811d9013b96ba6449c5e8eeb322bddab48abffe051ac1746fec4",
+      "mode": "100644",
+      "path": "provenance/schemas/source-extraction.v1.schema.json",
+      "size": 1752
+    },
+    {
+      "blob_oid": "10da3959fb280dbd37fc21f901c5f4f577202772",
+      "content_sha256": "25348d79dc8229cffa30a1f1216206e3f58a0d12201c5fd72b07cd01be07a7b6",
+      "mode": "100644",
+      "path": "provenance/schemas/target-only-policy.v1.schema.json",
+      "size": 496
+    },
+    {
+      "blob_oid": "4c4a1a93b9ff0b0216f709ea62becf72b68ee321",
+      "content_sha256": "bc3094d81b47f22ff27422644b40893eb3f5a050c12e3aa5d049b40394fc6279",
+      "mode": "100644",
+      "path": "provenance/source-evidence.v1.json",
+      "size": 52557
+    },
+    {
+      "blob_oid": "cfaa66fd0c807514d1ce01f7857018cc168c602a",
+      "content_sha256": "be79e3a9e7a593cc35913ea79d414ab3caeb64a3b87cf676e15421f3759c0565",
+      "mode": "100644",
+      "path": "provenance/source-extraction.v1.json",
+      "size": 41176
+    },
+    {
+      "blob_oid": "ffe3d060b30955b8dd8a31c68e0b7cc609474026",
+      "content_sha256": "4f075fcaee338aaf66a79bb61c95200ff2802d470d7bac2383e577159705df77",
+      "mode": "100644",
+      "path": "provenance/target-only-policy.v1.json",
+      "size": 2095
+    },
+    {
+      "blob_oid": "b5006235280edc1a048501e74be7bc0d96e502e7",
+      "content_sha256": "4f24e7af1ab98874204df76a3901b3d5b2fa09f2bc0298d84ac80b354d3bd13f",
+      "mode": "100644",
+      "path": "schemas/service-api.v1.json",
+      "size": 19564
+    },
+    {
+      "blob_oid": "8b4f418686bab4393b2e76c324d904a26a9f7672",
+      "content_sha256": "8516dadaca3b234291aedd32b5ee273df43bc17346eaafd96aa8b8b7cd9ab7da",
+      "mode": "100644",
+      "path": "src/capture/extractors/_shared.ts",
+      "size": 7174
+    },
+    {
+      "blob_oid": "9cfacb226d5e48d234f64e33593e0e3a5cd92c85",
+      "content_sha256": "a03a3f7f25bc2eb56653d97b92f9bfb29feebb7813313d04983be01b56ed95ed",
+      "mode": "100644",
+      "path": "src/capture/extractors/_turn_meta.ts",
+      "size": 3836
+    },
+    {
+      "blob_oid": "765738abd3d717ce7ab4c77019e0d171f5db9f3b",
+      "content_sha256": "2cc487f9c73aa50c00f0ff446b50e694b0d9f4628207bc1839a5d9bffabbd503",
+      "mode": "100644",
+      "path": "src/capture/extractors/claude-code.ts",
+      "size": 23820
+    },
+    {
+      "blob_oid": "e3c09e5df27cb1e77429f79f86c077f794135ffa",
+      "content_sha256": "80628c0b422b0d4ea006a64da0a874307ef8a29c74c9ef6eaee23a1078fa7755",
+      "mode": "100644",
+      "path": "src/capture/extractors/codex.ts",
+      "size": 30601
+    },
+    {
+      "blob_oid": "7e1fd9bba47c643701e93d26674262906fbbe548",
+      "content_sha256": "cccb31853b8f70e357a96741eceffe42d89ff443ca8013e86d31ac838df4a835",
+      "mode": "100644",
+      "path": "src/capture/extractors/cursor.ts",
+      "size": 58480
+    },
+    {
+      "blob_oid": "4b54ca9f625715f4a55123718e589f5d0e33203e",
+      "content_sha256": "fedbf25838dc8ba9348e8b28c4fe4edb862175919fbf87f7693e9d65f620ca88",
+      "mode": "100644",
+      "path": "src/capture/gate.ts",
+      "size": 2945
+    },
+    {
+      "blob_oid": "9a1babc973dee13cec416bb70ac2f5e384c64f91",
+      "content_sha256": "4498f85ca9ea6267158e93a1b50c64300c513294816a4a26d30ea975e818df2e",
+      "mode": "100644",
+      "path": "src/capture/git-state.ts",
+      "size": 5819
+    },
+    {
+      "blob_oid": "8664706bde86785fad87f525a6cfbc6bafb9610b",
+      "content_sha256": "a2d2ad902920f21ab52a41c3f895aa82efeab7488a5d4e6ffdfcb06e44ea1990",
+      "mode": "100644",
+      "path": "src/capture/granola-source-policy.ts",
+      "size": 927
+    },
+    {
+      "blob_oid": "dfa2bb254be7924bcd4cd66ad1111095494fe577",
+      "content_sha256": "796d4552723ad1c9e09efa6de9c01716ec2eac810056eb0e47eb306d94fdfa06",
+      "mode": "100644",
+      "path": "src/capture/pipeline-core.ts",
+      "size": 3250
+    },
+    {
+      "blob_oid": "ba588cf54ae132e5de8dfcc4668e0281e4ac0da8",
+      "content_sha256": "5f5b340847d70c3b126c3e73084674fa1b92ab303b7e71104c9b03ea44cfeb87",
+      "mode": "100644",
+      "path": "src/capture/pipeline.ts",
+      "size": 1093
+    },
+    {
+      "blob_oid": "f2af9a18271f470beed4c09fd2b425947c455f08",
+      "content_sha256": "2e86eb8dfe57399308b646d3b12c1e2b8f8ece132389821b9a56499ccf027826",
+      "mode": "100644",
+      "path": "src/capture/sources.ts",
+      "size": 7336
+    },
+    {
+      "blob_oid": "fb648e121f573e3a121618bb38b347e4d82b4442",
+      "content_sha256": "f6e8ab8f23becf3b8b5808020f1dd0c774ae05fbe7733a57d14ad32a0bbb2c7b",
+      "mode": "100644",
+      "path": "src/capture/surfaces/fs-watcher.ts",
+      "size": 4171
+    },
+    {
+      "blob_oid": "31ddb70edafae82ee277552a3107b0316fc0caa9",
+      "content_sha256": "67d1ff5304d5e9d09ebbb71bb34227cffebf266d00b9a25ec17312e713d7827f",
+      "mode": "100644",
+      "path": "src/capture/surfaces/git-watcher.ts",
+      "size": 14107
+    },
+    {
+      "blob_oid": "ffd7b15f0d4d1bc36f06d37ae344ae2e793343f3",
+      "content_sha256": "7d1ac043256510cd194613d7aaedf59c6875cf9e93d126383b34bd4ec816f713",
+      "mode": "100644",
+      "path": "src/capture/surfaces/granola-poller.ts",
+      "size": 35016
+    },
+    {
+      "blob_oid": "0fd16f664ab5d0506ea9944890d059b837850560",
+      "content_sha256": "6e1e64ce24104fa806696a0c7e2a9492bba8e5daba902204a150bc684af4546f",
+      "mode": "100644",
+      "path": "src/capture/workspace-root.ts",
+      "size": 5200
+    },
+    {
+      "blob_oid": "6f1d0dedc983a52ed6d328a26b0724e1b3cc2daa",
+      "content_sha256": "f0f8db5e3d80843cc50c82af8a88e55054c546e2343364009e6817903ce4b45e",
+      "mode": "100644",
+      "path": "src/echo-home/adapters/atomic-write.ts",
+      "size": 5684
+    },
+    {
+      "blob_oid": "c0acd2f8286d423f263388911391a05787da91d6",
+      "content_sha256": "81e71cf739120566305c4e2cebeca07b8f60ddef55013c6883abbc66f7a5b607",
+      "mode": "100644",
+      "path": "src/echo-home/paths.ts",
+      "size": 12163
+    },
+    {
+      "blob_oid": "c81342401b31e2a89eb4d76e344e355d7c2790af",
+      "content_sha256": "786211dd11792df6a905a0778e22a7e625c21803a0234666a4a5bbdcc9822d71",
+      "mode": "100644",
+      "path": "src/echo-home/state-paths.ts",
+      "size": 897
+    },
+    {
+      "blob_oid": "ebfd98816f23729192c20230e582351d94f4e587",
+      "content_sha256": "104aa2d72ecd3566a11d542a2d2fb30e2e520550acc1c8e39e447e164f0ebfc4",
+      "mode": "100644",
+      "path": "src/enrich/granola-signals.ts",
+      "size": 3883
+    },
+    {
+      "blob_oid": "251a4bfface223c1401441115b55f4e9b9410699",
+      "content_sha256": "e6099d1aced802ba6125946ad7555b1b2e3ae12d89ea0034decc323410a485be",
+      "mode": "100644",
+      "path": "src/guards.ts",
+      "size": 110
+    },
+    {
+      "blob_oid": "6570d49a44c72d6e23c4bf35d6c0cd1570e89b8f",
+      "content_sha256": "a6d36e7d58662ca032320d6ebdec1a2db574a7dafa4715855b2bdd2acc7e0367",
+      "mode": "100644",
+      "path": "src/logging/index.ts",
+      "size": 1658
+    },
+    {
+      "blob_oid": "54d368c9429954cf3497e9af28fbd1386d2a5818",
+      "content_sha256": "32aaa4f006bf493fb461f4a8651d5a3922e81bd525e2e61fd58e20a5fbcadeee",
+      "mode": "100644",
+      "path": "src/mcp/cursor-workspace-resolver.ts",
+      "size": 14687
+    },
+    {
+      "blob_oid": "4841fa8c83487d8210889e657c96034c6fca1911",
+      "content_sha256": "77f6b1a761aa33465902cba86f6968dff950c4465f0d052f586e4df73bec6d63",
+      "mode": "100644",
+      "path": "src/mcp/internal/cluster-engine.ts",
+      "size": 11858
+    },
+    {
+      "blob_oid": "da009ade3593b64209a74ce1bab223dc9c542036",
+      "content_sha256": "1e86b87083f7ec99bb93c5a33cb72a17ed16bbcc172212c7fe9b11c3ec558aae",
+      "mode": "100644",
+      "path": "src/mcp/parse-anchors.ts",
+      "size": 3996
+    },
+    {
+      "blob_oid": "785c4b2eb0eb4aef78899e58c2a68f794eae0f2e",
+      "content_sha256": "a9ae2021c868f98e0c56f58559be75f6ee11ee40b4a28496b7713f55d4087e65",
+      "mode": "100644",
+      "path": "src/mcp/request-log.ts",
+      "size": 16636
+    },
+    {
+      "blob_oid": "5182cc601d3be54bfbf1bae80217955f553001af",
+      "content_sha256": "ba35001a8d8db99bb17daeff7763920066424669ba07dfd5dca9251d96675efa",
+      "mode": "100644",
+      "path": "src/mcp/server.ts",
+      "size": 7387
+    },
+    {
+      "blob_oid": "9c7245c322cf1252ac4fdb496c2a9cce13f2d70d",
+      "content_sha256": "82e74123dde6d96245b33389818c2a7856b7cdb6742fbe4fa079d0aaf7cc5376",
+      "mode": "100644",
+      "path": "src/mcp/tools/_cursor.ts",
+      "size": 2597
+    },
+    {
+      "blob_oid": "f851537761da17f5f919168c00d0dca901ec0822",
+      "content_sha256": "0124eb723b362ff4277ad916d1b4d556be0a2e9fa07928ed8d1a6d386edf95a1",
+      "mode": "100644",
+      "path": "src/mcp/tools/echo-ping.ts",
+      "size": 1173
+    },
+    {
+      "blob_oid": "e5cf0b85ffc99f8b683e07454b14cd28f632f4a1",
+      "content_sha256": "af1e5d61932cdbf9de4620046b67926211faeb1086a2507683938ee01e5ff32d",
+      "mode": "100644",
+      "path": "src/mcp/tools/echo-resolve-mru.ts",
+      "size": 13646
+    },
+    {
+      "blob_oid": "e20ede77d938b1a658afc4b01a2ea5331c6337b5",
+      "content_sha256": "19b704db2cbe4d7aea3aab6047a0335be6e35597793ea27796d465988f125748",
+      "mode": "100644",
+      "path": "src/mcp/tools/find-clusters.ts",
+      "size": 16864
+    },
+    {
+      "blob_oid": "88bad7dabba0844cc8419132cd4e9cc621aa23cb",
+      "content_sha256": "ad831336b7809c781593a52430351407a62085d4989404b5c13ea4fe2a233c57",
+      "mode": "100644",
+      "path": "src/mcp/tools/get-atom.ts",
+      "size": 8692
+    },
+    {
+      "blob_oid": "8b58922a4c6b65705dd2dee6ab315b7d4aca61e0",
+      "content_sha256": "0ff3ef6191b0254da9b49cca7e5b0355a90f48e15f0017caf5ec7e04467bee8f",
+      "mode": "100644",
+      "path": "src/mcp/tools/get-atoms.ts",
+      "size": 17846
+    },
+    {
+      "blob_oid": "4c3ace6fac88bd16c59c3350faab1e2e492c5fe2",
+      "content_sha256": "91a825eb9cac05f7755450f560a8d4e789fd9e6006348ebeb5719f2444cc7d74",
+      "mode": "100644",
+      "path": "src/mcp/tools/recent-work-context.ts",
+      "size": 15940
+    },
+    {
+      "blob_oid": "9b6e9e4fcc1fb5e6d6744ce83a4a2ac0a63556c2",
+      "content_sha256": "31f317040f60255a9fc8bcb4b85808f477096501cf8d76718e6a54cc8be20a3e",
+      "mode": "100644",
+      "path": "src/mcp/tools/search-memories.ts",
+      "size": 26425
+    },
+    {
+      "blob_oid": "48a43fb9648e6a0248b0ca2e57db4938342c2af0",
+      "content_sha256": "aa8298b8dbb4fbdbaa164f76247b332013016e8518b2fa2746f055f2c9d6dd54",
+      "mode": "100644",
+      "path": "src/mcp/tools/wait-for-new-turns.ts",
+      "size": 25460
+    },
+    {
+      "blob_oid": "0a935a5b82fa3e0f1d54a65ba28dece3d371a08e",
+      "content_sha256": "4b1ea7cd8227a12652887ec79c9f6bf315a9751a56722487bd6a29422a15e584",
+      "mode": "100644",
+      "path": "src/mcp/util/fs-exclusion.ts",
+      "size": 1639
+    },
+    {
+      "blob_oid": "fab0828bab9f16ac8a8efd2980e4db7eafee8c63",
+      "content_sha256": "932ec405684ecd5d3c35682c34b608acb9d6ad7f60970e4bc39a8e23fe2d40d0",
+      "mode": "100644",
+      "path": "src/mcp/util/iso8601.ts",
+      "size": 2185
+    },
+    {
+      "blob_oid": "adad197d675c480ac42959e3d7a2d19bba5a4041",
+      "content_sha256": "2e53fbc1a7827a0bbd1c7d272af43370e8575abf26dc1661ce47ad91af365473",
+      "mode": "100644",
+      "path": "src/mcp/util/repo-path.ts",
+      "size": 1899
+    },
+    {
+      "blob_oid": "4b2bb1e515e7bc548c24692e4d16fa90ab939284",
+      "content_sha256": "27f491ee67493f4043bf66015e23f462b7477229140ef8895d86a50a96f212e5",
+      "mode": "100644",
+      "path": "src/mcp/util/role-state-git.ts",
+      "size": 8310
+    },
+    {
+      "blob_oid": "53fed49179f7e30ed6fd7e6a1556ae16da23f4a4",
+      "content_sha256": "260d87179699b657b6a9d27f1e54049fc9d3863554b2d904759fb7ac6eb64ebe",
+      "mode": "100644",
+      "path": "src/mcp/util/source-app.ts",
+      "size": 1178
+    },
+    {
+      "blob_oid": "fb04752650e4949854256978da2b1169377d6343",
+      "content_sha256": "7fdcb2c5738b7481c7fd9b478f67eac6cc8d3747255b0ba5496a0c63260bf369",
+      "mode": "100644",
+      "path": "src/mcp/wire-shape/caps.ts",
+      "size": 2008
+    },
+    {
+      "blob_oid": "14e08801c574ede9ca806448595ac01c2358da32",
+      "content_sha256": "42ba33c9b43270476b596c8b2caf749bbdb853c15d755a925a875c05d81cbe6d",
+      "mode": "100644",
+      "path": "src/mcp/wire-shape/clip.ts",
+      "size": 3396
+    },
+    {
+      "blob_oid": "eff30b136b4730a010c7fb4fc834cdfe6eda8287",
+      "content_sha256": "eef474781fd846cf0adbf0e547cf730c6d2742b3a423ebfdfa4ea1589df530cc",
+      "mode": "100644",
+      "path": "src/mcp/wire-shape/compact.ts",
+      "size": 6927
+    },
+    {
+      "blob_oid": "9278325d7af3bf7f34395a1594f9f9339f7c95c9",
+      "content_sha256": "9441c8888b907dd66f16a45474b1408d7bcd02120c43ab01d7b3cd84c86a115e",
+      "mode": "100644",
+      "path": "src/mcp/wire-shape/match.ts",
+      "size": 7207
+    },
+    {
+      "blob_oid": "b1282da6577825d980904baa813912f673f80d8b",
+      "content_sha256": "30d2069731ea33e5b293783016b8d3888062ae3e96a889a0a05c670098469037",
+      "mode": "100644",
+      "path": "src/mcp/wire-shape/tool-calls.ts",
+      "size": 3724
+    },
+    {
+      "blob_oid": "eea16ac74fc25ff5fea5ed010d4bafb6ec385ef4",
+      "content_sha256": "8141b96cc04ef55ee59dcec8c67f5b36bbc2baf6b440a12cd6f8e9fa711bc276",
+      "mode": "100644",
+      "path": "src/normalize/adapters/_shared.ts",
+      "size": 4542
+    },
+    {
+      "blob_oid": "b0bfd811e3bd74aa6cefb0d0f1602cf0c6359af4",
+      "content_sha256": "687568375047eb29350e984852c052a5665496b3023c098ce24378e0d433d25f",
+      "mode": "100644",
+      "path": "src/normalize/adapters/claude-code.ts",
+      "size": 3939
+    },
+    {
+      "blob_oid": "cf1b15eb5d04087bbe485dfe2a92cb709ff46d0d",
+      "content_sha256": "b97fb40359e123b972a2623dba85c2f3a1494a2774d11ce93dcc54a60ff73ec7",
+      "mode": "100644",
+      "path": "src/normalize/adapters/codex.ts",
+      "size": 4297
+    },
+    {
+      "blob_oid": "c60ec0102bf2e3ed35e93d184bba50d8cee7aae2",
+      "content_sha256": "4e1b9fa3170dcd7a915190ffbd1e4e569b31aaa42837b9e1a2c3ab6bed4162b3",
+      "mode": "100644",
+      "path": "src/normalize/adapters/cursor.ts",
+      "size": 3331
+    },
+    {
+      "blob_oid": "12ba13d1a321272bf32b0bec165bd6391e41ba89",
+      "content_sha256": "eaa2a2a54b932af06eaf2202e39e0742cd2a1bd881c54115269bbef3f6d8f394",
+      "mode": "100644",
+      "path": "src/normalize/adapters/git.ts",
+      "size": 4385
+    },
+    {
+      "blob_oid": "7f16f45208592e282c1b1ce69b22d184b1d3fbe4",
+      "content_sha256": "bc0d99a99cf2708b462086b1341d0e64330d2c5fa6aafe16436b7659d739896e",
+      "mode": "100644",
+      "path": "src/normalize/adapters/granola.ts",
+      "size": 2714
+    },
+    {
+      "blob_oid": "d1c816fdbb53e330070ff65b32cdc38e16dcf015",
+      "content_sha256": "f4ebc848851d70d92ab910d3cbc54643f41366518dadb7aa1a4e280f0b2d1862",
+      "mode": "100644",
+      "path": "src/normalize/artifacts.ts",
+      "size": 4387
+    },
+    {
+      "blob_oid": "0fc7d8eca6bf3abf6c8062db40cfd2ff4296ae1a",
+      "content_sha256": "33c406eaa8d55d461537b3be5f9bf371a4561e83b452d704ebbb2b220366f547",
+      "mode": "100644",
+      "path": "src/normalize/dispatch.ts",
+      "size": 1343
+    },
+    {
+      "blob_oid": "1a420e23d99a26b230842bd0d124f3fdacaa2b7e",
+      "content_sha256": "5b7c12720d0674be5db850a93d006d0c95187e69cd0efc7d4e9179accfad125a",
+      "mode": "100644",
+      "path": "src/normalize/errors.ts",
+      "size": 294
+    },
+    {
+      "blob_oid": "9877c0809919fb859730772469fee54645ae5039",
+      "content_sha256": "369023ef5b9c290a90246c405b42f40d0c0bac1ed23c2e0e2544e7164d25642d",
+      "mode": "100644",
+      "path": "src/normalize/index.ts",
+      "size": 1108
+    },
+    {
+      "blob_oid": "c341705957bdc6651275ecaf99aed70065ce3f05",
+      "content_sha256": "b9a3aff313d947b25a9eab551c1da355109190d15cb76f5504587660e4873562",
+      "mode": "100644",
+      "path": "src/normalize/types.ts",
+      "size": 1922
+    },
+    {
+      "blob_oid": "ba954577736841e47ef1dd27e050455ee097867b",
+      "content_sha256": "01d57b0742e2dd601de0de23abe4905b7cd1df82fd724fad394d35888af945f5",
+      "mode": "100644",
+      "path": "src/storage/interface.ts",
+      "size": 8025
+    },
+    {
+      "blob_oid": "ae7bacf1bba424c53c4fb37fa8bfcd5ad8ba1a9b",
+      "content_sha256": "c8f65cb9fc5b1e82baa7de0e6c1ff6f4dfb57a68dec753379e6556dd12ae2590",
+      "mode": "100644",
+      "path": "src/storage/memory.ts",
+      "size": 8702
+    },
+    {
+      "blob_oid": "27c1e20dd5058ad524b7ce7661e7783d4119d896",
+      "content_sha256": "e21466f7fa56c5e872599110d16054bea229b3589d0dfa81d650e85c5ec5cf7c",
+      "mode": "100644",
+      "path": "src/storage/migrate.ts",
+      "size": 2952
+    },
+    {
+      "blob_oid": "98cf5ab2321a615ffcb09e0acb3492da95773bf6",
+      "content_sha256": "e8e96abe792ec8a601633977102705fc8aae005f7b2adba36966d295f2c824b3",
+      "mode": "100644",
+      "path": "src/storage/migrations/0001_initial.sql",
+      "size": 280
+    },
+    {
+      "blob_oid": "1f5c9228976bdc5a324934a0150e9ef672708b03",
+      "content_sha256": "dc01582037e2e6bca906b223c273bd9687fb97965d1260ac85367ec5c9067069",
+      "mode": "100644",
+      "path": "src/storage/source-match.ts",
+      "size": 3838
+    },
+    {
+      "blob_oid": "add66d86545ae96ecb2ba486a8e447dc29ffbbc0",
+      "content_sha256": "d5559dd1a092e26536790a7832d8ee4c64d957fd0fd343d19336f0fddbf60878",
+      "mode": "100644",
+      "path": "src/storage/sqlite.ts",
+      "size": 14594
+    },
+    {
+      "blob_oid": "812a52e5321ee24d28e66d5bb9469a6f1554e200",
+      "content_sha256": "e431eaf831afcfdfb135670850161aff1c1558856fd42a1500b9e5d9e31c89a5",
+      "mode": "100644",
+      "path": "src/trace/auto-expand.ts",
+      "size": 2991
+    },
+    {
+      "blob_oid": "8f4706f3bbb2b1b546060a196bce79776f308188",
+      "content_sha256": "77b7d2b681715ffeb74b848128fbd572c1f66583f0270073cd92250a9f9d9e1b",
+      "mode": "100644",
+      "path": "src/trace/cluster.ts",
+      "size": 5274
+    },
+    {
+      "blob_oid": "e1631733e6c5134cc2f352e3c5bdba40cfc96a71",
+      "content_sha256": "1332b0d2a4f17520f18cfc1592721136cdc7140f2f8453a574882700b22a8f60",
+      "mode": "100644",
+      "path": "src/trace/hints.ts",
+      "size": 7548
+    },
+    {
+      "blob_oid": "408cd516558b5dca9585817e4285247989d1a1f9",
+      "content_sha256": "f245faa6735c5f1707bc01a512663210e3d379cbd0a09cdc5f370b20fd24d69c",
+      "mode": "100644",
+      "path": "src/trace/index.ts",
+      "size": 11787
+    },
+    {
+      "blob_oid": "f6ba5bae9d092c067cbfbb16ace5f70d629499b3",
+      "content_sha256": "59a2b655f3dc4ff23965e4a90dbff80238c699d9677c1bd9bc0440add00da88b",
+      "mode": "100644",
+      "path": "src/trace/labels.ts",
+      "size": 3150
+    },
+    {
+      "blob_oid": "178eeb08b4ed6e377f932f90701b62847c622982",
+      "content_sha256": "299bd5f4918812821a4cca338abc1dafa1bd7dcff6e186c47b0be239684ee9f3",
+      "mode": "100644",
+      "path": "src/trace/rank.ts",
+      "size": 7461
+    },
+    {
+      "blob_oid": "b33a3a1648133a60a852c9f846269f87749b2c56",
+      "content_sha256": "3c88cd22129f188a1634e1e475a53efc8b0ff8183c6895642e23df328d012f5f",
+      "mode": "100644",
+      "path": "src/trace/role.ts",
+      "size": 1346
+    },
+    {
+      "blob_oid": "06cbdf6d0473ea416c48d2b6976a9e61c1c5226e",
+      "content_sha256": "52c6008c3be23e99802e2d61583efd1be0b1e7c6f5def6cef76ebdce07370604",
+      "mode": "100644",
+      "path": "src/trace/signal-window.ts",
+      "size": 7692
+    },
+    {
+      "blob_oid": "29b072d65c46f3044be110197b4f2540d278fe82",
+      "content_sha256": "2f493078d2a5942e0331a2df53946dfc0e9cbdb73b505c79cfb95a224efdeb90",
+      "mode": "100644",
+      "path": "src/trace/types.ts",
+      "size": 2975
+    },
+    {
+      "blob_oid": "d354247f42c1b49dcef26e54732c648224fcaa5f",
+      "content_sha256": "e39d9255f557e388d352bd73933b05cc30082d19525720c099e0949fb2656751",
+      "mode": "100644",
+      "path": "src/util/json.ts",
+      "size": 397
+    },
+    {
+      "blob_oid": "ca9b8d08b3fb9c14da5464223ed58609c0cb8ae3",
+      "content_sha256": "85d70f78278b7d27e949d7e9b898744432c18cd29b2bf88c44dc137a57fd6f7a",
+      "mode": "100644",
+      "path": "src/util/subject.ts",
+      "size": 1240
+    },
+    {
+      "blob_oid": "d902cc7a8d18fc646fd862f29988fb206322e9ab",
+      "content_sha256": "21d4b29bf4e7524af175e314275c7f4ac15dc1b888353d21ead2441706cb7227",
+      "mode": "100644",
+      "path": "src/util/subprocess.ts",
+      "size": 2517
+    },
+    {
+      "blob_oid": "cea84e51ef6357a44bf8efa1aa3562feffdd4f32",
+      "content_sha256": "c8e65b810e4ee5ab7b8b896e4ef15a1438d44bfa43c34b072cec170a58aca2ee",
+      "mode": "100644",
+      "path": "src/util/timestamp.ts",
+      "size": 497
+    },
+    {
+      "blob_oid": "0de3b9f681cf737f8aec4213ce60d694f33c37d3",
+      "content_sha256": "d5c4090ac55a05fc885408421fe7f05e73dd9a74c3cd6c410bdca5a6591b4eb0",
+      "mode": "100644",
+      "path": "tests/api/context-only-roster.test.ts",
+      "size": 1976
+    },
+    {
+      "blob_oid": "fb43836036e86e7848d5f811307a9615bb61d95e",
+      "content_sha256": "0c6cbb4a990603c05d52e0aa5db908bd1fda517fc53b617ec26cd747e3595b8f",
+      "mode": "100644",
+      "path": "tests/capture/canonical-root-capture.test.ts",
+      "size": 7562
+    },
+    {
+      "blob_oid": "7eafae0646794a6effd1657336ea15ef4b2a6933",
+      "content_sha256": "c99112588640823e2da2f4de16e010b57ac67d6334d4a57f945811d82c365a31",
+      "mode": "100644",
+      "path": "tests/capture/extractors/claude-code.test.ts",
+      "size": 37144
+    },
+    {
+      "blob_oid": "77c69c8415939aa3072483bd759030559386ada0",
+      "content_sha256": "7f5ef37d6ea7873fe298579e59a21193162758412b679ce48b3e4e7c3baaece6",
+      "mode": "100644",
+      "path": "tests/capture/extractors/codex.test.ts",
+      "size": 41904
+    },
+    {
+      "blob_oid": "2b4757c9134ac82a84f20d45a9b4e0b524014925",
+      "content_sha256": "b8ab0601292d2343703cc748f1859819be820cbd1e2100612acd8762efbb125d",
+      "mode": "100644",
+      "path": "tests/capture/extractors/cursor.test.ts",
+      "size": 73885
+    },
+    {
+      "blob_oid": "fa933cb52dfe81850b07bcd6029b718e9fe45132",
+      "content_sha256": "6a07e0fcf1009b45f9672e3778c6dd36db157ce5ffd15f9657cc8cd85192649b",
+      "mode": "100644",
+      "path": "tests/capture/gate.test.ts",
+      "size": 8373
+    },
+    {
+      "blob_oid": "d56be9623df0c9c85c8c5d0d4d22da71b3ee4ba7",
+      "content_sha256": "4bc89706975efc778c3453442d6af8deeadc527b04ee53a7123116d86487a66d",
+      "mode": "100644",
+      "path": "tests/capture/granola-poller.test.ts",
+      "size": 14325
+    },
+    {
+      "blob_oid": "b5731b18348f20b6fa9bc9a40079d6e3f2adee89",
+      "content_sha256": "b47a7df4313301a27431b1626f449590a2b85cd952b8a044bbc10434fd959537",
+      "mode": "100644",
+      "path": "tests/capture/origin-url-capture.test.ts",
+      "size": 6584
+    },
+    {
+      "blob_oid": "a58edb6f31d1bfff765bdf244aea9f93bcb2985c",
+      "content_sha256": "7767c4a738444eb802412d698523629d2f753169c24e336130665706066830eb",
+      "mode": "100644",
+      "path": "tests/capture/pipeline.test.ts",
+      "size": 9355
+    },
+    {
+      "blob_oid": "0d4b90bc3679b603733a9771b86c871d3ac9d274",
+      "content_sha256": "7b714c158ecfa57c99651685b1dd8db02a0ca278f349c5b6f4fd507bc64f63b3",
+      "mode": "100644",
+      "path": "tests/capture/sources.test.ts",
+      "size": 7539
+    },
+    {
+      "blob_oid": "caf82e3c4d2fc75c210e5b46fcfa440801a54291",
+      "content_sha256": "f34d8f1feda22933d0d7c28cd283a3f48e5792ff4262684c0907020fa162c63a",
+      "mode": "100644",
+      "path": "tests/capture/surfaces/fs-watcher.test.ts",
+      "size": 10553
+    },
+    {
+      "blob_oid": "34e676b854c5385ee8a232db88f51b965c752204",
+      "content_sha256": "51dfcb47e013f96cc1b61342eda669bb7d76c250b9fad822223193f7277056ca",
+      "mode": "100644",
+      "path": "tests/capture/surfaces/git-watcher.test.ts",
+      "size": 15727
+    },
+    {
+      "blob_oid": "c6c6f36bb75e321d8a224bf68b157dc044bfe493",
+      "content_sha256": "32ec8432544dd3ce05daf1494858c493598224f15b5dd173dfcdc518115c38a2",
+      "mode": "100644",
+      "path": "tests/capture/workspace-root.test.ts",
+      "size": 6759
+    },
+    {
+      "blob_oid": "28dd0ef7abe77a9c540bbc2d47f55580f695469c",
+      "content_sha256": "661b1c3a77c9969abfa004cb82b347426bde6aae6d9263cb1aa267a1a37b5480",
+      "mode": "100644",
+      "path": "tests/echo-home/adapters/atomic-write.test.ts",
+      "size": 7960
+    },
+    {
+      "blob_oid": "f842aee9645aca4f266e3273943cdee602485a55",
+      "content_sha256": "a92ba904e87137020ad1389d31df4b02fa96dacc899ba401ef40f1de7a3432df",
+      "mode": "100644",
+      "path": "tests/echo-home/paths.test.ts",
+      "size": 6967
+    },
+    {
+      "blob_oid": "da6bac1edc3009c68309a04c935fcb5ed0353f80",
+      "content_sha256": "6a21223c3467ea64f057b719cb8687a72b39222fda91f2fe387da71fd996d92b",
+      "mode": "100644",
+      "path": "tests/fixtures/allowlist.ts",
+      "size": 830
+    },
+    {
+      "blob_oid": "d9e8bcd369af996fed35655a7b08068377dc41b1",
+      "content_sha256": "7c4de2006766eb74965e4e1e420bdcf094d037937d0a186366729f5732df7437",
+      "mode": "100644",
+      "path": "tests/fixtures/claude-code-session.jsonl",
+      "size": 1812
+    },
+    {
+      "blob_oid": "8965a9b91bc1214e6ff0a0ae759277a295686b0d",
+      "content_sha256": "e7a5d95f96533ba41483a959b1f3f578f5e78f6c51d2e203991b12d16e0b3080",
+      "mode": "100644",
+      "path": "tests/fixtures/context-tool-parity.v1.json",
+      "size": 2426
+    },
+    {
+      "blob_oid": "724893e596757bc6d0991a0f37e15457d92099d4",
+      "content_sha256": "be5fbf2ed8fd9abc609abc04492c29e30daefca1d4e22cfde98bdff4615ef2a6",
+      "mode": "100644",
+      "path": "tests/fixtures/cursor-globalstorage.ts",
+      "size": 6183
+    },
+    {
+      "blob_oid": "afe3c8a1bae716a045e63e22d5fc38c4d48a358f",
+      "content_sha256": "d34f800293bbaa452ba7b6ac398fa94656a7760179e2cb8e672801a1a70c533e",
+      "mode": "100644",
+      "path": "tests/fixtures/jsonl.ts",
+      "size": 1164
+    },
+    {
+      "blob_oid": "c76c632f0caea1584a145e9b468880c4b7bd92fd",
+      "content_sha256": "000fe74978833ca343265ccdb6589e1581abf467b23fbd966e3dbc898a21bd6e",
+      "mode": "100644",
+      "path": "tests/fixtures/stdout.ts",
+      "size": 533
+    },
+    {
+      "blob_oid": "3852e869b0305fd9b786fab4ae7122daed20d11f",
+      "content_sha256": "8303c88cd60c4565491fff4600a563bda43c042b0bb8b82d2a3f00bc4e498674",
+      "mode": "100644",
+      "path": "tests/integration/context-service.test.ts",
+      "size": 17721
+    },
+    {
+      "blob_oid": "0d9a091eb5a36065c3dca759db2c3ce3f065d4f6",
+      "content_sha256": "752ebcfee0d7b264bd376256c3edc4825dcc0d2278e49ebe30528c512b75e5bf",
+      "mode": "100644",
+      "path": "tests/logging/index.test.ts",
+      "size": 4569
+    },
+    {
+      "blob_oid": "d31b569aa590a25985547cca1dfb448d85a8ab32",
+      "content_sha256": "d1d5fdb83c66f0fbbfd82cc04ec624db797c6817a617c08600330b72ba65f309",
+      "mode": "100644",
+      "path": "tests/mcp/cursor-workspace-resolver.test.ts",
+      "size": 16461
+    },
+    {
+      "blob_oid": "224a23261baf8de287f0d999c1d57e2beb8025e7",
+      "content_sha256": "ff69147c864ba129520f38df9fb5ca10ddfd8013d9239238352de3348fdc50dd",
+      "mode": "100644",
+      "path": "tests/mcp/envelope-find-get-chain.test.ts",
+      "size": 5564
+    },
+    {
+      "blob_oid": "d700c37e8ba9880f331efaff54d52ee1f79ce1a2",
+      "content_sha256": "a7b95a9510c1c73cfd488a96bc5599b3421474152df9b6042db537708c2d088f",
+      "mode": "100644",
+      "path": "tests/mcp/find-clusters.test.ts",
+      "size": 29362
+    },
+    {
+      "blob_oid": "8a6619b5a4efe20de3062a6cb4388790065f8d9f",
+      "content_sha256": "e901fb67cfdb0d9fdf8318b7a7a3bbcefdc77655ed9bd1df7055f96c5a0dafad",
+      "mode": "100644",
+      "path": "tests/mcp/fixtures/recent-work-context-realistic-claude-code.json",
+      "size": 110843
+    },
+    {
+      "blob_oid": "859bdbc21564f36bbb982a82a505783f4729adc8",
+      "content_sha256": "76a951f31286cc70e4954990a8b14396c9b8ec2934baaadd302dd8dd74a1cc0f",
+      "mode": "100644",
+      "path": "tests/mcp/get-atom.test.ts",
+      "size": 8800
+    },
+    {
+      "blob_oid": "1e8e3a8d8cf7af3aac682ecaae4282419ee56476",
+      "content_sha256": "04209e056ab44cb212a9a74205ada8b6a14ea917535ba949f85b9092e47891c9",
+      "mode": "100644",
+      "path": "tests/mcp/get-atoms.test.ts",
+      "size": 21464
+    },
+    {
+      "blob_oid": "119dc15c08f72891255679235646e19cd276ed17",
+      "content_sha256": "c3e2dfa2873aa69c571a0c44c0bb52863d8432a73b417ef110d871cb267fb279",
+      "mode": "100644",
+      "path": "tests/mcp/recent-calls-endpoint.test.ts",
+      "size": 6079
+    },
+    {
+      "blob_oid": "e52828d1e47dbfb4710480f27acd426d9c245ea2",
+      "content_sha256": "6a52e56cdc61e5d9e141fb3cdbf8d7f4c44afd73e6e2c6737881400c267565d8",
+      "mode": "100644",
+      "path": "tests/mcp/request-log.test.ts",
+      "size": 10669
+    },
+    {
+      "blob_oid": "645fc78de697fbf1c84e08fa8a0aa019d3c5efd6",
+      "content_sha256": "0869a201904d87a22c3c1a957f64b8c9caefbddc51c5de1f91f7a01bd6eafb0d",
+      "mode": "100644",
+      "path": "tests/mcp/server.test.ts",
+      "size": 13113
+    },
+    {
+      "blob_oid": "b4a4db03b417cd2e0f11b1b3ef92f0c4a952acf3",
+      "content_sha256": "55ee61f28a737da4544471de3288b152d2f5a956e905b4c9c79b10b9b3031efb",
+      "mode": "100644",
+      "path": "tests/mcp/tools/echo-ping.test.ts",
+      "size": 2833
+    },
+    {
+      "blob_oid": "5cea0aa287534149ac85b492fe7629ea030191a0",
+      "content_sha256": "66a914b7243d5106dc7da15f06e583cb70b13689a3b10e2fb2aa8acc9bd020e5",
+      "mode": "100644",
+      "path": "tests/mcp/tools/echo-resolve-mru.test.ts",
+      "size": 15670
+    },
+    {
+      "blob_oid": "fccac49265be4499ee55a7b82f32b22890f18092",
+      "content_sha256": "cfcdaf01f33025c255907b129fa56d987454d89c3cd23d939310834cb6120d4e",
+      "mode": "100644",
+      "path": "tests/mcp/tools/fixtures/build-list-task-states-fixture.ts",
+      "size": 4911
+    },
+    {
+      "blob_oid": "864d63d47fd0e5512fd6d1d38779538215f7b563",
+      "content_sha256": "a9e6d274d4d238ccc463a2794d8da3cffcd0649bbbc154b3a14bda83a0a184a9",
+      "mode": "100644",
+      "path": "tests/mcp/tools/fixtures/list-task-states-baseline.json",
+      "size": 2859
+    },
+    {
+      "blob_oid": "d4ffb9e47495a44bf8610709afde8b66cb8aac02",
+      "content_sha256": "290c9b32ecebd1b973e7a526ebfd07396e3671abbbfdbbf63289955b22b641f4",
+      "mode": "100644",
+      "path": "tests/mcp/tools/recent-work-context.test.ts",
+      "size": 66602
+    },
+    {
+      "blob_oid": "fbd739babe6dc33a1ac910d3e0f17767132d260c",
+      "content_sha256": "e26fa5ba16c3788df08960506e6e330405241eab2cc1d2996747be84b154ded8",
+      "mode": "100644",
+      "path": "tests/mcp/tools/search-memories.test.ts",
+      "size": 58817
+    },
+    {
+      "blob_oid": "7d3023ba7de428972b616eb81668b85d3349fede",
+      "content_sha256": "d2a8310196450033a9a24c76e6dde4e3cc30af2fb8fd4b47d96804e257c3f941",
+      "mode": "100644",
+      "path": "tests/mcp/util/fs-exclusion.test.ts",
+      "size": 3465
+    },
+    {
+      "blob_oid": "a3d2ef1a15fd76b815917831f8940cba7ceaa194",
+      "content_sha256": "c74b378c1e78af0028cf1c11fdc280d94d4be98969d584a898bc95862dc0d685",
+      "mode": "100644",
+      "path": "tests/mcp/wait-for-new-turns.test.ts",
+      "size": 23984
+    },
+    {
+      "blob_oid": "c9bc749d28baf92c8021375894fbf68c6f7a109f",
+      "content_sha256": "9df9bf0b246a914039c201253abb1c0a3b0d35ccbb79dfdf6efe94597c75b092",
+      "mode": "100644",
+      "path": "tests/mcp/wire-shape/compact-rank-reason.test.ts",
+      "size": 1120
+    },
+    {
+      "blob_oid": "563fdc04d0515a8bd50f03e65a06c6cd8a3ac06a",
+      "content_sha256": "a5c4fd5bb540c20889c5369a84de36f4084eedf5a7c792ac4d0ef226e4e69904",
+      "mode": "100644",
+      "path": "tests/mcp/wire-shape/compact.test.ts",
+      "size": 8256
+    },
+    {
+      "blob_oid": "e9a8804f129a07782c301e6cfc8f4fe1444a5819",
+      "content_sha256": "94d06be97db306e1cd83b012f8d0d50e9757e598e65a76c5f98042a1ee08916d",
+      "mode": "100644",
+      "path": "tests/mcp/wire-shape/match.test.ts",
+      "size": 9327
+    },
+    {
+      "blob_oid": "62bfa8c71c70b4c4456a62cf7cf1cc763a374426",
+      "content_sha256": "3b8d8883facecc7f7ffc1a46a14049a356283be9c0fe97ab51159f6e0be3d291",
+      "mode": "100644",
+      "path": "tests/mcp/wire-shape/tool-calls.test.ts",
+      "size": 3456
+    },
+    {
+      "blob_oid": "9b5c655f3211be6f8d6d2f449c5aa41410f83b36",
+      "content_sha256": "51a2b4d5e5fdd6b8bb6adff15295528e344ae20f6f28549c404e84e8f2293fd7",
+      "mode": "100644",
+      "path": "tests/migration/committed-source-only.test.ts",
+      "size": 2592
+    },
+    {
+      "blob_oid": "ba53e5ec8d3348b5ec8616d6e92bff8db119cfe9",
+      "content_sha256": "72ae371441acc3d995f2582db5dd97990a5e6e15cf3c7ac66f495073db21a9d4",
+      "mode": "100644",
+      "path": "tests/migration/context-tool-evidence.test.ts",
+      "size": 13418
+    },
+    {
+      "blob_oid": "de63315a813b9ba70845ad65de2d651c84a95e72",
+      "content_sha256": "2f14b4c5fdc5d90134e0a7a373f5ede8ae30b08917fbdf3870c29271f074f00f",
+      "mode": "100644",
+      "path": "tests/migration/dependency-set.test.ts",
+      "size": 17061
+    },
+    {
+      "blob_oid": "61ac2295a8e9fa3bbf784581c6ffa0d173dc96d1",
+      "content_sha256": "037540c82ac315f2f3f281b9d4ae2062cfd620f090e97a3a7fb2f75f362f443e",
+      "mode": "100644",
+      "path": "tests/migration/object-closure.test.ts",
+      "size": 2967
+    },
+    {
+      "blob_oid": "f2b934e1243ca6657be0e44c956beb43ef22a72b",
+      "content_sha256": "85ab690860c1583fd0817327309d796154967c97b17b322c7514dfa5e5da3780",
+      "mode": "100644",
+      "path": "tests/migration/parity-matrix.test.ts",
+      "size": 16519
+    },
+    {
+      "blob_oid": "098c23f3dc47ec11766648f228e6d6e2a502b527",
+      "content_sha256": "9778541411e661596c3051e7179b0f0819782f549c44dd4ea3c6398cf49a0164",
+      "mode": "100644",
+      "path": "tests/migration/source-independence.test.ts",
+      "size": 3308
+    },
+    {
+      "blob_oid": "6f1d72038402075b287a446ba3347d72eb0cc2d6",
+      "content_sha256": "b2404b943bba2b8aef22f057d69e9fab59f21a69fe824b12242982f69be8fa0c",
+      "mode": "100644",
+      "path": "tests/normalize/adapters/claude-code.test.ts",
+      "size": 3299
+    },
+    {
+      "blob_oid": "3ac0e468c150e3ebb49264c28f857ca3c0e470b8",
+      "content_sha256": "a6d24ff2ecfa8ac8d71227c52e54e4c72ecd2f15e177265b99c2baadf3ef2ca8",
+      "mode": "100644",
+      "path": "tests/normalize/adapters/codex.test.ts",
+      "size": 2346
+    },
+    {
+      "blob_oid": "a5cfeb0ff210e8eec29019ccb9a1875733b3e4bc",
+      "content_sha256": "24f2f949fb9c8df5c8dc56c87a7d4e7aaff102c428b5e9d1c7d3c3efbfddc42b",
+      "mode": "100644",
+      "path": "tests/normalize/adapters/cursor.test.ts",
+      "size": 2699
+    },
+    {
+      "blob_oid": "f59160141cad8581dfbd7020eb77802817035419",
+      "content_sha256": "61fd3e43b2bfe0e02289a08ef870043d44dd0aa8c572242ee25f231f52f8d025",
+      "mode": "100644",
+      "path": "tests/normalize/adapters/git.test.ts",
+      "size": 2663
+    },
+    {
+      "blob_oid": "273aa129be501af28eff4052c3b199bbf3a8a523",
+      "content_sha256": "b6cedb16455a3ecdd73b2d3210dc137a284967ebee59ef8721fa0a9ee86cf294",
+      "mode": "100644",
+      "path": "tests/normalize/adapters/granola.test.ts",
+      "size": 2219
+    },
+    {
+      "blob_oid": "c9ef12a46208499fe23c774551ba6e6acf5783aa",
+      "content_sha256": "2793a50409df74a1366dfa45bb8f0f172065331b031c472d2bd3ef59b257b844",
+      "mode": "100644",
+      "path": "tests/normalize/artifacts.test.ts",
+      "size": 5178
+    },
+    {
+      "blob_oid": "4a2f05ef4d2bb5381daed78b95700d1ef8fd9f3a",
+      "content_sha256": "6e7d3cf5c8851439e69e7e582b72657a3fd64a1ee09ada70ea551e78f4032823",
+      "mode": "100644",
+      "path": "tests/normalize/dispatch.test.ts",
+      "size": 4236
+    },
+    {
+      "blob_oid": "390b3bca73e049f2ba37c8922ba1e20aeffe24db",
+      "content_sha256": "e3a249351b3e84a0e1e0b1a81faed3762627b800fc2f969baf78a52175f34579",
+      "mode": "100644",
+      "path": "tests/normalize/fixtures/claude-code.ts",
+      "size": 1289
+    },
+    {
+      "blob_oid": "0462cab748451b46fc299efbb09a6ce43f9a06a2",
+      "content_sha256": "78aa8d74c4710e66b3d1968d70663fca07c6c177b841f4df95270a32a7e42d18",
+      "mode": "100644",
+      "path": "tests/normalize/fixtures/codex.ts",
+      "size": 1537
+    },
+    {
+      "blob_oid": "7a9f7c184a04563b6a94e345632eed986d25b988",
+      "content_sha256": "90c03994f0695b5bd529db1a6d47cff51dfc583048c35fd227d6fae71d29dab9",
+      "mode": "100644",
+      "path": "tests/normalize/fixtures/cursor.ts",
+      "size": 1820
+    },
+    {
+      "blob_oid": "c02be3876d1e64d165072fa962018b71e9ef06ff",
+      "content_sha256": "cd2f784f59f1d40370a3d525ed180c951acc8c6e8b0267ddf0b7665682421a41",
+      "mode": "100644",
+      "path": "tests/normalize/fixtures/git.ts",
+      "size": 1043
+    },
+    {
+      "blob_oid": "c947d80f3d47bc0c649649e25a5f0f2da6fe6e4b",
+      "content_sha256": "c5d602489a59ff57efb77548511de692d53466e74da5e0a14698fbaac75e714f",
+      "mode": "100644",
+      "path": "tests/normalize/repo-identity-convergence.test.ts",
+      "size": 5202
+    },
+    {
+      "blob_oid": "8351b66b65771f97e4d07e9f5de67e73620b2024",
+      "content_sha256": "5cdb067aa1c402f005a065258cdb7deb6569a8e3eb56e4afcb5496f1d5484c13",
+      "mode": "100644",
+      "path": "tests/normalize/roundtrip.test.ts",
+      "size": 805
+    },
+    {
+      "blob_oid": "0225760562a1647b09bdacc97b7ffc754d603c30",
+      "content_sha256": "bcca6a95d27b169c73c9e0c2e01f904db06d7a6cce55d6f5fd2dd891bdcea791",
+      "mode": "100644",
+      "path": "tests/normalize/workspace-identity.test.ts",
+      "size": 8360
+    },
+    {
+      "blob_oid": "0f5618fab8cf103b373a40a8f37f4214e4932dab",
+      "content_sha256": "f7cfc8b9d63ef9e345c9232594067289c8899a5c7a276332dd3b7d03221b1b14",
+      "mode": "100644",
+      "path": "tests/storage/get-by-ids.test.ts",
+      "size": 4725
+    },
+    {
+      "blob_oid": "744b7b49ca48c7396afa37661991b326540f52ba",
+      "content_sha256": "6cba2d73e47212bb1285fda5db3e381addbe2833622a4d20dcfad97edebd76e6",
+      "mode": "100644",
+      "path": "tests/storage/iterate-coord-by-append-order.test.ts",
+      "size": 8478
+    },
+    {
+      "blob_oid": "e407acdf1fa51b3cd6eada18c4b413fc66130e36",
+      "content_sha256": "b387bcbc83edb474ccb68ed40e45c744d6a56a0db9975fb6f1619efa80ae2712",
+      "mode": "100644",
+      "path": "tests/storage/memory.test.ts",
+      "size": 11574
+    },
+    {
+      "blob_oid": "9f41780c42c177a427e2e6f7cf6d96f195db228f",
+      "content_sha256": "594ae1d43d0846e23e664a031258e0d711891d99cd98d03f24acf823a19c0b66",
+      "mode": "100644",
+      "path": "tests/storage/metadata-match.test.ts",
+      "size": 3938
+    },
+    {
+      "blob_oid": "75c62e241cc09bf98433ddd78b783b2f7d662d11",
+      "content_sha256": "318eeb8f7282b6cd4f9102c183960263ec71182eab4311ed41e87d62a8bac42e",
+      "mode": "100644",
+      "path": "tests/storage/migrate.test.ts",
+      "size": 4440
+    },
+    {
+      "blob_oid": "bd8f987294796cd576673c2fddba1fc22d9d0a9d",
+      "content_sha256": "df1dfcfe1b6ba2682b099802408e074eeb402faef16baa3c4b3b7c5e60cd8a8e",
+      "mode": "100644",
+      "path": "tests/storage/signal-window-append-order.test.ts",
+      "size": 8967
+    },
+    {
+      "blob_oid": "2b83d4433e98e63e9a49a286370445a74be2474d",
+      "content_sha256": "01c6d855acf16c658020cdd02f4dcf0fafd63c935f49e234c3e3c96fc8943ba8",
+      "mode": "100644",
+      "path": "tests/storage/source-match-conformance.test.ts",
+      "size": 7119
+    },
+    {
+      "blob_oid": "8f3a64ca0d7457c6078860e22c165f75a161b575",
+      "content_sha256": "7d54950e1de35d0095d35123549f5ce9beefc08873c63891933953cc0ea318ed",
+      "mode": "100644",
+      "path": "tests/storage/sqlite.test.ts",
+      "size": 18982
+    },
+    {
+      "blob_oid": "7ccd6bcad17d2a7398505f40d2dd00a96a1f5284",
+      "content_sha256": "12ab9c2db4761f0feffaed38afc2836435e9d5a54cc569d4da68e81f1dd1cb0a",
+      "mode": "100644",
+      "path": "tests/trace/auto-expand.test.ts",
+      "size": 6589
+    },
+    {
+      "blob_oid": "c1ff2573dbc928386bc768960e5766c161da21a3",
+      "content_sha256": "520ca6580cdb6f7e5ed604d6dec7690d840a2447159bf7c7b2b5331b8cca5c69",
+      "mode": "100644",
+      "path": "tests/trace/build.test.ts",
+      "size": 23833
+    },
+    {
+      "blob_oid": "9b626d2301a319d3f1d1bf6b56a76912287766de",
+      "content_sha256": "c033e7978b98b428a287a21b637d15f17e22a31dddaf96e1300826a1f36fab2b",
+      "mode": "100644",
+      "path": "tests/trace/cluster.test.ts",
+      "size": 11298
+    },
+    {
+      "blob_oid": "93159295bef69460830a318042307d7b133fb6a2",
+      "content_sha256": "c2a45a6023db74974b564801c086bbd6266592cc43d70180c8f4de2830230d7a",
+      "mode": "100644",
+      "path": "tests/trace/fixtures/atoms.ts",
+      "size": 1452
+    },
+    {
+      "blob_oid": "65b53c7d82ef90ac1b964c8d4a62ab31a81a34ba",
+      "content_sha256": "16da033432a75434de350d5c8c71decf9a4612c358f34228b9595dfd6dbf620a",
+      "mode": "100644",
+      "path": "tests/trace/hints.test.ts",
+      "size": 15016
+    },
+    {
+      "blob_oid": "314d2512d17ad261a87bc0f81071f55bf50ee09d",
+      "content_sha256": "c441ea0af325a7ffe75172c5c5317752bdbf6c6d2dfed3cfd04d81d8b6965847",
+      "mode": "100644",
+      "path": "tests/trace/labels.test.ts",
+      "size": 5270
+    },
+    {
+      "blob_oid": "405e5ec970a1aa052ff79f4970b2f97197d9a2bc",
+      "content_sha256": "af0e061159da7b4481209f5358cdcaa8f067467ad9f65f13c89d8a6e74f68cdf",
+      "mode": "100644",
+      "path": "tests/trace/rank.test.ts",
+      "size": 15984
+    },
+    {
+      "blob_oid": "cf4e96ebff63acc113fbb74a4341b882a8823c41",
+      "content_sha256": "77c1fe68e31a88d309e7aebc627e29adff1f8d83e9f5cd07ceb86a565ac857e6",
+      "mode": "100644",
+      "path": "tests/trace/repo-identity-cross-adapter.test.ts",
+      "size": 9656
+    },
+    {
+      "blob_oid": "fdbeba0a3061b95f8cdd4be34fc530983e98b006",
+      "content_sha256": "35d71cdea423580e25a323497025ac02f1da5be65c3dc136ac6ed1ca707c4dd5",
+      "mode": "100644",
+      "path": "tests/trace/role.test.ts",
+      "size": 1836
+    },
+    {
+      "blob_oid": "eb1ae633c585035992d02d550f160e9c76344fa3",
+      "content_sha256": "291c488294c3d37071d29731e12115415f5f1e76814b3f79bbb4983671f5560c",
+      "mode": "100644",
+      "path": "tests/trace/signal-window-import-closure.test.ts",
+      "size": 3613
+    },
+    {
+      "blob_oid": "e80823cf909fbd61737bbe57d2348bd1372dd5a1",
+      "content_sha256": "1564a31fdc8bbbca70912fbc361bb317b78dbbfe6e197e726327def6278cb778",
+      "mode": "100644",
+      "path": "tests/trace/signal-window.test.ts",
+      "size": 10512
+    },
+    {
+      "blob_oid": "64a638f5e6aa5211fccfab073ce72973f12ddff6",
+      "content_sha256": "984e04b5aee25546cc93fc3fcea5c8136a9b33cd45548ad55d307a4613968161",
+      "mode": "100644",
+      "path": "tests/util/json.test.ts",
+      "size": 1101
+    },
+    {
+      "blob_oid": "32186c6ebe47eee90d7b012bdc6486c2dfaf83f3",
+      "content_sha256": "5477d4081f9793855de2eb0a7728d63de88a5813229ed9ebefa221d351bfaa1f",
+      "mode": "100644",
+      "path": "tests/util/subject.test.ts",
+      "size": 1644
+    },
+    {
+      "blob_oid": "36489e25e498859c3d4d3f2fae9b5cf0ad8a4a1e",
+      "content_sha256": "50dcb70ea38ae03b37597bc5458a7e70e3cfcc885b023f42ef3b9266fdf6d0c1",
+      "mode": "100644",
+      "path": "tests/util/subprocess.test.ts",
+      "size": 1531
+    },
+    {
+      "blob_oid": "aaf882fd6416ced29a6c7ba4a102029988a7f89d",
+      "content_sha256": "2a2240c0841f369b4c79547529b7fac16636902820c5462c48080014f0391b4c",
+      "mode": "100644",
+      "path": "tools/audit-pinned-extraction.mjs",
+      "size": 10394
+    },
+    {
+      "blob_oid": "80a1897f6b20591a5b1d4f2b7366451ad4c8f51f",
+      "content_sha256": "e20e48806507d4658e52acc143e8adef1abb2c849dddf37e045af7ac0379cbb5",
+      "mode": "100644",
+      "path": "tools/check-parity.mjs",
+      "size": 19028
+    },
+    {
+      "blob_oid": "9cccc44c85234676fd49690ab468d709e357ae09",
+      "content_sha256": "77ec9371b9c49e0527e011303ec6541c88e8b472ba9dadb6ecfd10c01f312c6e",
+      "mode": "100644",
+      "path": "tools/check-runtime-inventory.mjs",
+      "size": 31465
+    },
+    {
+      "blob_oid": "a4b68161d5a447b52c3e66cff4b325ed1bc459d2",
+      "content_sha256": "6b33c7f77f2dc36ccd60bd0c725307c37ddd67629b39b9ccc6b5624846abd41e",
+      "mode": "100644",
+      "path": "tools/emit-source-inventory.mjs",
+      "size": 5040
+    },
+    {
+      "blob_oid": "f1b93f627761fff3ea8e8dc8883ae5ccfb248e4a",
+      "content_sha256": "96a5857c75803261917e2293e0e8dbac5ebb97ef2003394f52238aa53edfcaab",
+      "mode": "100644",
+      "path": "tools/verify-context-tools.mjs",
+      "size": 44767
+    },
+    {
+      "blob_oid": "1ac8fe7564f5e92a01371961d1deea9a3fc125fa",
+      "content_sha256": "9bfd370f3ec4779916c7b07b34dbd7f600b26d84fd8feed31e5e8e9a3d6c5e79",
+      "mode": "100644",
+      "path": "tools/verify-service-parity.mjs",
+      "size": 9662
+    }
+  ],
+  "schema": "extraction-baseline.v1"
+}

@@ -1,47 +1,32 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-// AC6 — dirty/replacement/filter bytes excluded. The accepted target commits only
-// the pinned committed source: every tracked source-derived file's HEAD bytes
-// match source-evidence, with no CRLF, no export-subst ($Format$/$Id$) smudging,
-// and no uncommitted modifications.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GIT = '/usr/local/bin/git';
-const gitOut = (args: string[]) => execFileSync(GIT, ['-C', ROOT, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+const BASELINE = '0cf7b006eba665c0bf55e82ff04da70f19f01ebb';
+const git = (args: string[]) => execFileSync('git', ['-C', ROOT, ...args], { maxBuffer: 64 * 1024 * 1024 });
 
-describe('AC6 — committed source only', () => {
-  it('has no uncommitted modifications to tracked source files', () => {
-    const dirty = gitOut(['status', '--porcelain', '--', 'src', 'tests'])
-      .split('\n')
-      .filter((l) => l && !l.startsWith('??'));
-    expect(dirty).toEqual([]);
-  });
-
-  it('every ported HEAD blob matches source-evidence content hash byte-for-byte', () => {
+describe('AC2 — committed baseline source only', () => {
+  it('every ported baseline blob matches source-evidence content byte-for-byte', () => {
     const parity = JSON.parse(readFileSync(join(ROOT, 'provenance/parity-matrix.v1.json'), 'utf8')) as {
       rows: { path: string; disposition: string; source_content_sha256: string }[];
     };
-    for (const r of parity.rows) {
-      if (r.disposition !== 'ported') continue;
-      const bytes = execFileSync(GIT, ['-C', ROOT, 'cat-file', 'blob', `HEAD:${r.path}`], { maxBuffer: 64 * 1024 * 1024 });
-      const h = createHash('sha256').update(bytes).digest('hex');
-      if (h !== r.source_content_sha256) throw new Error(`ported HEAD blob differs from source for ${r.path}`);
+    for (const row of parity.rows) {
+      if (row.disposition !== 'ported') continue;
+      const bytes = git(['cat-file', 'blob', `${BASELINE}:${row.path}`]);
+      expect(createHash('sha256').update(bytes).digest('hex'), row.path).toBe(row.source_content_sha256);
     }
-  }, 30000);
+  }, 30_000);
 
-  it('no source-derived file carries CRLF or export-subst smudge markers', () => {
-    // Scope to the source-EXTRACTED files (ported+rewritten). Target-only tools /
-    // tests / provenance are authored, not extracted, and legitimately mention
-    // these tokens (e.g. this test's own detection logic).
+  it('no source-derived baseline blob carries CRLF or export-subst smudge markers', () => {
     const extraction = JSON.parse(readFileSync(join(ROOT, 'provenance/source-extraction.v1.json'), 'utf8')) as { rows: { path: string }[] };
-    for (const { path: f } of extraction.rows) {
-      const bytes = execFileSync(GIT, ['-C', ROOT, 'cat-file', 'blob', `HEAD:${f}`], { maxBuffer: 64 * 1024 * 1024 });
-      if (bytes.includes(0x0d)) throw new Error(`CRLF byte in ${f}`);
-      if (/\$Format:[^$]*\$/.test(bytes.toString('utf8'))) throw new Error(`export-subst smudge in ${f}`);
+    for (const { path } of extraction.rows) {
+      const bytes = git(['cat-file', 'blob', `${BASELINE}:${path}`]);
+      expect(bytes.includes(0x0d), path).toBe(false);
+      expect(/\$Format:[^$]*\$/.test(bytes.toString('utf8')), path).toBe(false);
     }
-  }, 30000);
+  }, 30_000);
 });

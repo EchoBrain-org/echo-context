@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "package_json_sha256", "lock_sha256", "scripts", "executable_sources", "npm_closure", "system_helpers"],
+  "properties": {
+    "schema": { "const": "runtime-inventory.v2" },
+    "package_json_sha256": { "$ref": "#/definitions/sha256" },
+    "lock_sha256": { "$ref": "#/definitions/sha256" },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command", "executable", "argv"],
+        "properties": {
+          "name": { "type": "string" },
+          "command": { "type": "string" },
+          "executable": { "type": "string" },
+          "argv": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "executable_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "mode", "blob_oid", "content_sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "mode": { "enum": ["100644", "100755"] },
+          "blob_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "content_sha256": { "$ref": "#/definitions/sha256" }
+        }
+      }
+    },
+    "npm_closure": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lock_path", "version", "integrity", "os", "cpu", "optional", "dependencies"],
+        "properties": {
+          "lock_path": { "type": "string", "pattern": "^node_modules/" },
+          "version": { "type": "string" },
+          "integrity": { "type": "string", "pattern": "^sha512-" },
+          "os": { "type": "array", "items": { "type": "string" } },
+          "cpu": { "type": "array", "items": { "type": "string" } },
+          "optional": { "type": "boolean" },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "name", "lock_path"],
+              "properties": {
+                "kind": { "enum": ["dependency", "optional_dependency", "peer_dependency"] },
+                "name": { "type": "string" },
+                "lock_path": { "type": "string", "pattern": "^node_modules/" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "system_helpers": { "type": "array", "items": { "enum": ["git", "gitleaks", "node", "npm"] } }
+  },
+  "definitions": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
