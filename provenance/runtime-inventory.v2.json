@@ -91,8 +91,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "f1b93f627761fff3ea8e8dc8883ae5ccfb248e4a",
-      "content_sha256": "96a5857c75803261917e2293e0e8dbac5ebb97ef2003394f52238aa53edfcaab",
+      "blob_oid": "dca97c76f7ada189a00a3a888c5d8f0ff2ab7c75",
+      "content_sha256": "a0b4053cef27a6355859a84e1189509c2b68ba304f33dae68796c35abc66f203",
       "mode": "100644",
       "path": "tools/verify-context-tools.mjs"
     },

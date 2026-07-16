@@ -19,6 +19,7 @@ const PINNED_ACTION = /uses:\s+[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/gm
 describe('AC4/AC6 — workflow policy', () => {
   it('resolves hosted test executables from the active Node and Git environment', () => {
     for (const path of [
+      'tools/verify-context-tools.mjs',
       'tests/migration/context-tool-evidence.test.ts',
       'tests/integration/context-service.test.ts',
     ]) {
