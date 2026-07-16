@@ -162,8 +162,8 @@ function createSignalCancellation() {
   };
   const onInterrupt = () => cancel('SIGINT');
   const onTerminate = () => cancel('SIGTERM');
-  process.once('SIGINT', onInterrupt);
-  process.once('SIGTERM', onTerminate);
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onTerminate);
   return {
     get cancelled() { return cancelled; },
     subscribe(listener) {
@@ -232,6 +232,20 @@ export function raceUntil({ completion, deadline, now = Date.now, cancellation }
       unsubscribe();
       resolve(value);
     };
+    const finishCompletion = (value) => {
+      if (settled) return;
+      try {
+        const completedAt = now();
+        if (!Number.isFinite(completedAt) || completedAt > deadline) {
+          finish({ kind: 'deadline' });
+          return;
+        }
+      } catch (error) {
+        finish({ kind: 'timer_error', error });
+        return;
+      }
+      finish(value);
+    };
     try {
       if (!completion || typeof completion.then !== 'function') {
         finish({ kind: 'invalid', error: new Error('completion is not a Promise') });
@@ -245,8 +259,8 @@ export function raceUntil({ completion, deadline, now = Date.now, cancellation }
       timer = setTimer(() => finish({ kind: 'deadline' }), remaining);
       unsubscribe = cancellation?.subscribe((signal) => finish({ kind: 'cancelled', signal })) ?? (() => {});
       Promise.resolve(completion).then(
-        (value) => finish({ kind: 'complete', value }),
-        (error) => finish({ kind: 'error', error }),
+        (value) => finishCompletion({ kind: 'complete', value }),
+        (error) => finishCompletion({ kind: 'error', error }),
       );
     } catch (error) {
       finish({ kind: 'timer_error', error });

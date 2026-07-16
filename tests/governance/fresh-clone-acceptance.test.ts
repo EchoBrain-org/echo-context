@@ -2,7 +2,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error the committed production state machine intentionally remains plain .mjs.
 import { LIMITS, buildEnvironment, createProductionDeps, parseInvocation, raceUntil, runBoundedOperation, runFreshClone } from '../../tools/fresh-clone-verifier.mjs';
@@ -68,6 +68,50 @@ type FixtureOptions = {
   cancelStep?: (spec: SpawnSpec, index: number, reason: string) => Promise<Record<string, unknown>> | Record<string, unknown>;
   cancellation?: CancellationFixture;
 };
+
+type ChildMessage = Record<string, unknown> & { type: string };
+
+function waitForChildMessage(child: ChildProcess, type: string): Promise<ChildMessage> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.removeListener('message', onMessage);
+      child.removeListener('exit', onExit);
+    };
+    const onMessage = (message: unknown) => {
+      if (!message || typeof message !== 'object' || (message as { type?: unknown }).type !== type) return;
+      cleanup();
+      resolve(message as ChildMessage);
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      cleanup();
+      reject(new Error(`signal fixture exited before ${type}: code=${String(code)} signal=${String(signal)}`));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`signal fixture timed out before ${type}`));
+    }, 5_000);
+    child.on('message', onMessage);
+    child.once('exit', onExit);
+  });
+}
+
+function waitForChildExit(child: ChildProcess): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit);
+      reject(new Error('signal fixture timed out before exit'));
+    }, 5_000);
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    };
+    child.once('exit', onExit);
+  });
+}
 
 function cancellationFixture(): CancellationFixture {
   let cancelled = false;
@@ -446,7 +490,7 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
         if (spec.argv[0] === 'status') {
           statuses += 1;
           if (statuses === 3) return Promise.resolve().then(() => {
-            clock = LIMITS.finalEnvelope - LIMITS.settlement + 1;
+            clock = LIMITS.finalEnvelope - LIMITS.settlement;
             return successResult(spec, 9000 + index);
           });
         }
@@ -509,7 +553,39 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(heads).toBe(3);
   });
 
-  it('caps all consecutive final envelopes at the original aggregate deadline', async () => {
+  it.each([
+    { completedAt: LIMITS.version, expectedKind: 'complete' },
+    { completedAt: LIMITS.version + 1, expectedKind: 'deadline' },
+  ])('classifies terminal completion at the execution boundary: $completedAt ms -> $expectedKind', async ({ completedAt, expectedKind }) => {
+    let clock = 0;
+    let complete!: (value: Record<string, unknown>) => void;
+    const completion = new Promise<Record<string, unknown>>((resolve) => { complete = resolve; });
+    const outcomePromise = raceUntil({ completion, deadline: LIMITS.version, now: () => clock, cancellation: null }, {
+      setTimeout: () => 1,
+      clearTimeout: () => {},
+    });
+    clock = completedAt;
+    complete({ terminal: true });
+    const outcome = await outcomePromise;
+    expect(outcome.kind).toBe(expectedKind);
+    if (expectedKind === 'complete') expect(outcome.value).toEqual({ terminal: true });
+  });
+
+  it('does not borrow settlement reserve for terminal completion one millisecond after executionEnd', async () => {
+    let clock = 0;
+    const { deps, events, spawns } = fixture({
+      now: () => clock,
+      spawn: (spec, index) => Promise.resolve().then(() => {
+        clock = LIMITS.version + 1;
+        return successResult(spec, 12_500 + index);
+      }),
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/child prelude execution deadline/);
+    expect(events).toContain('cancel-step:deadline');
+    expect(spawns).toHaveLength(1);
+  });
+
+  it('does not let late final status borrow from final HEAD or aggregate reserve', async () => {
     let clock = 0;
     let statuses = 0;
     const { deps, spawns } = fixture({
@@ -518,16 +594,16 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
         if (spec.argv[0] === 'status') {
           statuses += 1;
           if (statuses === 3) return Promise.resolve().then(() => {
-            clock = LIMITS.aggregate - 5_000;
+            clock = LIMITS.finalEnvelope - LIMITS.settlement + 1;
             return successResult(spec, 13_000 + index);
           });
         }
         return successResult(spec, 13_000 + index);
       },
     });
-    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/execution boundary expired/);
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/child 16 execution deadline/);
     expect(spawns.filter((spec) => spec.argv.join(' ') === 'rev-parse HEAD')).toHaveLength(2);
-    expect(clock).toBeLessThanOrEqual(LIMITS.aggregate);
+    expect(clock).toBe(LIMITS.finalEnvelope - LIMITS.settlement + 1);
   });
 
   it('rejects an unclassified Promise seam before it can start or mutate later', async () => {
@@ -591,6 +667,88 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     } finally {
       await child.cancelAndSettle('fixture-finally').catch(() => {});
       rmSync(readinessDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps same-signal guards installed through settlement and disposes them after owned-root cleanup', async () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'echo-context-double-signal-')));
+    const ownedRoot = join(directory, 'T');
+    const script = `
+      import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+      import { createProductionDeps } from ${JSON.stringify(pathToFileURL(VERIFIER).href)};
+      const ownedRoot = ${JSON.stringify(ownedRoot)};
+      const counts = () => ({ sigint: process.listenerCount('SIGINT'), sigterm: process.listenerCount('SIGTERM') });
+      mkdirSync(ownedRoot);
+      writeFileSync(ownedRoot + '/sentinel', 'owned');
+      const baseline = counts();
+      const cancellation = createProductionDeps().createCancellation();
+      const installed = counts();
+      let notifications = 0;
+      cancellation.subscribe((signal) => {
+        notifications += 1;
+        process.send({ type: 'cancelled', signal, notifications, counts: counts(), ownedExists: existsSync(ownedRoot) });
+        setImmediate(() => {
+          process.kill(process.pid, 'SIGTERM');
+          setTimeout(() => process.send({ type: 'settling', notifications, counts: counts(), ownedExists: existsSync(ownedRoot) }), 50);
+        });
+      });
+      process.on('message', (message) => {
+        if (message?.type !== 'dispose') return;
+        const beforeDispose = counts();
+        const ownedBeforeCleanup = existsSync(ownedRoot);
+        rmSync(ownedRoot, { recursive: true, force: true });
+        const ownedAfterCleanup = existsSync(ownedRoot);
+        cancellation.dispose();
+        process.send({ type: 'disposed', notifications, beforeDispose, afterDispose: counts(), ownedBeforeCleanup, ownedAfterCleanup });
+        setImmediate(() => process.exit(0));
+      });
+      process.send({ type: 'ready', baseline, installed, ownedExists: existsSync(ownedRoot) });
+      setInterval(() => {}, 1_000);
+    `;
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: ROOT,
+      env: { ...process.env },
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    });
+    let stderr = '';
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => { stderr += chunk; });
+    try {
+      const ready = await waitForChildMessage(child, 'ready');
+      const baseline = ready.baseline as { sigint: number; sigterm: number };
+      const installed = ready.installed as { sigint: number; sigterm: number };
+      expect(installed).toEqual({ sigint: baseline.sigint + 1, sigterm: baseline.sigterm + 1 });
+      expect(ready.ownedExists).toBe(true);
+
+      const cancelledPromise = waitForChildMessage(child, 'cancelled');
+      const settlingPromise = waitForChildMessage(child, 'settling');
+      expect(child.kill('SIGTERM')).toBe(true);
+      const cancelled = await cancelledPromise;
+      expect(cancelled).toMatchObject({ signal: 'SIGTERM', notifications: 1, counts: installed, ownedExists: true });
+      const settling = await settlingPromise;
+      expect(settling).toMatchObject({ notifications: 1, counts: installed, ownedExists: true });
+      expect(existsSync(ownedRoot)).toBe(true);
+
+      const disposedPromise = waitForChildMessage(child, 'disposed');
+      const exitPromise = waitForChildExit(child);
+      child.send({ type: 'dispose' });
+      const disposed = await disposedPromise;
+      expect(disposed).toMatchObject({
+        notifications: 1,
+        beforeDispose: installed,
+        afterDispose: baseline,
+        ownedBeforeCleanup: true,
+        ownedAfterCleanup: false,
+      });
+      await expect(exitPromise).resolves.toEqual({ code: 0, signal: null });
+      expect(stderr).toBe('');
+      expect(existsSync(ownedRoot)).toBe(false);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+        await waitForChildExit(child).catch(() => {});
+      }
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
