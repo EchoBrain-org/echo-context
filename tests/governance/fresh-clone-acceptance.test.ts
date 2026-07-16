@@ -835,6 +835,32 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(deps.settleActiveChild()).toBeNull();
   });
 
+  it('settles when the PGID exits naturally between consecutive terminal probes', async () => {
+    const stdout = new FakeStream();
+    const stderr = new FakeStream();
+    const child = new FakeChild(42_525, new FakeStream(), stdout, stderr);
+    const groupStates = [true, false, false];
+    const signals: string[] = [];
+    const delays: number[] = [];
+    const deps = createProductionDeps({
+      spawn: () => child,
+      groupExists: () => groupStates.shift() ?? false,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => { signals.push(signal); },
+      delay: async (milliseconds: number) => { delays.push(milliseconds); },
+    });
+    const handle = deps.startStep({
+      executable: '/fixture', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    stdout.emit('close');
+    stderr.emit('close');
+    child.emit('exit', 0, null);
+    await expect(handle.completion).resolves.toMatchObject({ terminal: true, status: 0, pgidAbsent: true });
+    expect(groupStates).toEqual([]);
+    expect(signals).toEqual([]);
+    expect(delays).toEqual([]);
+  });
+
   it('keeps an on-time success pending past reap expiry without poisoning the eventual terminal result', async () => {
     const stdin = new FakeStream();
     const stdout = new FakeStream();

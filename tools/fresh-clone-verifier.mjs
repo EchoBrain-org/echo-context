@@ -747,7 +747,13 @@ function startManaged(spec, state, runtime) {
     }
     // A normal direct exit can precede close events by one turn. Only a live
     // group proves that descendants may be holding those pipes open.
-    if (!groupAlive) return;
+    if (!groupAlive) {
+      const fullShapeObserved = record.directExited && record.stdoutClosed && record.stderrClosed;
+      if (!fullShapeObserved || completeIfTerminal()) return;
+      // The group changed again (or its proof errored) between observations;
+      // fall through to the idempotent ceremony instead of losing the last
+      // event that could settle completion.
+    }
     queueMicrotask(() => { void handle.cancelAndSettle('surviving-process-group').catch(() => {}); });
   };
   const capture = (target) => (chunk) => {
