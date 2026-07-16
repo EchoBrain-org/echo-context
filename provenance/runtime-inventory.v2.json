@@ -61,8 +61,8 @@
       "path": "tools/fresh-clone-cleanup.mjs"
     },
     {
-      "blob_oid": "d2e336a6c4d7b4e0116ceaf98b89bc7b07b963bd",
-      "content_sha256": "b3848aa40c605b6d7e2dd19d387a5a6710372a2a22ee155ee08082e719eee6b1",
+      "blob_oid": "571c0e5d053498f8824974d0a2b17c8d8d77b9e7",
+      "content_sha256": "87fd0d94fadd5b5c3717001800685c033200671f8f15a0d27416edefb3cf582e",
       "mode": "100644",
       "path": "tools/fresh-clone-verifier.mjs"
     },
@@ -79,14 +79,20 @@
       "path": "tools/install-gitleaks.sh"
     },
     {
-      "blob_oid": "8c64ec17512d97771db287920bd931dfa36e85e5",
-      "content_sha256": "e9377b8ca6745d43f1d39759389b56840c017fb162a1bc437c222a6db5b81173",
+      "blob_oid": "1fcc483b4aede885c88fcaef692e840877295783",
+      "content_sha256": "311f9a7955ff690f6d3095f4639ddb08ca52f0045341b68c940207f25c7547f2",
+      "mode": "100755",
+      "path": "tools/prefetch-secret-scan-refs.mjs"
+    },
+    {
+      "blob_oid": "1c2cfed0f59a1ae9d99ea6f5e474a779439dfafd",
+      "content_sha256": "df6039237b098a3a2c39bc4ad015ac85230ec1dd0365a249eb61cc29c075d282",
       "mode": "100644",
       "path": "tools/repository-bootstrap-gate.mjs"
     },
     {
-      "blob_oid": "91cc8a4eb32e261c03446b22cc420158eb9f4058",
-      "content_sha256": "8d230ff92e7a6827e728e337d2799f518d62d289e0a546f16785648d1b040b25",
+      "blob_oid": "458a1afeb3ee92e1803e2cec5ca3aab1d4030dfd",
+      "content_sha256": "4492c46e57079c675b941d7fe5f420726d0482248c407e6bc887279b6e1ffc76",
       "mode": "100644",
       "path": "tools/secret-scan.mjs"
     },
