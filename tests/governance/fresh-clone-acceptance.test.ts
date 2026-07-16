@@ -861,6 +861,46 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(delays).toEqual([]);
   });
 
+  it('does not resolve terminal proof while an initiated TERM grace ceremony is still active', async () => {
+    const stdout = new FakeStream();
+    const stderr = new FakeStream();
+    const child = new FakeChild(42_626, new FakeStream(), stdout, stderr);
+    let groupAlive = true;
+    let releaseGrace!: () => void;
+    const grace = new Promise<void>((resolve) => { releaseGrace = resolve; });
+    let markTerm!: () => void;
+    const termSent = new Promise<void>((resolve) => { markTerm = resolve; });
+    const signals: string[] = [];
+    const deps = createProductionDeps({
+      spawn: () => child,
+      groupExists: () => groupAlive,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => {
+        signals.push(signal);
+        if (signal === 'SIGTERM') {
+          groupAlive = false;
+          stdout.emit('close');
+          stderr.emit('close');
+          markTerm();
+        }
+      },
+      delay: () => grace,
+      pollDelay: async () => {},
+    });
+    const handle = deps.startStep({
+      executable: '/fixture', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    child.emit('exit', 0, null);
+    await termSent;
+    await expectStillPending(handle.completion);
+    expect(deps.settleActiveChild()).toBe(handle.cancelAndSettle('same-flight'));
+
+    releaseGrace();
+    await expect(handle.completion).resolves.toMatchObject({ terminal: true, status: 0, pgidAbsent: true });
+    expect(signals).toEqual(['SIGTERM']);
+    expect(deps.settleActiveChild()).toBeNull();
+  });
+
   it('keeps an on-time success pending past reap expiry without poisoning the eventual terminal result', async () => {
     const stdin = new FakeStream();
     const stdout = new FakeStream();

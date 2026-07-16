@@ -692,6 +692,7 @@ function startManaged(spec, state, runtime) {
     termination: null,
     cancellation: null,
     cancellationStarted: false,
+    ceremonyFinished: false,
     outcomeAt: null,
     completed: false,
     waiters: new Set(),
@@ -722,6 +723,7 @@ function startManaged(spec, state, runtime) {
       record.settlementError = record.settlementError ?? error;
       return false;
     }
+    if (record.cancellationStarted && !record.ceremonyFinished) return false;
     record.completed = true;
     if (state.active === handle) state.active = null;
     resolveCompletion(result());
@@ -772,6 +774,7 @@ function startManaged(spec, state, runtime) {
     terminalProof: completion,
     get outcomeAt() { return record.outcomeAt; },
     cancelAndSettle(reason) {
+      if (record.completed) return completion;
       if (record.cancellation) return record.cancellation;
       record.cancellationReason = reason;
       record.cancellationStarted = true;
@@ -784,8 +787,9 @@ function startManaged(spec, state, runtime) {
         }
         await waitForTerminal(record, Infinity, runtime);
         if (settlementError) record.settlementError = record.settlementError ?? settlementError;
-        completeIfTerminal();
-        return result();
+        record.ceremonyFinished = true;
+        while (!completeIfTerminal()) await waitForTerminal(record, Infinity, runtime);
+        return completion;
       })();
       return record.cancellation;
     },
