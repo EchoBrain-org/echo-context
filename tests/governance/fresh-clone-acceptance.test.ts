@@ -58,11 +58,11 @@ type CancellationFixture = {
 type FixtureOptions = {
   spawn?: (spec: SpawnSpec, index: number) => Promise<Record<string, unknown>> | Record<string, unknown>;
   authenticate?: () => Promise<void> | void;
-  createOwnedTemp?: (recordOwnedRoot: (root: string) => void) => string;
+  createOwnedTemp?: (recordOwnedRoot: (root: string) => void, deadline: number) => string;
   settleActiveChild?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
-  authenticateHelper?: () => Promise<void> | void;
+  authenticateHelper?: (deadline: number) => Promise<void> | void;
   assertGroupAbsent?: () => Promise<void> | void;
-  assertPathAbsent?: () => Promise<void> | void;
+  assertPathAbsent?: (deadline: number) => Promise<void> | void;
   now?: () => number;
   runBounded?: (spec: Record<string, unknown>, operation: () => unknown) => Promise<unknown>;
   raceUntil?: (spec: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -224,7 +224,8 @@ function fixture(options: FixtureOptions = {}) {
       let outcomeAt: number | null = null;
       let cancellationPromise: Promise<Record<string, unknown>> | null = null;
       const observeTerminal = (result: Record<string, unknown>, natural: boolean) => {
-        if (natural && outcomeAt === null && result.directExited === true && result.stdoutClosed === true && result.stderrClosed === true) {
+        if (natural && outcomeAt === null && result.directExited === true && result.stdoutClosed === true
+            && result.stderrClosed === true && result.pgidAbsent === true) {
           outcomeAt = (options.now ?? (() => 0))();
         }
         if (!terminalResolved && result.terminal === true && result.pgidAbsent === true && result.stdoutClosed === true && result.stderrClosed === true) {
@@ -259,23 +260,23 @@ function fixture(options: FixtureOptions = {}) {
       if (active) return active.cancelAndSettle('cleanup-transition');
       return null;
     },
-    createOwnedTemp: (parent: string, recordOwnedRoot: (root: string) => void) => {
+    createOwnedTemp: (parent: string, recordOwnedRoot: (root: string) => void, deadline: number) => {
       events.push(`create-owned-temp:${parent}`);
-      if (options.createOwnedTemp) return options.createOwnedTemp(recordOwnedRoot);
+      if (options.createOwnedTemp) return options.createOwnedTemp(recordOwnedRoot, deadline);
       recordOwnedRoot(OWNED);
       return OWNED;
     },
-    authenticateHelper: async (path: string) => {
+    authenticateHelper: async (path: string, deadline: number) => {
       events.push(`authenticate-helper:${path}`);
-      await options.authenticateHelper?.();
+      await options.authenticateHelper?.(deadline);
     },
     assertGroupAbsent: async (pid: number) => {
       events.push(`assert-group-absent:${pid}`);
       await options.assertGroupAbsent?.();
     },
-    assertPathAbsent: async (path: string) => {
+    assertPathAbsent: async (path: string, deadline: number) => {
       events.push(`assert-path-absent:${path}`);
-      await options.assertPathAbsent?.();
+      await options.assertPathAbsent?.(deadline);
     },
   };
   return { deps, events, spawns, cancellation };
@@ -463,13 +464,139 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
       },
     });
     const { deps, events, spawns } = fixture({
-      createOwnedTemp: (recordOwnedRoot) => production.createOwnedTemp(parent, recordOwnedRoot),
+      createOwnedTemp: (recordOwnedRoot, deadline) => production.createOwnedTemp(parent, recordOwnedRoot, deadline),
       assertPathAbsent: () => { absenceReads += 1; },
     });
     await expect(runFreshClone(ARGS, deps)).rejects.toThrow(stage === 'after-realpath' ? /not canonical/ : `injected-${stage}`);
     expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(1);
     expect(events.filter((event) => event === 'settle-active-child')).toHaveLength(1);
     expect(absenceReads).toBe(1);
+  });
+
+  it('performs no later setup operation after an early synchronous filesystem call returns late', async () => {
+    let clock = 0;
+    const filesystemCalls: string[] = [];
+    const cutoff = LIMITS.aggregate - LIMITS.reserve;
+    const production = createProductionDeps({
+      now: () => clock,
+      fs: {
+        mkdirSync: () => {
+          filesystemCalls.push('mkdirSync');
+          clock = cutoff + 1;
+          return undefined;
+        },
+        lstatSync: () => { filesystemCalls.push('lstatSync'); throw new Error('must-not-run'); },
+        realpathSync: () => { filesystemCalls.push('realpathSync'); throw new Error('must-not-run'); },
+        chmodSync: () => { filesystemCalls.push('chmodSync'); throw new Error('must-not-run'); },
+        mkdtempSync: () => { filesystemCalls.push('mkdtempSync'); throw new Error('must-not-run'); },
+      },
+    });
+    const { deps, spawns } = fixture({
+      now: () => clock,
+      createOwnedTemp: (recordOwnedRoot, deadline) => production.createOwnedTemp(dirname(OWNED), recordOwnedRoot, deadline),
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/acceptance-temp parent mkdir crossed its deadline/);
+    expect(filesystemCalls).toEqual(['mkdirSync']);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(0);
+  });
+
+  it('records a late mkdtemp result for cleanup before rejecting and performs no later setup mutation', async () => {
+    let clock = 0;
+    let absenceReads = 0;
+    const filesystemCalls: Array<{ call: string; path: string }> = [];
+    const cutoff = LIMITS.aggregate - LIMITS.reserve;
+    const parent = dirname(OWNED);
+    const directory = {
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+      mode: 0o40700,
+      uid: process.getuid?.() ?? 0,
+    };
+    const production = createProductionDeps({
+      now: () => clock,
+      fs: {
+        mkdirSync: (path: string) => { filesystemCalls.push({ call: 'mkdirSync', path }); return undefined; },
+        lstatSync: (path: string) => { filesystemCalls.push({ call: 'lstatSync', path }); return directory; },
+        realpathSync: (path: string) => { filesystemCalls.push({ call: 'realpathSync', path }); return path; },
+        chmodSync: (path: string) => { filesystemCalls.push({ call: 'chmodSync', path }); },
+        mkdtempSync: () => {
+          filesystemCalls.push({ call: 'mkdtempSync', path: OWNED });
+          clock = cutoff + 1;
+          return OWNED;
+        },
+      },
+    });
+    const { deps, events, spawns } = fixture({
+      now: () => clock,
+      createOwnedTemp: (recordOwnedRoot, deadline) => production.createOwnedTemp(parent, recordOwnedRoot, deadline),
+      assertPathAbsent: () => { absenceReads += 1; },
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/owned temporary-root mkdtemp crossed its deadline/);
+    expect(filesystemCalls).toEqual([
+      { call: 'mkdirSync', path: parent },
+      { call: 'lstatSync', path: parent },
+      { call: 'realpathSync', path: parent },
+      { call: 'mkdtempSync', path: OWNED },
+    ]);
+    expect(events.filter((event) => event === 'settle-active-child')).toHaveLength(1);
+    expect(events.filter((event) => event === `assert-path-absent:${OWNED}`)).toHaveLength(1);
+    expect(absenceReads).toBe(1);
+    const cleanupSpawns = spawns.filter((spec) => spec.executable === INPUT.nodeBin);
+    expect(cleanupSpawns).toHaveLength(1);
+    expect(cleanupSpawns[0].argv).toEqual([CLEANUP, '--owned-root', OWNED]);
+  });
+
+  it('post-checks auth, helper, and throwing ENOENT reads before any later filesystem operation', () => {
+    const cutoff = 10;
+    const file = { isFile: () => true, isSymbolicLink: () => false };
+
+    let clock = 0;
+    const authCalls: string[] = [];
+    const authentication = createProductionDeps({
+      now: () => clock,
+      fs: {
+        realpathSync: (path: string) => {
+          authCalls.push(`realpath:${path}`);
+          clock = cutoff + 1;
+          return path;
+        },
+        lstatSync: (path: string) => { authCalls.push(`lstat:${path}`); return file; },
+        accessSync: (path: string) => { authCalls.push(`access:${path}`); },
+      },
+    });
+    expect(() => authentication.authenticate({
+      input: INPUT, verifierPath: VERIFIER, cloneRoot: ROOT, expectedNodeVersion: process.version, deadline: cutoff,
+    })).toThrow(/running Node realpath crossed its deadline/);
+    expect(authCalls).toEqual([`realpath:${process.execPath}`]);
+
+    clock = 0;
+    const helperCalls: string[] = [];
+    const helper = createProductionDeps({
+      now: () => clock,
+      fs: {
+        lstatSync: (path: string) => {
+          helperCalls.push(`lstat:${path}`);
+          clock = cutoff + 1;
+          return file;
+        },
+        realpathSync: (path: string) => { helperCalls.push(`realpath:${path}`); return path; },
+      },
+    });
+    expect(() => helper.authenticateHelper(CLEANUP, cutoff)).toThrow(/cleanup-helper lstat crossed its deadline/);
+    expect(helperCalls).toEqual([`lstat:${CLEANUP}`]);
+
+    clock = 0;
+    const enoent = Object.assign(new Error('absent'), { code: 'ENOENT' });
+    const absence = createProductionDeps({
+      now: () => clock,
+      fs: {
+        lstatSync: () => {
+          clock = cutoff + 1;
+          throw enoent;
+        },
+      },
+    });
+    expect(() => absence.assertPathAbsent(OWNED, cutoff)).toThrow(/owned-root absence lstat crossed its deadline/);
   });
 
   it('keeps the same positive-PID handle pending after its settlement envelope, then reports the original outcome', async () => {
@@ -695,6 +822,78 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(spawns).toHaveLength(1);
   });
 
+  it.each([
+    { terminalAt: LIMITS.version, accepted: true },
+    { terminalAt: LIMITS.version + 1, accepted: false },
+  ])('uses full terminal proof plus ceremony for deadline classification at $terminalAt ms', async ({ terminalAt, accepted }) => {
+    let clock = 0;
+    let first = true;
+    let groupAlive = true;
+    const stdin = new FakeStream();
+    const stdout = new FakeStream();
+    const stderr = new FakeStream();
+    const child = new FakeChild(424_242, stdin, stdout, stderr);
+    const signals: string[] = [];
+    let observedOutcomeAt = () => null as number | null;
+    const production = createProductionDeps({
+      spawn: () => child,
+      now: () => clock,
+      groupExists: () => groupAlive,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => { signals.push(signal); },
+      delay: async (milliseconds: number) => {
+        if (milliseconds !== LIMITS.terminationGrace) throw new Error(`unexpected delay ${milliseconds}`);
+        clock = terminalAt;
+        groupAlive = false;
+        stdout.emit('close');
+        stderr.emit('close');
+      },
+      pollDelay: async () => {},
+      setTimer: () => 1,
+      clearTimer: () => {},
+    });
+    const cancellation = cancellationFixture();
+    const immediateHandle = (result: Record<string, unknown>) => {
+      const completion = Promise.resolve(result);
+      const outcomeAt = clock;
+      return { completion, terminalProof: completion, outcomeAt, cancelAndSettle: () => completion };
+    };
+    const deps = {
+      now: () => clock,
+      createCancellation: () => cancellation,
+      runBounded: async (_spec: Record<string, unknown>, operation: () => unknown) => operation(),
+      raceUntil: production.raceUntil,
+      authenticate: () => {},
+      startStep: (spec: SpawnSpec) => {
+        if (first) {
+          first = false;
+          const handle = production.startStep(spec);
+          observedOutcomeAt = () => handle.outcomeAt;
+          queueMicrotask(() => {
+            clock = LIMITS.version;
+            stdout.emit('data', Buffer.from('10.9.4\n'));
+            child.emit('exit', 0, null);
+          });
+          return handle;
+        }
+        return immediateHandle(successResult(spec, 500_000));
+      },
+      settleActiveChild: production.settleActiveChild,
+      createOwnedTemp: (_parent: string, recordOwnedRoot: (root: string) => void) => {
+        recordOwnedRoot(OWNED);
+        return OWNED;
+      },
+      authenticateHelper: () => {},
+      assertGroupAbsent: () => {},
+      assertPathAbsent: () => {},
+    };
+
+    const run = runFreshClone(ARGS, deps);
+    if (accepted) await expect(run).resolves.toMatchObject({ cleanupState: 'completed', steps: 17 });
+    else await expect(run).rejects.toThrow(/child prelude execution deadline/);
+    expect(observedOutcomeAt()).toBe(terminalAt);
+    expect(signals).toEqual(['SIGTERM']);
+  });
+
   it('does not let late final status borrow from final HEAD or aggregate reserve', async () => {
     let clock = 0;
     let statuses = 0;
@@ -733,6 +932,28 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     const { deps } = fixture({ now: () => { clockReads += 1; return 0; } });
     await expect(runFreshClone(['--invalid'], deps)).rejects.toThrow(/usage/);
     expect(clockReads).toBe(1);
+  });
+
+  it('rejects a backward injected clock before any child can start', async () => {
+    const readings = [10, 9];
+    const { deps, spawns } = fixture({ now: () => readings.shift() ?? 9 });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/monotonic clock regressed/);
+    expect(spawns).toEqual([]);
+  });
+
+  it('keeps the production deadline clock monotonic when wall time moves backward', () => {
+    const originalDateNow = Date.now;
+    let wallTime = 10_000;
+    Date.now = () => wallTime;
+    try {
+      const deps = createProductionDeps();
+      const first = deps.now();
+      wallTime -= 1_000_000;
+      const second = deps.now();
+      expect(second).toBeGreaterThanOrEqual(first);
+    } finally {
+      Date.now = originalDateNow;
+    }
   });
 
   it('makes a synchronous spawn throw a terminal no-PID shape without an exit or group wait', async () => {

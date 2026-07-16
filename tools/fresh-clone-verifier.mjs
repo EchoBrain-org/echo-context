@@ -5,6 +5,7 @@ import {
   accessSync, chmodSync, constants as fsConstants, lstatSync, mkdirSync, mkdtempSync, realpathSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 export const LIMITS = Object.freeze({
@@ -28,9 +29,39 @@ const EXPECTED_NODE_VERSION = 'v22.22.1';
 const EXPECTED_NPM_VERSION = '10.9.4';
 const TEMP_PARENT = '.fresh-clone-acceptance';
 const MAX_OUTPUT = 128 * 1024 * 1024;
+const FS_DEADLINE = Symbol('fresh-clone-filesystem-deadline');
+const productionNow = () => performance.now();
 
 function fail(message) {
   throw new Error(`fresh-clone-verifier: ${message}`);
+}
+
+function checkedMonotonicClock(now) {
+  let observed = false;
+  let previous = 0;
+  let faultReported = false;
+  return () => {
+    const current = now();
+    if (!Number.isFinite(current)) {
+      if (!faultReported || !observed) {
+        faultReported = true;
+        fail('monotonic clock returned a non-finite value');
+      }
+      return previous;
+    }
+    if (observed && current < previous) {
+      if (!faultReported) {
+        faultReported = true;
+        fail('monotonic clock regressed');
+      }
+      // Acceptance has already failed. Clamp subsequent reads so an owned T
+      // can still traverse the one cleanup transition without gaining budget.
+      return previous;
+    }
+    observed = true;
+    previous = current;
+    return current;
+  };
 }
 
 function cleanScalar(value, label, { absolute = false } = {}) {
@@ -186,7 +217,7 @@ export function runBoundedOperation(spec, operation, timers = {}) {
   if (spec.effect !== 'read_only') {
     return Promise.reject(new Error('fresh-clone-verifier: bounded Promise operations must be explicitly read_only'));
   }
-  const now = spec.now ?? Date.now;
+  const now = spec.now ?? productionNow;
   const setTimer = timers.setTimeout ?? setTimeout;
   const clearTimer = timers.clearTimeout ?? clearTimeout;
   return new Promise((resolve, reject) => {
@@ -218,7 +249,7 @@ export function runBoundedOperation(spec, operation, timers = {}) {
   });
 }
 
-export function raceUntil({ completion, deadline, now = Date.now, cancellation }, timers = {}) {
+export function raceUntil({ completion, deadline, now = productionNow, cancellation }, timers = {}) {
   const setTimer = timers.setTimeout ?? setTimeout;
   const clearTimer = timers.clearTimeout ?? clearTimeout;
   return new Promise((resolve) => {
@@ -283,6 +314,9 @@ function isTerminalRecord(value) {
 }
 
 function reportOriginalOutcome(first, terminalValue, handle, executionEnd, label) {
+  // outcomeAt is the timestamp of the complete terminal predicate, including
+  // any already-started termination ceremony. A direct exit/error alone may
+  // never rescue a deadline.
   if (first.kind === 'deadline' && Number.isFinite(handle.outcomeAt) && handle.outcomeAt <= executionEnd) return terminalValue;
   if (first.kind === 'error' || first.kind === 'timer_error' || first.kind === 'invalid') throw first.error;
   if (first.kind === 'cancelled') fail(`${label} cancelled by ${first.signal}`);
@@ -365,7 +399,9 @@ function attachCleanupFailure(primary, cleanup) {
 }
 
 export async function runFreshClone(argv, injected) {
-  const deps = injected ?? createProductionDeps();
+  const suppliedDeps = injected ?? createProductionDeps();
+  if (typeof suppliedDeps.now !== 'function') fail('deadline clock adapter is missing');
+  const deps = { ...suppliedDeps, now: checkedMonotonicClock(suppliedDeps.now) };
   // The aggregate clock is deliberately the first evaluated operational read;
   // even argument parsing and clone-root derivation consume this one budget.
   const started = deps.now();
@@ -417,6 +453,10 @@ export async function runFreshClone(argv, injected) {
     cleanup.state = 'not_started';
     cleanScalar(root, 'owned temporary root', { absolute: true });
   };
+  // Preserve the deadline on the ownership capability itself. This keeps the
+  // historic two-argument temporary-root adapter safe through thin injected
+  // proxies while the explicit third argument remains the production call.
+  Object.defineProperty(recordOwnedRoot, FS_DEADLINE, { value: prefinalCutoff });
 
   const transitionCleanup = async () => {
     if (cleanup.state === 'unallocated' || cleanup.state !== 'not_started') return;
@@ -425,13 +465,13 @@ export async function runFreshClone(argv, injected) {
     try {
       await settleActiveBy(reserveBoundary);
       const helper = join(cloneRoot, 'tools/fresh-clone-cleanup.mjs');
-      await boundedRead(cleanupContext, 'cleanup-helper authentication', reserveBoundary, () => deps.authenticateHelper(helper));
+      await boundedRead(cleanupContext, 'cleanup-helper authentication', reserveBoundary, () => deps.authenticateHelper(helper, reserveBoundary));
       const cleanupStep = sourcePlan(input, cloneRoot, cleanup.root).at(14);
       const result = await execute(cleanupStep, cleanupContext, reserveBoundary);
       if (!Number.isInteger(result.pid) || result.pid <= 0) fail('cleanup child did not return a direct process-group identity');
       cleanup.pid = result.pid;
       await boundedRead(cleanupContext, 'cleanup process-group absence', reserveBoundary, () => deps.assertGroupAbsent(cleanup.pid));
-      await boundedRead(cleanupContext, 'owned-root ENOENT readback', reserveBoundary, () => deps.assertPathAbsent(cleanup.root));
+      await boundedRead(cleanupContext, 'owned-root ENOENT readback', reserveBoundary, () => deps.assertPathAbsent(cleanup.root, reserveBoundary));
       cleanup.state = 'completed';
     } catch (error) {
       cleanup.state = 'failed';
@@ -440,7 +480,9 @@ export async function runFreshClone(argv, injected) {
   };
 
   try {
-    await boundedRead(context, 'identity authentication', prefinalCutoff, () => deps.authenticate({ input, verifierPath, cloneRoot, expectedNodeVersion: EXPECTED_NODE_VERSION }));
+    await boundedRead(context, 'identity authentication', prefinalCutoff, () => deps.authenticate({
+      input, verifierPath, cloneRoot, expectedNodeVersion: EXPECTED_NODE_VERSION, deadline: prefinalCutoff,
+    }));
 
     const npmVersion = await execute({ executable: input.npmBin, argv: ['--version'], kind: 'version' }, context, prefinalCutoff);
     exactSingleLine(npmVersion.stdout, EXPECTED_NPM_VERSION, 'npm version');
@@ -453,7 +495,7 @@ export async function runFreshClone(argv, injected) {
 
     cancellation.throwIfCancelled();
     if (deps.now() > prefinalCutoff) fail('temporary-root creation crossed the reserved final window');
-    const createdRoot = deps.createOwnedTemp(join(cloneRoot, TEMP_PARENT), recordOwnedRoot);
+    const createdRoot = deps.createOwnedTemp(join(cloneRoot, TEMP_PARENT), recordOwnedRoot, prefinalCutoff);
     if (createdRoot && typeof createdRoot.then === 'function') fail('owned temporary-root adapter must be synchronous and non-thenable');
     if (cleanup.state === 'unallocated') recordOwnedRoot(createdRoot);
     else if (createdRoot !== cleanup.root) fail('owned temporary-root result differs from its immediate record');
@@ -724,6 +766,13 @@ function startManaged(spec, state, runtime) {
       return false;
     }
     if (record.cancellationStarted && !record.ceremonyFinished) return false;
+    if (record.outcomeAt === null) {
+      try {
+        record.outcomeAt = runtime.now();
+      } catch (error) {
+        record.settlementError = record.settlementError ?? error;
+      }
+    }
     record.completed = true;
     if (state.active === handle) state.active = null;
     resolveCompletion(result());
@@ -737,9 +786,6 @@ function startManaged(spec, state, runtime) {
     }
     const outcomeObserved = record.directExited || record.spawnError !== null || record.streamError !== null;
     if (!outcomeObserved) return;
-    if (record.outcomeAt === null && !record.cancellationStarted) {
-      try { record.outcomeAt = runtime.now(); } catch (error) { record.settlementError = record.settlementError ?? error; }
-    }
     if (completeIfTerminal() || record.cancellationStarted) return;
     let groupAlive = true;
     try {
@@ -805,9 +851,6 @@ function startManaged(spec, state, runtime) {
   child.once('error', (error) => {
     record.spawnError = error;
     if (!record.spawned) {
-      if (record.outcomeAt === null && !record.cancellationStarted) {
-        try { record.outcomeAt = runtime.now(); } catch (clockError) { record.settlementError = record.settlementError ?? clockError; }
-      }
       closePreSpawnStreams(record);
     }
     changed();
@@ -830,7 +873,7 @@ export function createProductionDeps(overrides = {}) {
   };
   const runtime = {
     spawn: overrides.spawn ?? spawn,
-    now: overrides.now ?? (() => Date.now()),
+    now: checkedMonotonicClock(overrides.now ?? productionNow),
     setTimer: overrides.setTimer ?? setTimeout,
     clearTimer: overrides.clearTimer ?? clearTimeout,
     delay: overrides.delay ?? wait,
@@ -838,29 +881,62 @@ export function createProductionDeps(overrides = {}) {
     groupExists: overrides.groupExists ?? processGroupExists,
     signalGroup: overrides.signalGroup ?? signalGroup,
   };
+  const checkedFs = (label, deadline, operation, onReturn) => {
+    if (!Number.isFinite(deadline)) fail(`${label} requires a finite deadline`);
+    if (runtime.now() > deadline) fail(`${label} deadline expired before its filesystem call`);
+    let value;
+    let operationError;
+    try {
+      value = operation();
+    } catch (error) {
+      operationError = error;
+    }
+    // mkdtemp's ownership record is the sole deliberate action before its
+    // post-return clock read, so a late return can still be cleaned exactly once.
+    if (!operationError && onReturn) {
+      try {
+        onReturn(value);
+      } catch (error) {
+        operationError = error;
+      }
+    }
+    if (runtime.now() > deadline) fail(`${label} crossed its deadline`);
+    if (operationError) throw operationError;
+    return value;
+  };
   const deps = {
     now: runtime.now,
     createCancellation: overrides.createCancellation ?? createSignalCancellation,
     runBounded: (spec, operation) => runBoundedOperation({ ...spec, now: runtime.now }, operation, runtime),
     raceUntil: (spec) => raceUntil({ ...spec, now: runtime.now }, runtime),
-    authenticate: ({ input, verifierPath, cloneRoot, expectedNodeVersion }) => {
+    authenticate: ({ input, verifierPath, cloneRoot, expectedNodeVersion, deadline }) => {
       const executableChecks = [input.nodeBin, input.npmBin, input.gitBin];
-      if (fs.realpathSync(process.execPath) !== input.nodeBin || process.version !== expectedNodeVersion) {
+      const runningNode = checkedFs('running Node realpath', deadline, () => fs.realpathSync(process.execPath));
+      if (runningNode !== input.nodeBin || process.version !== expectedNodeVersion) {
         fail('running Node identity/version differs from the authenticated NODE');
       }
       for (const path of executableChecks) {
-        const info = fs.lstatSync(path);
-        if (!info.isFile() || info.isSymbolicLink() || fs.realpathSync(path) !== path) fail(`tool is not a canonical regular nonsymlink file: ${path}`);
-        fs.accessSync(path, fsConstants.X_OK);
+        const info = checkedFs(`tool lstat: ${path}`, deadline, () => fs.lstatSync(path));
+        if (!info.isFile() || info.isSymbolicLink()) fail(`tool is not a canonical regular nonsymlink file: ${path}`);
+        if (checkedFs(`tool realpath: ${path}`, deadline, () => fs.realpathSync(path)) !== path) {
+          fail(`tool is not a canonical regular nonsymlink file: ${path}`);
+        }
+        checkedFs(`tool executable access: ${path}`, deadline, () => fs.accessSync(path, fsConstants.X_OK));
       }
-      if (fs.realpathSync(verifierPath) !== verifierPath || verifierPath !== join(cloneRoot, 'tools/fresh-clone-verifier.mjs')) {
+      const verifierRealpath = checkedFs('verifier realpath', deadline, () => fs.realpathSync(verifierPath));
+      if (verifierRealpath !== verifierPath || verifierPath !== join(cloneRoot, 'tools/fresh-clone-verifier.mjs')) {
         fail('running verifier is not the authenticated absolute sibling');
       }
-      if (fs.realpathSync(process.cwd()) !== cloneRoot || process.cwd() !== cloneRoot) fail('physical cwd differs from authenticated clone root');
+      const cwd = process.cwd();
+      const cwdRealpath = checkedFs('clone-root realpath', deadline, () => fs.realpathSync(cwd));
+      if (cwdRealpath !== cloneRoot || cwd !== cloneRoot) fail('physical cwd differs from authenticated clone root');
       for (const path of [input.sandboxHome, join(input.sandboxHome, 'tmp')]) {
-        const info = fs.lstatSync(path);
+        const info = checkedFs(`sandbox lstat: ${path}`, deadline, () => fs.lstatSync(path));
         const mode = info.mode & 0o777;
-        if (!info.isDirectory() || info.isSymbolicLink() || fs.realpathSync(path) !== path || info.uid !== process.getuid() || mode !== 0o700) {
+        if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid() || mode !== 0o700) {
+          fail(`sandbox directory is not caller-owned canonical mode-0700: ${path}`);
+        }
+        if (checkedFs(`sandbox realpath: ${path}`, deadline, () => fs.realpathSync(path)) !== path) {
           fail(`sandbox directory is not caller-owned canonical mode-0700: ${path}`);
         }
       }
@@ -871,27 +947,33 @@ export function createProductionDeps(overrides = {}) {
       if (!handle) return null;
       return handle.cancelAndSettle('cleanup-transition');
     },
-    createOwnedTemp: (parent, recordOwnedRoot) => {
-      const created = fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
-      const parentInfo = fs.lstatSync(parent);
-      if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || fs.realpathSync(parent) !== parent || parentInfo.uid !== process.getuid()) {
+    createOwnedTemp: (parent, recordOwnedRoot, deadline = recordOwnedRoot?.[FS_DEADLINE]) => {
+      const created = checkedFs('acceptance-temp parent mkdir', deadline, () => fs.mkdirSync(parent, { recursive: true, mode: 0o700 }));
+      const parentInfo = checkedFs('acceptance-temp parent lstat', deadline, () => fs.lstatSync(parent));
+      if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || parentInfo.uid !== process.getuid()) {
         fail('acceptance-temp parent is not a caller-owned canonical directory');
       }
-      if (created !== undefined) fs.chmodSync(parent, 0o700);
+      if (checkedFs('acceptance-temp parent realpath', deadline, () => fs.realpathSync(parent)) !== parent) {
+        fail('acceptance-temp parent is not a caller-owned canonical directory');
+      }
+      if (created !== undefined) checkedFs('acceptance-temp parent chmod', deadline, () => fs.chmodSync(parent, 0o700));
       else if ((parentInfo.mode & 0o777) !== 0o700) fail('existing acceptance-temp parent must have mode 0700');
-      const root = fs.mkdtempSync(join(parent, 'run-'));
-      recordOwnedRoot(root);
-      fs.chmodSync(root, 0o700);
-      if (fs.realpathSync(root) !== root) fail('owned temporary root is not canonical');
+      const root = checkedFs('owned temporary-root mkdtemp', deadline, () => fs.mkdtempSync(join(parent, 'run-')), recordOwnedRoot);
+      checkedFs('owned temporary-root chmod', deadline, () => fs.chmodSync(root, 0o700));
+      const rootRealpath = checkedFs('owned temporary-root realpath', deadline, () => fs.realpathSync(root));
+      if (rootRealpath !== root) fail('owned temporary root is not canonical');
       return root;
     },
-    authenticateHelper: (path) => {
-      const info = fs.lstatSync(path);
-      if (!info.isFile() || info.isSymbolicLink() || fs.realpathSync(path) !== path) fail('cleanup helper is not an authenticated regular nonsymlink sibling');
+    authenticateHelper: (path, deadline) => {
+      const info = checkedFs('cleanup-helper lstat', deadline, () => fs.lstatSync(path));
+      if (!info.isFile() || info.isSymbolicLink()) fail('cleanup helper is not an authenticated regular nonsymlink sibling');
+      if (checkedFs('cleanup-helper realpath', deadline, () => fs.realpathSync(path)) !== path) {
+        fail('cleanup helper is not an authenticated regular nonsymlink sibling');
+      }
     },
-    assertPathAbsent: (path) => {
+    assertPathAbsent: (path, deadline) => {
       try {
-        fs.lstatSync(path);
+        checkedFs('owned-root absence lstat', deadline, () => fs.lstatSync(path));
       } catch (error) {
         if (error?.code === 'ENOENT') return;
         throw error;
