@@ -61,8 +61,8 @@
       "path": "tools/fresh-clone-cleanup.mjs"
     },
     {
-      "blob_oid": "8d1aedadfc373cd2c72dd661351d64be1adb0b68",
-      "content_sha256": "bfe1ec7319eb32b13527887c4a04b143709ac5574cd88893676cd07c98e13294",
+      "blob_oid": "ab36394e26ae4331bd68b393bf8477cc8f2ff55d",
+      "content_sha256": "fefa9255914f56495a83e2bf30d59662095ab57faa8139309fd14ad7522741ef",
       "mode": "100644",
       "path": "tools/fresh-clone-verifier.mjs"
     },
