@@ -85,8 +85,8 @@
       "path": "tools/repository-bootstrap-gate.mjs"
     },
     {
-      "blob_oid": "5512afddb382668aea797eb4372936b0f9dc6ec5",
-      "content_sha256": "059e2d9584e3ead8a063bc0b785095233dd55e8b4b7d63165bc4659bd8f1728c",
+      "blob_oid": "91cc8a4eb32e261c03446b22cc420158eb9f4058",
+      "content_sha256": "8d230ff92e7a6827e728e337d2799f518d62d289e0a546f16785648d1b040b25",
       "mode": "100644",
       "path": "tools/secret-scan.mjs"
     },
