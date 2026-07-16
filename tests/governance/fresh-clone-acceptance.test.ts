@@ -811,7 +811,11 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
       groupExists: () => groupAlive,
       signalGroup: (_pid: number, signal: NodeJS.Signals) => {
         signals.push(signal);
-        if (signal === 'SIGKILL') groupAlive = false;
+        if (signal === 'SIGKILL') {
+          groupAlive = false;
+          stdout.emit('close');
+          stderr.emit('close');
+        }
       },
       delay: async (milliseconds: number) => { delays.push(milliseconds); },
       pollDelay: async () => {},
@@ -821,8 +825,7 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
       timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
     });
     child.emit('exit', 7, null);
-    stdout.emit('close');
-    stderr.emit('close');
+    expect(signals).toEqual([]);
     await expect(handle.completion).resolves.toMatchObject({
       terminal: true, spawned: true, directExited: true, status: 7, pgidAbsent: true, pid: 42_424,
     });
@@ -830,6 +833,49 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
     expect(delays).toEqual([LIMITS.terminationGrace]);
     expect(stdin.endCalls).toBe(1);
     expect(deps.settleActiveChild()).toBeNull();
+  });
+
+  it('keeps an on-time success pending past reap expiry without poisoning the eventual terminal result', async () => {
+    const stdin = new FakeStream();
+    const stdout = new FakeStream();
+    const stderr = new FakeStream();
+    const child = new FakeChild(43_434, stdin, stdout, stderr);
+    const signals: string[] = [];
+    let clock = 0;
+    let groupAlive = true;
+    let markEnvelope!: () => void;
+    const envelopeReached = new Promise<void>((resolve) => { markEnvelope = resolve; });
+    let marked = false;
+    const deps = createProductionDeps({
+      spawn: () => child,
+      now: () => clock,
+      groupExists: () => groupAlive,
+      signalGroup: (_pid: number, signal: NodeJS.Signals) => { signals.push(signal); },
+      delay: async (milliseconds: number) => { clock += milliseconds; },
+      pollDelay: (milliseconds: number) => new Promise<void>((resolve) => setImmediate(() => {
+        clock += milliseconds;
+        if (!marked && clock >= LIMITS.terminationGrace + LIMITS.reap) {
+          marked = true;
+          markEnvelope();
+        }
+        resolve();
+      })),
+    });
+    const handle = deps.startStep({
+      executable: '/fixture', argv: [], cwd: ROOT, env: {}, shell: false, detached: true,
+      timeoutMs: LIMITS.version, settlementMs: LIMITS.settlement,
+    });
+    child.emit('exit', 0, null);
+    stdout.emit('close');
+    stderr.emit('close');
+    await envelopeReached;
+    await expectStillPending(handle.completion);
+
+    groupAlive = false;
+    await expect(handle.completion).resolves.toMatchObject({
+      terminal: true, status: 0, signal: null, pgidAbsent: true, lifecycleError: null,
+    });
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
   });
 
   it('runs cancellation through TERM, exact grace, conditional KILL, and terminal stream/PGID settlement', async () => {

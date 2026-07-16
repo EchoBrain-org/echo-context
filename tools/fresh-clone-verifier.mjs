@@ -607,7 +607,9 @@ async function terminateRecord(record, runtime) {
     }
     try {
       if (!await waitForTerminal(record, LIMITS.reap, runtime)) {
-        errors.push(new Error('direct child, streams, or process group survived the settlement envelope'));
+        // Expiry determines when orchestration stops advancing; it is not a
+        // synthetic lifecycle failure once this same handle later proves the
+        // original child outcome terminal.
         await waitForTerminal(record, Infinity, runtime);
       }
     } catch (error) {
@@ -731,11 +733,21 @@ function startManaged(spec, state, runtime) {
       completeIfTerminal();
       return;
     }
-    if (!record.directExited || !record.stdoutClosed || !record.stderrClosed) return;
+    const outcomeObserved = record.directExited || record.spawnError !== null || record.streamError !== null;
+    if (!outcomeObserved) return;
     if (record.outcomeAt === null && !record.cancellationStarted) {
       try { record.outcomeAt = runtime.now(); } catch (error) { record.settlementError = record.settlementError ?? error; }
     }
     if (completeIfTerminal() || record.cancellationStarted) return;
+    let groupAlive = true;
+    try {
+      groupAlive = runtime.groupExists(record.pid);
+    } catch (error) {
+      record.settlementError = record.settlementError ?? error;
+    }
+    // A normal direct exit can precede close events by one turn. Only a live
+    // group proves that descendants may be holding those pipes open.
+    if (!groupAlive) return;
     queueMicrotask(() => { void handle.cancelAndSettle('surviving-process-group').catch(() => {}); });
   };
   const capture = (target) => (chunk) => {
