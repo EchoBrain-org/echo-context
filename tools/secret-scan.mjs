@@ -6,6 +6,7 @@ import { accessSync, constants, mkdtempSync, readFileSync, realpathSync, rmSync 
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MANIFEST_NAME, snapshotRef } from './prefetch-secret-scan-refs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTRACT_PATH = join(ROOT, 'tools', 'secret-scan-contract.json');
@@ -59,21 +60,35 @@ function preflightHistory() {
   git(['fsck', '--full']);
   if (!git(['remote', 'get-url', 'origin']).trim()) die('origin is required for complete-ref preflight');
 
-  // Fresh-clone acceptance runs with a credential-free temporary HOME.  The
-  // operator therefore performs one exhaustive fetch immediately before the
-  // scrubbed acceptance invocation:
-  //   git fetch origin '+refs/*:refs/echo-scan/*'
-  // These dedicated refs are immutable input to this process; the scanner
-  // performs no network access and gitleaks receives --all, so every fetched
-  // source ref remains reachable during the scan.
+  const gitDirectory = git(['rev-parse', '--absolute-git-dir']).trim();
+  if (!gitDirectory.startsWith('/')) die('Git directory is not absolute');
+  let manifest;
+  try {
+    manifest = readFileSync(join(gitDirectory, MANIFEST_NAME), 'utf8');
+  } catch {
+    die('exhaustive advertised-ref manifest is missing; run tools/prefetch-secret-scan-refs.mjs before acceptance');
+  }
+  if (manifest.includes('\r') || manifest.includes('\0') || !manifest.endsWith('\n')) die('advertised-ref manifest contains forbidden or unterminated bytes');
+  const lines = manifest.slice(0, -1).split('\n');
+  if (lines.shift() !== MANIFEST_NAME || lines.length === 0) die('advertised-ref manifest header or rows differ');
+  const advertised = lines.map((line) => {
+    const match = /^([0-9a-f]{40})\t(refs\/.+)$/u.exec(line);
+    if (!match || match[2].includes('^{}')) die(`malformed advertised-ref manifest row: ${line}`);
+    return { oid: match[1], ref: match[2], snapshotRef: snapshotRef(match[2]) };
+  });
+  const sortedRefs = advertised.map(({ ref }) => ref).sort((left, right) => left.localeCompare(right));
+  if (JSON.stringify(advertised.map(({ ref }) => ref)) !== JSON.stringify(sortedRefs) || new Set(sortedRefs).size !== sortedRefs.length) {
+    die('advertised-ref manifest is not strictly sorted and unique');
+  }
+  if (!advertised.some(({ ref }) => ref === 'refs/heads/main')) die('advertised-ref manifest lacks refs/heads/main');
+
   const rows = git(['for-each-ref', '--format=%(objectname)%09%(refname)', 'refs/echo-scan']).split('\n').filter(Boolean).map((line) => {
     const match = /^([0-9a-f]{40})\t(refs\/echo-scan\/.+)$/u.exec(line);
     if (!match) die(`malformed complete-ref snapshot row: ${line}`);
     return { oid: match[1], ref: match[2] };
-  });
-  if (rows.length === 0) die('complete-ref snapshot is missing; fetch +refs/*:refs/echo-scan/* before acceptance');
-  const main = rows.find((row) => row.ref === 'refs/echo-scan/heads/main');
-  if (!main) die('complete-ref snapshot lacks refs/heads/main');
+  }).sort((left, right) => left.ref.localeCompare(right.ref));
+  const expected = advertised.map(({ oid, snapshotRef: ref }) => ({ oid, ref }));
+  if (JSON.stringify(rows) !== JSON.stringify(expected)) die('complete-ref snapshot names/OIDs differ from the exhaustive advertised-ref manifest');
   for (const { oid } of rows) git(['cat-file', '-e', `${oid}^{object}`]);
   return rows.length;
 }

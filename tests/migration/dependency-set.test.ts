@@ -61,6 +61,7 @@ describe('AC2 — successor runtime dependency set', () => {
     for (const path of [
       'tools/build-source-artifact.mjs', 'tools/verify-source-artifact.mjs',
       'tools/repository-bootstrap-gate.mjs', 'tools/secret-scan.sh',
+      'tools/prefetch-secret-scan-refs.mjs',
       'tools/fresh-clone-acceptance.sh', 'tools/fresh-clone-verifier.mjs',
       'tools/fresh-clone-cleanup.mjs', 'tsconfig.json', 'vitest.ci.config.ts',
     ]) expect(manifest.executable_sources.some((row) => row.path === path), path).toBe(true);

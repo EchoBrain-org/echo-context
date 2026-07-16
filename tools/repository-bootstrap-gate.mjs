@@ -81,10 +81,14 @@ export function parseCreatedMainPorcelain(result) {
     fail('initial push failed or was ambiguous');
   }
   if (result.stdout.includes('\r') || result.stdout.includes('\0')) fail('push porcelain contains forbidden bytes');
-  const rows = result.stdout.split('\n').filter((row) => row.startsWith('*\t') || row.startsWith('+\t') || row.startsWith('=\t') || row.startsWith('!\t') || row.startsWith('-\t'));
-  if (rows.length !== 1) fail('push porcelain must contain exactly one structural ref row');
-  const match = /^\*\trefs\/heads\/main:refs\/heads\/main\t\[new branch\]$/u.exec(rows[0]);
-  if (!match) fail('push porcelain is not the exact created-by-this-run main row');
+  const body = result.stdout.endsWith('\n') ? result.stdout.slice(0, -1) : result.stdout;
+  const rows = body.split('\n');
+  if (rows.length !== 3 || !/^To [^\t\n]+$/u.test(rows[0]) || rows[2] !== 'Done') {
+    fail('push porcelain must be exactly one To header, one ref row, and terminal Done');
+  }
+  if (!/^\*\trefs\/heads\/main:refs\/heads\/main\t\[new branch\]$/u.test(rows[1])) {
+    fail('push porcelain is not the exact created-by-this-run main row');
+  }
   return Object.freeze({ flag: '*', source: 'refs/heads/main', destination: 'refs/heads/main', summary: '[new branch]' });
 }
 

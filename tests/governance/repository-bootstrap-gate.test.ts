@@ -73,6 +73,8 @@ describe('AC1 — frozen repository bootstrap gate model', () => {
     ['missing porcelain', { status: 0, signal: null, stdout: 'Done\n', stderr: '', ambiguous: false }],
     ['up-to-date', { status: 0, signal: null, stdout: '=\trefs/heads/main:refs/heads/main\t[up to date]\n', stderr: '', ambiguous: false }],
     ['multiple rows', { status: 0, signal: null, stdout: '*\trefs/heads/main:refs/heads/main\t[new branch]\n*\trefs/tags/x:refs/tags/x\t[new tag]\n', stderr: '', ambiguous: false }],
+    ['malformed-prefix row', { status: 0, signal: null, stdout: 'To https://github.com/zhenye0616/echo-context.git\n*\trefs/heads/main:refs/heads/main\t[new branch]\n?\tmalformed\nDone\n', stderr: '', ambiguous: false }],
+    ['trailing row', { status: 0, signal: null, stdout: 'To https://github.com/zhenye0616/echo-context.git\n*\trefs/heads/main:refs/heads/main\t[new branch]\nDone\ntrailing\n', stderr: '', ambiguous: false }],
     ['lost response', { status: null, signal: null, stdout: '', stderr: '', ambiguous: true }],
   ])('rejects %s push proof', (_name, result) => {
     expect(() => parseCreatedMainPorcelain(result)).toThrow();

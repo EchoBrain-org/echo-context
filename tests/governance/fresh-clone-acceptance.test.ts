@@ -1,11 +1,11 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error the committed production state machine intentionally remains plain .mjs.
-import { LIMITS, buildEnvironment, parseInvocation, runFreshClone } from '../../tools/fresh-clone-verifier.mjs';
+import { LIMITS, buildEnvironment, createProductionDeps, parseInvocation, raceUntil, runBoundedOperation, runFreshClone } from '../../tools/fresh-clone-verifier.mjs';
 // @ts-expect-error the committed cleanup child intentionally remains plain .mjs.
 import { runCleanup } from '../../tools/fresh-clone-cleanup.mjs';
 
@@ -43,18 +43,55 @@ type SpawnSpec = {
   detached: boolean;
   timeoutMs: number;
   settlementMs: number;
+  cancellation?: CancellationFixture;
+};
+
+type CancellationFixture = {
+  readonly cancelled: boolean;
+  subscribe: (listener: (reason: string) => void) => () => void;
+  throwIfCancelled: () => void;
+  dispose: () => void;
+  cancel: (reason?: string) => void;
 };
 
 type FixtureOptions = {
   spawn?: (spec: SpawnSpec, index: number) => Promise<Record<string, unknown>> | Record<string, unknown>;
   authenticate?: () => Promise<void> | void;
-  createOwnedTemp?: () => Promise<string> | string;
+  createOwnedTemp?: (recordOwnedRoot: (root: string) => void) => string;
   settleActiveChild?: () => Promise<void> | void;
   authenticateHelper?: () => Promise<void> | void;
   assertGroupAbsent?: () => Promise<void> | void;
   assertPathAbsent?: () => Promise<void> | void;
   now?: () => number;
+  runBounded?: (spec: Record<string, unknown>, operation: () => unknown) => Promise<unknown>;
+  raceUntil?: (spec: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  cancelStep?: (spec: SpawnSpec, index: number, reason: string) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  cancellation?: CancellationFixture;
 };
+
+function cancellationFixture(): CancellationFixture {
+  let cancelled = false;
+  let reason = 'fixture';
+  const listeners = new Set<(value: string) => void>();
+  return {
+    get cancelled() { return cancelled; },
+    subscribe(listener) {
+      if (cancelled) listener(reason);
+      else listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    throwIfCancelled() {
+      if (cancelled) throw new Error(`fixture cancellation: ${reason}`);
+    },
+    dispose() { listeners.clear(); },
+    cancel(value = 'fixture') {
+      if (cancelled) return;
+      cancelled = true;
+      reason = value;
+      for (const listener of [...listeners]) listener(reason);
+    },
+  };
+}
 
 function successResult(spec: SpawnSpec, pid: number): Record<string, unknown> {
   let stdout = '';
@@ -64,30 +101,82 @@ function successResult(spec: SpawnSpec, pid: number): Record<string, unknown> {
   if (spec.executable === INPUT.npmBin && spec.argv[0] === 'run' && spec.argv[1] === 'build:artifact') {
     stdout = `source archive built\nmanifest_hash=${H}\n`;
   }
-  return { status: 0, signal: null, stdout, stderr: '', timedOut: false, outputOverflow: false, pgidAbsent: true, pid };
+  return {
+    terminal: true,
+    directExited: true,
+    stdoutClosed: true,
+    stderrClosed: true,
+    status: 0,
+    signal: null,
+    stdout,
+    stderr: '',
+    outputOverflow: false,
+    pgidAbsent: true,
+    pid,
+    lifecycleError: null,
+  };
 }
 
 function fixture(options: FixtureOptions = {}) {
   const events: string[] = [];
   const spawns: SpawnSpec[] = [];
+  const cancellation = options.cancellation ?? cancellationFixture();
+  let active: { completion: Promise<Record<string, unknown>>; cancelAndSettle: (reason: string) => Promise<Record<string, unknown>> } | null = null;
   const deps = {
     now: options.now ?? (() => 0),
+    createCancellation: () => cancellation,
+    runBounded: options.runBounded ?? (async (_spec: Record<string, unknown>, operation: () => unknown) => operation()),
+    raceUntil: options.raceUntil ?? ((spec: Record<string, unknown>) => raceUntil({
+      completion: spec.completion as Promise<unknown>,
+      deadline: Number(spec.deadline),
+      now: options.now ?? (() => 0),
+      cancellation: spec.cancellation,
+    })),
     authenticate: async () => {
       events.push('authenticate');
       await options.authenticate?.();
     },
-    spawnStep: async (spec: SpawnSpec) => {
+    startStep: (spec: SpawnSpec) => {
       events.push(`spawn:${spec.executable}:${spec.argv.join(' ')}`);
-      spawns.push(structuredClone(spec));
-      return options.spawn ? options.spawn(spec, spawns.length - 1) : successResult(spec, 1000 + spawns.length);
+      const recorded = { ...spec, argv: [...spec.argv], env: { ...spec.env } };
+      delete recorded.cancellation;
+      spawns.push(recorded);
+      const index = spawns.length - 1;
+      const produced = options.spawn ? options.spawn(spec, index) : successResult(spec, 1000 + spawns.length);
+      const completion = Promise.resolve(produced);
+      let cancellationPromise: Promise<Record<string, unknown>> | null = null;
+      const handle = {
+        completion,
+        cancelAndSettle: (reason: string) => {
+          if (!cancellationPromise) {
+            events.push(`cancel-step:${reason}`);
+            cancellationPromise = Promise.resolve(options.cancelStep
+              ? options.cancelStep(spec, index, reason)
+              : successResult(spec, 10_000 + index));
+            cancellationPromise.then((result) => {
+              if (result.terminal === true && result.pgidAbsent === true && active === handle) active = null;
+            }, () => {});
+          }
+          return cancellationPromise;
+        },
+      };
+      active = handle;
+      completion.then((result) => {
+        if (result.terminal === true && result.pgidAbsent === true && active === handle) active = null;
+      }, () => {});
+      return handle;
     },
     settleActiveChild: async () => {
       events.push('settle-active-child');
       await options.settleActiveChild?.();
+      if (active) return active.cancelAndSettle('cleanup-transition');
+      return null;
     },
-    createOwnedTemp: async (parent: string) => {
+    createOwnedTemp: (parent: string, recordOwnedRoot: (root: string) => void) => {
       events.push(`create-owned-temp:${parent}`);
-      return options.createOwnedTemp ? options.createOwnedTemp() : OWNED;
+      if (options.createOwnedTemp) return options.createOwnedTemp(recordOwnedRoot);
+      recordOwnedRoot(OWNED);
+      return OWNED;
     },
     authenticateHelper: async (path: string) => {
       events.push(`authenticate-helper:${path}`);
@@ -102,7 +191,26 @@ function fixture(options: FixtureOptions = {}) {
       await options.assertPathAbsent?.();
     },
   };
-  return { deps, events, spawns };
+  return { deps, events, spawns, cancellation };
+}
+
+function shortRace(spec: Record<string, unknown>) {
+  return raceUntil({
+    completion: spec.completion as Promise<unknown>,
+    deadline: Date.now() + 20,
+    now: () => Date.now(),
+    cancellation: spec.cancellation,
+  });
+}
+
+function shortRead(spec: Record<string, unknown>, operation: () => unknown) {
+  return runBoundedOperation({
+    ...spec,
+    effect: 'read_only',
+    label: String(spec.label),
+    deadline: Date.now() + 20,
+    now: () => Date.now(),
+  }, operation);
 }
 
 function independentOracle(): Array<[string, string[]]> {
@@ -172,7 +280,7 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
       now: () => clock,
       authenticate: () => { clock = LIMITS.aggregate - LIMITS.reserve + 1; },
     });
-    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/identity checks exhausted/);
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/identity authentication crossed its deadline/);
     expect(spawns).toEqual([]);
   });
 
@@ -239,8 +347,251 @@ describe('AC3 — source-only fresh-clone production state machine', () => {
         return result;
       },
     });
-    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/did not settle/);
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/nonterminal record/);
     expect(spawns.some((spec) => spec.argv.join(' ') === 'run lint')).toBe(false);
+  });
+
+  it.each(['after-mkdtemp', 'after-chmod', 'after-realpath'])('records a partial T %s and performs exactly one cleanup plus ENOENT readback', async (stage) => {
+    let absenceReads = 0;
+    const parent = dirname(OWNED);
+    const production = createProductionDeps({
+      fs: {
+        mkdirSync: () => undefined,
+        lstatSync: () => ({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+          mode: 0o700,
+          uid: process.getuid?.() ?? 0,
+        }),
+        realpathSync: (path: string) => {
+          if (path === parent) return parent;
+          if (stage === 'after-chmod') throw new Error('injected-after-chmod');
+          if (stage === 'after-realpath') return `${path}-drift`;
+          return path;
+        },
+        mkdtempSync: () => OWNED,
+        chmodSync: (path: string) => {
+          if (path === OWNED && stage === 'after-mkdtemp') throw new Error('injected-after-mkdtemp');
+        },
+      },
+    });
+    const { deps, events, spawns } = fixture({
+      createOwnedTemp: (recordOwnedRoot) => production.createOwnedTemp(parent, recordOwnedRoot),
+      assertPathAbsent: () => { absenceReads += 1; },
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(stage === 'after-realpath' ? /not canonical/ : `injected-${stage}`);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(1);
+    expect(events.filter((event) => event === 'settle-active-child')).toHaveLength(1);
+    expect(absenceReads).toBe(1);
+  });
+
+  it('blocks helper authentication and cleanup when a post-T child group permanently survives', async () => {
+    const { deps, events, spawns } = fixture({
+      spawn: (spec, index) => {
+        const result = successResult(spec, 6000 + index);
+        if (spec.argv[1] === 'build:artifact') result.pgidAbsent = false;
+        return result;
+      },
+      cancelStep: () => { throw new Error('permanent-process-group-survivor'); },
+      settleActiveChild: () => { throw new Error('permanent-process-group-survivor'); },
+    });
+    let thrown: (Error & { cleanupFailure?: string }) | undefined;
+    try {
+      await runFreshClone(ARGS, deps);
+    } catch (error) {
+      thrown = error as Error & { cleanupFailure?: string };
+    }
+    expect(thrown?.message).toContain('cancellation failed to prove');
+    expect(thrown?.cleanupFailure).toContain('permanent-process-group-survivor');
+    expect(events.filter((event) => event === 'settle-active-child')).toHaveLength(1);
+    expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(0);
+  });
+
+  it('injects cancellation after T, settles before the sole cleanup child, and never advances the interrupted trace', async () => {
+    const cancellation = cancellationFixture();
+    const { deps, events, spawns } = fixture({
+      cancellation,
+      spawn: (spec, index) => {
+        if (spec.argv.join(' ') === 'run scan:secrets') cancellation.cancel('injected-cancel');
+        return successResult(spec, 7000 + index);
+      },
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/cancel/);
+    const settle = events.indexOf('settle-active-child');
+    const helper = events.findIndex((event) => event.startsWith('authenticate-helper:'));
+    expect(settle).toBeGreaterThan(-1);
+    expect(helper).toBeGreaterThan(settle);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(1);
+    expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(2);
+  });
+
+  it('makes a cleanup-child timeout terminal and does not run a final boundary', async () => {
+    const { deps, spawns } = fixture({
+      spawn: (spec, index) => spec.executable === INPUT.nodeBin
+        ? { ...successResult(spec, 8000 + index), lifecycleError: new Error('cleanup-timeout') }
+        : successResult(spec, 8000 + index),
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/failed or did not settle/);
+    expect(spawns.filter((spec) => spec.executable === INPUT.nodeBin)).toHaveLength(1);
+    expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(2);
+  });
+
+  it('gives final status and final HEAD separate consecutive 40-second envelopes', async () => {
+    let clock = 0;
+    let statuses = 0;
+    const { deps, spawns } = fixture({
+      now: () => clock,
+      spawn: (spec, index) => {
+        if (spec.argv[0] === 'status') {
+          statuses += 1;
+          if (statuses === 3) return Promise.resolve().then(() => {
+            clock = LIMITS.finalEnvelope - LIMITS.settlement + 1;
+            return successResult(spec, 9000 + index);
+          });
+        }
+        return successResult(spec, 9000 + index);
+      },
+    });
+    await expect(runFreshClone(ARGS, deps)).resolves.toMatchObject({ cleanupState: 'completed' });
+    expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(3);
+    expect(spawns.filter((spec) => spec.argv.join(' ') === 'rev-parse HEAD')).toHaveLength(3);
+  });
+
+  it('bounds a never-resolving injected filesystem authentication promise', async () => {
+    const { deps, spawns } = fixture({
+      now: () => Date.now(),
+      authenticate: () => new Promise<void>(() => {}),
+      runBounded: (spec, operation) => runBoundedOperation({
+        ...spec,
+        label: String(spec.label),
+        deadline: Math.min(Number(spec.deadline), Date.now() + 20),
+        now: () => Date.now(),
+      }, operation),
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/deadline expired/);
+    expect(spawns).toEqual([]);
+  });
+
+  it.each(['active settlement', 'helper authentication', 'cleanup child', 'path absence'])('bounds never-settling cleanup surface: %s', async (surface) => {
+    const never = () => new Promise<void>(() => {});
+    const { deps, events, spawns } = fixture({
+      raceUntil: shortRace,
+      runBounded: shortRead,
+      settleActiveChild: surface === 'active settlement' ? never : undefined,
+      authenticateHelper: surface === 'helper authentication' ? never : undefined,
+      assertPathAbsent: surface === 'path absence' ? never : undefined,
+      spawn: (spec, index) => surface === 'cleanup child' && spec.executable === INPUT.nodeBin
+        ? new Promise<Record<string, unknown>>(() => {})
+        : successResult(spec, 11_000 + index),
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/deadline|envelope|execution/);
+    const cleanupSpawns = spawns.filter((spec) => spec.executable === INPUT.nodeBin);
+    expect(cleanupSpawns).toHaveLength(surface === 'active settlement' || surface === 'helper authentication' ? 0 : 1);
+    expect(spawns.filter((spec) => spec.argv[0] === 'status')).toHaveLength(2);
+    if (surface === 'active settlement') expect(events.some((event) => event.startsWith('authenticate-helper:'))).toBe(false);
+  });
+
+  it('bounds a never-resolving final HEAD and performs no later child', async () => {
+    let heads = 0;
+    const { deps, spawns } = fixture({
+      raceUntil: shortRace,
+      spawn: (spec, index) => {
+        if (spec.argv.join(' ') === 'rev-parse HEAD') {
+          heads += 1;
+          if (heads === 3) return new Promise<Record<string, unknown>>(() => {});
+        }
+        return successResult(spec, 12_000 + index);
+      },
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/execution deadline/);
+    expect(spawns.at(-1)?.argv).toEqual(['rev-parse', 'HEAD']);
+    expect(heads).toBe(3);
+  });
+
+  it('caps all consecutive final envelopes at the original aggregate deadline', async () => {
+    let clock = 0;
+    let statuses = 0;
+    const { deps, spawns } = fixture({
+      now: () => clock,
+      spawn: (spec, index) => {
+        if (spec.argv[0] === 'status') {
+          statuses += 1;
+          if (statuses === 3) return Promise.resolve().then(() => {
+            clock = LIMITS.aggregate - 5_000;
+            return successResult(spec, 13_000 + index);
+          });
+        }
+        return successResult(spec, 13_000 + index);
+      },
+    });
+    await expect(runFreshClone(ARGS, deps)).rejects.toThrow(/execution boundary expired/);
+    expect(spawns.filter((spec) => spec.argv.join(' ') === 'rev-parse HEAD')).toHaveLength(2);
+    expect(clock).toBeLessThanOrEqual(LIMITS.aggregate);
+  });
+
+  it('rejects an unclassified Promise seam before it can start or mutate later', async () => {
+    let started = false;
+    let mutated = false;
+    await expect(runBoundedOperation({ label: 'late', deadline: Date.now() + 5, now: () => Date.now() }, () => {
+      started = true;
+      return new Promise((resolve) => setTimeout(() => { mutated = true; resolve(undefined); }, 30));
+    })).rejects.toThrow(/explicitly read_only/);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(started).toBe(false);
+    expect(mutated).toBe(false);
+  });
+
+  it('starts the aggregate clock before parsing even a rejected invocation', async () => {
+    let clockReads = 0;
+    const { deps } = fixture({ now: () => { clockReads += 1; return 0; } });
+    await expect(runFreshClone(['--invalid'], deps)).rejects.toThrow(/usage/);
+    expect(clockReads).toBe(1);
+  });
+
+  it('runs cancellation through TERM, exact grace, conditional KILL, and terminal stream/PGID settlement', async () => {
+    const signals: string[] = [];
+    const delays: number[] = [];
+    const cancellation = cancellationFixture();
+    const readinessDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'echo-context-term-ready-')));
+    const readinessFile = join(readinessDirectory, 'ready');
+    const deps = createProductionDeps({
+      delay: async (milliseconds: number) => { delays.push(milliseconds); },
+      pollDelay: (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, Math.min(milliseconds, 5))),
+      signalGroup: (pid: number, signal: NodeJS.Signals) => {
+        signals.push(signal);
+        try {
+          process.kill(-pid, signal);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+        }
+      },
+    });
+    const child = deps.startStep({
+      executable: process.execPath,
+      argv: ['--eval', `const {writeFileSync}=require('node:fs'); process.on('SIGTERM',()=>{}); writeFileSync(${JSON.stringify(readinessFile)},'ready'); setInterval(()=>{},1000)`],
+      cwd: ROOT,
+      env: { ...process.env },
+      shell: false,
+      detached: true,
+      timeoutMs: 30_000,
+      settlementMs: LIMITS.settlement,
+      cancellation,
+    });
+    try {
+      const readinessDeadline = Date.now() + 5_000;
+      while (!existsSync(readinessFile) && Date.now() < readinessDeadline) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(existsSync(readinessFile)).toBe(true);
+      cancellation.cancel('fixture-cancel');
+      await expect(child.cancelAndSettle('fixture-cancel')).resolves.toMatchObject({ terminal: true, pgidAbsent: true });
+      await expect(child.completion).resolves.toMatchObject({ terminal: true, pgidAbsent: true });
+      expect(deps.settleActiveChild()).toBeNull();
+      expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+      expect(delays).toEqual([LIMITS.terminationGrace]);
+    } finally {
+      await child.cancelAndSettle('fixture-finally').catch(() => {});
+      rmSync(readinessDirectory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -291,6 +642,54 @@ describe('AC3 — wrapper and cleanup boundaries', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('successfully crosses the scrubbed shell-to-Node boundary with verbatim argv', () => {
+    const clone = realpathSync(mkdtempSync(join(tmpdir(), 'echo-context-wrapper-success-')));
+    const tools = join(clone, 'tools');
+    const home = join(clone, 'home');
+    const homeTmp = join(home, 'tmp');
+    const fakeNpm = join(clone, 'npm-cli.js');
+    const fakeGit = join(clone, 'git');
+    mkdirSync(tools);
+    mkdirSync(home, { mode: 0o700 });
+    mkdirSync(homeTmp, { mode: 0o700 });
+    chmodSync(home, 0o700);
+    chmodSync(homeTmp, 0o700);
+    copyFileSync(WRAPPER, join(tools, 'fresh-clone-acceptance.sh'));
+    chmodSync(join(tools, 'fresh-clone-acceptance.sh'), 0o755);
+    writeFileSync(fakeNpm, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(fakeGit, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(join(tools, 'fresh-clone-verifier.mjs'), "import { writeFileSync } from 'node:fs'; writeFileSync(`${process.env.HOME}/observed.json`, JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\n");
+    const node = realpathSync(process.execPath);
+    const argv = ['--node-bin', node, '--npm-bin', fakeNpm, '--git-bin', fakeGit, '--git-version', 'fixture', '--sandbox-home', home, '--mode=source', '--source-sha', S];
+    try {
+      const result = spawnSync(join(tools, 'fresh-clone-acceptance.sh'), argv, {
+        cwd: clone,
+        encoding: 'utf8',
+        env: { ...process.env, ECHO_ACCEPTANCE_POISON: 'must-not-cross' },
+      });
+      expect(result.status).toBe(0);
+      const observed = JSON.parse(readFileSync(join(home, 'observed.json'), 'utf8')) as { argv: string[]; env: Record<string, string> };
+      expect(observed.argv).toEqual(argv);
+      expect(observed.env.HOME).toBe(home);
+      expect(observed.env.TMPDIR).toBe(homeTmp);
+      expect(observed.env.ECHO_ACCEPTANCE_POISON).toBeUndefined();
+      expect(observed.env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
+    } finally {
+      rmSync(clone, { recursive: true, force: true });
+    }
+  });
+
+  it('settles a timer-construction error instead of starting the asynchronous dependency', async () => {
+    let started = false;
+    await expect(runBoundedOperation({ effect: 'read_only', label: 'timer-fixture', deadline: Date.now() + 100, now: () => Date.now() }, async () => {
+      started = true;
+    }, {
+      setTimeout: () => { throw new Error('timer-construction-failed'); },
+      clearTimeout: () => {},
+    })).rejects.toThrow(/timer-construction-failed/);
+    expect(started).toBe(false);
   });
 
   it('removes only the authenticated owned run root and preserves a sibling sentinel', async () => {

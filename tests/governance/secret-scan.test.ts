@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error committed Node scanner is intentionally plain .mjs; this test asserts its fixture surface.
 import { platformKey, scanWith, validateContract } from '../../tools/secret-scan.mjs';
+// @ts-expect-error committed prefetch helper is intentionally plain .mjs.
+import { MANIFEST_NAME, parseAdvertisedRefs, renderManifest } from '../../tools/prefetch-secret-scan-refs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const contract = JSON.parse(readFileSync(join(ROOT, 'tools/secret-scan-contract.json'), 'utf8'));
@@ -15,11 +17,16 @@ function git(root: string, argv: string[]) {
   return execFileSync('git', ['-C', root, ...argv], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
+function writeAdvertisedManifest(root: string, rows: Array<{ oid: string; ref: string }>) {
+  const sorted = [...rows].sort((left, right) => left.ref.localeCompare(right.ref));
+  writeFileSync(join(root, '.git', MANIFEST_NAME), renderManifest(sorted));
+}
+
 function executableFixture() {
   const root = mkdtempSync(join(tmpdir(), 'echo-context-secret-exec-'));
   const tools = join(root, 'tools');
   mkdirSync(tools);
-  for (const name of ['secret-scan.sh', 'secret-scan.mjs', 'secret-scan-contract.json']) copyFileSync(join(ROOT, 'tools', name), join(tools, name));
+  for (const name of ['secret-scan.sh', 'secret-scan.mjs', 'secret-scan-contract.json', 'prefetch-secret-scan-refs.mjs']) copyFileSync(join(ROOT, 'tools', name), join(tools, name));
   chmodSync(join(tools, 'secret-scan.sh'), 0o755);
   git(root, ['init', '-q']);
   git(root, ['config', 'user.name', 'Fixture']);
@@ -29,6 +36,7 @@ function executableFixture() {
   git(root, ['commit', '-q', '-m', 'fixture']);
   git(root, ['remote', 'add', 'origin', 'https://example.invalid/private.git']);
   git(root, ['update-ref', 'refs/echo-scan/heads/main', 'HEAD']);
+  writeAdvertisedManifest(root, [{ oid: git(root, ['rev-parse', 'HEAD']), ref: 'refs/heads/main' }]);
 
   const binary = join(root, 'fixture-gitleaks');
   writeFileSync(binary, `#!/bin/sh
@@ -77,6 +85,15 @@ describe('AC1/AC4 — secret scan contract', () => {
     expect(contract.invocation.argv).toEqual(['detect', '--source', '.', '--log-opts=--all', '--redact=100', '--no-banner', '--no-color', '--report-format', 'json', '--report-path', '<temporary-report>']);
   });
 
+  it('parses a strict sorted unique advertised-ref manifest without peeled pseudo-refs', () => {
+    const main = '1'.repeat(40);
+    const tag = '2'.repeat(40);
+    const rows = parseAdvertisedRefs(`${tag}\trefs/tags/v1\n${main}\trefs/heads/main\n`);
+    expect(renderManifest(rows)).toBe(`${MANIFEST_NAME}\n${main}\trefs/heads/main\n${tag}\trefs/tags/v1\n`);
+    expect(() => parseAdvertisedRefs(`${main}\trefs/heads/main\n${tag}\trefs/heads/main\n`)).toThrow(/duplicate/);
+    expect(() => parseAdvertisedRefs(`${main}\trefs/tags/v1^{}\n`)).toThrow(/malformed/);
+  });
+
   it('fails closed for unsupported and digest-mismatched binaries', () => {
     const directory = mkdtempSync(join(tmpdir(), 'echo-context-scan-'));
     try {
@@ -119,13 +136,61 @@ describe('AC1/AC4 — secret scan contract', () => {
       git(fixture.root, ['update-ref', '-d', 'refs/echo-scan/heads/main']);
       const incomplete = fixture.run('clean');
       expect(incomplete.status).not.toBe(0);
-      expect(incomplete.stderr).toContain('complete-ref snapshot is missing');
+      expect(incomplete.stderr).toContain('names/OIDs differ');
       git(fixture.root, ['update-ref', 'refs/echo-scan/heads/main', 'HEAD']);
 
       writeFileSync(fixture.binary, `${readFileSync(fixture.binary, 'utf8')}# digest drift\n`);
       const mismatch = fixture.run('clean');
       expect(mismatch.status).not.toBe(0);
       expect(mismatch.stderr).toContain('digest mismatch');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['branch', 'refs/heads/secret-branch', 'refs/echo-scan/heads/secret-branch'],
+    ['tag', 'refs/tags/secret-tag', 'refs/echo-scan/tags/secret-tag'],
+  ])('rejects an advertised secret-bearing %s omitted from the local snapshot', (_kind, advertisedRef, snapshotRef) => {
+    const fixture = executableFixture();
+    try {
+      const head = git(fixture.root, ['rev-parse', 'HEAD']);
+      writeFileSync(join(fixture.root, 'secret-only.txt'), 'FAKE_OMITTED_REF_SECRET\n');
+      git(fixture.root, ['add', 'secret-only.txt']);
+      git(fixture.root, ['commit', '-q', '-m', 'secret-only history']);
+      const secretCommit = git(fixture.root, ['rev-parse', 'HEAD']);
+      git(fixture.root, ['reset', '--hard', '-q', head]);
+      writeAdvertisedManifest(fixture.root, [
+        { oid: head, ref: 'refs/heads/main' },
+        { oid: secretCommit, ref: advertisedRef },
+      ]);
+      const omitted = fixture.run('clean');
+      expect(omitted.status).not.toBe(0);
+      expect(omitted.stderr).toContain('names/OIDs differ');
+
+      git(fixture.root, ['update-ref', snapshotRef, secretCommit]);
+      expect(fixture.run('clean').status).toBe(0);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an extra or OID-mismatched local snapshot ref absent from the advertisement', () => {
+    const fixture = executableFixture();
+    try {
+      git(fixture.root, ['update-ref', 'refs/echo-scan/tags/foreign', 'HEAD']);
+      const extra = fixture.run('clean');
+      expect(extra.status).not.toBe(0);
+      expect(extra.stderr).toContain('names/OIDs differ');
+
+      git(fixture.root, ['update-ref', '-d', 'refs/echo-scan/tags/foreign']);
+      writeFileSync(join(fixture.root, 'second.txt'), 'second\n');
+      git(fixture.root, ['add', 'second.txt']);
+      git(fixture.root, ['commit', '-q', '-m', 'second']);
+      git(fixture.root, ['update-ref', 'refs/echo-scan/heads/main', 'HEAD']);
+      const mismatch = fixture.run('clean');
+      expect(mismatch.status).not.toBe(0);
+      expect(mismatch.stderr).toContain('names/OIDs differ');
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
