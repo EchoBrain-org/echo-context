@@ -1,0 +1,220 @@
+name: source-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full landed echo-context/main SHA
+        required: true
+        type: string
+      version:
+        description: Exact committed package version
+        required: true
+        type: string
+      expected_lock_hash:
+        description: SHA-256 of package-lock.json blob at source_sha
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: echo-context-source-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build-artifact:
+    if: ${{ github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.tuple.outputs.source_sha }}
+      source_tree: ${{ steps.tuple.outputs.source_tree }}
+      version: ${{ steps.tuple.outputs.version }}
+      source_archive_sha256: ${{ steps.tuple.outputs.source_archive_sha256 }}
+      lock_hash: ${{ steps.tuple.outputs.lock_hash }}
+      manifest_hash: ${{ steps.tuple.outputs.manifest_hash }}
+      run_id: ${{ steps.tuple.outputs.run_id }}
+      workflow_artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      workflow_artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - name: Reject wrong dispatch identity before checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$SOURCE_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          remote_sha=$(curl --fail --silent --show-error --location --max-redirs 0 \
+            -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/main" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).commit.sha))')
+          test "$remote_sha" = "$SOURCE_SHA"
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22.22.1
+          cache: npm
+      - name: Pin npm and validate dispatch tuple
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          EXPECTED_LOCK_HASH: ${{ inputs.expected_lock_hash }}
+        run: |
+          set -euo pipefail
+          npm install --global npm@10.9.4
+          test "$(npm --version)" = 10.9.4
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(node -p 'require("./package.json").version')" = "$VERSION"
+          test "$VERSION" = 0.1.0-dev.136.1
+          test "$EXPECTED_LOCK_HASH" = "$(git cat-file blob "${SOURCE_SHA}:package-lock.json" | shasum -a 256 | awk '{print $1}')"
+          git merge-base --is-ancestor 0cf7b006eba665c0bf55e82ff04da70f19f01ebb "$SOURCE_SHA"
+      - name: Verify source tree
+        run: npm ci && npm run typecheck && npm run lint && npm run test:ci && npm run verify:inventory && npm run verify:authority
+      - name: Build exactly once and write inner tuple
+        id: tuple
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          OUT: ${{ runner.temp }}/source-release
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          output=$(npm run build:artifact -- --source-sha "$SOURCE_SHA" --out "$OUT")
+          manifest_hash=$(printf '%s\n' "$output" | tail -n 1 | sed -n 's/^manifest_hash=\([0-9a-f]\{64\}\)$/\1/p')
+          test -n "$manifest_hash"
+          manifest="$OUT/echo-context-${VERSION}-source.manifest.json"
+          node tools/write-release-tuple.mjs --manifest "$manifest" --run-id "$GITHUB_RUN_ID" --out "$OUT/source-release-inner-tuple.v1.json"
+          source_tree=$(git rev-parse "${SOURCE_SHA}^{tree}")
+          archive_sha=$(node -e 'const m=require(process.argv[1]);process.stdout.write(m.source_archive.source_archive_sha256)' "$manifest")
+          lock_hash=$(node -e 'const m=require(process.argv[1]);process.stdout.write(m.lock_hash)' "$manifest")
+          printf 'source_sha=%s\nsource_tree=%s\nversion=%s\nsource_archive_sha256=%s\nlock_hash=%s\nmanifest_hash=%s\nrun_id=%s\n' \
+            "$SOURCE_SHA" "$source_tree" "$VERSION" "$archive_sha" "$lock_hash" "$manifest_hash" "$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+      - name: Upload exact build-once bundle
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: echo-context-${{ inputs.version }}-release
+          path: ${{ runner.temp }}/source-release/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Present complete approval tuple
+        run: |
+          {
+            echo '### Exact source-release approval tuple'
+            echo '- source_sha: `${{ steps.tuple.outputs.source_sha }}`'
+            echo '- source_tree: `${{ steps.tuple.outputs.source_tree }}`'
+            echo '- version: `${{ steps.tuple.outputs.version }}`'
+            echo '- source_archive_sha256: `${{ steps.tuple.outputs.source_archive_sha256 }}`'
+            echo '- lock_hash: `${{ steps.tuple.outputs.lock_hash }}`'
+            echo '- manifest_hash: `${{ steps.tuple.outputs.manifest_hash }}`'
+            echo '- run_id: `${{ steps.tuple.outputs.run_id }}`'
+            echo '- workflow_artifact_id: `${{ steps.upload.outputs.artifact-id }}`'
+            echo '- workflow_artifact_digest: `${{ steps.upload.outputs.artifact-digest }}`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-release:
+    if: ${{ github.run_attempt == 1 && needs.build-artifact.result == 'success' }}
+    needs: [build-artifact]
+    runs-on: ubuntu-24.04
+    environment: source-release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ needs.build-artifact.outputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22.22.1
+      - name: Verify hosting controls after protected approval
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/verify-hosting-controls.mjs --owner zhenye0616 --repo echo-context --environment source-release --source-sha '${{ needs.build-artifact.outputs.source_sha }}'
+      - name: Download exact raw workflow artifact by ID and verify before extraction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.build-artifact.outputs.workflow_artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.build-artifact.outputs.workflow_artifact_digest }}
+          VERSION: ${{ needs.build-artifact.outputs.version }}
+          RUN_ID: ${{ needs.build-artifact.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-bundle"
+          curl --fail --silent --show-error --location --max-redirs 0 \
+            -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}" \
+            --output "$RUNNER_TEMP/artifact-metadata.json"
+          node tools/verify-workflow-artifact-metadata.mjs --metadata "$RUNNER_TEMP/artifact-metadata.json" --artifact-id "$ARTIFACT_ID" --name "echo-context-${VERSION}-release" --run-id "$RUN_ID"
+          curl --fail --silent --show-error --location --max-redirs 1 \
+            -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            --output "$RUNNER_TEMP/release-bundle.zip"
+          test "$(shasum -a 256 "$RUNNER_TEMP/release-bundle.zip" | awk '{print $1}')" = "$ARTIFACT_DIGEST"
+          unzip -Z1 "$RUNNER_TEMP/release-bundle.zip" > "$RUNNER_TEMP/release-bundle.entries"
+          test "$(wc -l < "$RUNNER_TEMP/release-bundle.entries" | tr -d ' ')" = 4
+          while IFS= read -r entry; do
+            case "$entry" in
+              "echo-context-${VERSION}-source.tgz"|"echo-context-${VERSION}-source.tgz.sha256"|"echo-context-${VERSION}-source.manifest.json"|source-release-inner-tuple.v1.json) ;;
+              *) echo "unsafe or unexpected workflow artifact entry: $entry" >&2; exit 1 ;;
+            esac
+          done < "$RUNNER_TEMP/release-bundle.entries"
+          unzip -qq "$RUNNER_TEMP/release-bundle.zip" -d "$RUNNER_TEMP/release-bundle"
+      - name: Revalidate exact inner and outer tuple
+        env:
+          DIR: ${{ runner.temp }}/release-bundle
+        run: |
+          node tools/verify-release-bundle.mjs --dir "$DIR" \
+            --artifact-id '${{ needs.build-artifact.outputs.workflow_artifact_id }}' \
+            --workflow-artifact-digest '${{ needs.build-artifact.outputs.workflow_artifact_digest }}' \
+            --run-id '${{ needs.build-artifact.outputs.run_id }}' \
+            --source-sha '${{ needs.build-artifact.outputs.source_sha }}' \
+            --source-tree '${{ needs.build-artifact.outputs.source_tree }}' \
+            --version '${{ needs.build-artifact.outputs.version }}' \
+            --source-archive-sha256 '${{ needs.build-artifact.outputs.source_archive_sha256 }}' \
+            --lock-hash '${{ needs.build-artifact.outputs.lock_hash }}' \
+            --manifest-hash '${{ needs.build-artifact.outputs.manifest_hash }}'
+          npm run verify:artifact -- --archive "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.tgz" \
+            --checksum "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.tgz.sha256" \
+            --manifest "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.manifest.json" \
+            --expected-manifest-hash '${{ needs.build-artifact.outputs.manifest_hash }}'
+      - name: Publish exact approved bytes through sole mutation controller
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DIR: ${{ runner.temp }}/release-bundle
+        run: |
+          node tools/release-publication-controller.mjs \
+            --repository-id '${{ github.repository_id }}' \
+            --source-sha '${{ needs.build-artifact.outputs.source_sha }}' \
+            --version '${{ needs.build-artifact.outputs.version }}' \
+            --manifest-hash '${{ needs.build-artifact.outputs.manifest_hash }}' \
+            --archive "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.tgz" \
+            --checksum "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.tgz.sha256" \
+            --manifest "$DIR/echo-context-${{ needs.build-artifact.outputs.version }}-source.manifest.json" \
+            --run-id '${{ github.run_id }}' \
+            --run-attempt '${{ github.run_attempt }}'
+
+  rerun-sentinel:
+    if: ${{ always() }}
+    needs: [build-artifact, publish-release]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Reject any workflow or job rerun
+        run: |
+          if [ "$GITHUB_RUN_ATTEMPT" != 1 ]; then
+            echo 'Reruns are forbidden; use a fresh founder-dispositioned dispatch.' >&2
+            exit 1
+          fi

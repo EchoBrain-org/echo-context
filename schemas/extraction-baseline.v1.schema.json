@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "baseline_commit", "baseline_tree", "path_count", "inventory_sha256", "evidence", "paths"],
+  "properties": {
+    "schema": { "const": "extraction-baseline.v1" },
+    "baseline_commit": { "$ref": "#/definitions/oid" },
+    "baseline_tree": { "$ref": "#/definitions/oid" },
+    "path_count": { "const": 190 },
+    "inventory_sha256": { "$ref": "#/definitions/sha256" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["migration_record", "independent_review"],
+      "properties": {
+        "migration_record": { "$ref": "#/definitions/evidence" },
+        "independent_review": { "$ref": "#/definitions/evidence" }
+      }
+    },
+    "paths": {
+      "type": "array",
+      "minItems": 190,
+      "maxItems": 190,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "mode", "blob_oid", "size", "content_sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "mode": { "enum": ["100644", "100755"] },
+          "blob_oid": { "$ref": "#/definitions/oid" },
+          "size": { "type": "integer", "minimum": 0 },
+          "content_sha256": { "$ref": "#/definitions/sha256" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    }
+  }
+}

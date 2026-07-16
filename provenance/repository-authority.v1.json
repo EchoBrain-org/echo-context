@@ -1,0 +1,16 @@
+{
+  "artifact_authority": "versioned-source-artifact",
+  "canonical_repository": "https://github.com/zhenye0616/echo-context",
+  "default_branch": "main",
+  "extraction_baseline": {
+    "commit": "0cf7b006eba665c0bf55e82ff04da70f19f01ebb",
+    "record": "provenance/extraction-baseline.v1.json",
+    "tree": "70c5cf8352652b3c4c1dce68cd1a5e40d44e4b05"
+  },
+  "installed": false,
+  "maturity": "DEV",
+  "runtime_authority": false,
+  "schema": "repository-authority.v1",
+  "source_authority": "echo-context/main",
+  "state_authority": false
+}

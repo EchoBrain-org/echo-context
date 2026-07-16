@@ -1,54 +1,53 @@
 # echo-context
 
-Standalone ECHO **context substrate**: generic capture, normalization,
-append-only storage, clustering/retrieval, permissions/health, and the eight
-read-only context MCP tools. It was extracted from Project_echo commit
-`2971310441b69735cbe759293abd8c4d044bf347` under item 135.
+`echo-context` is ECHO's independently usable context-source repository. It
+contains generic capture, normalization, append-only storage,
+clustering/retrieval, permissions and health support, and the eight read-only
+context MCP tools sealed in `context-tools.v1.json`.
 
-The eight tools, sealed in `context-tools.v1.json`, are `echo_ping`,
-`echo_resolve_mru`, `find_clusters`, `get_atom`, `get_atoms`,
-`get_recent_work_context`, `search_memories`, and `wait_for_new_turns`.
-Capture is available only as service operation `POST /v1/capture`; it is never
-a ninth MCP tool.
+## Authority boundary
 
-## Candidate status
+After item 136 lands, `echo-context/main` is the canonical **source** authority
+and its versioned source archive is the canonical **source-artifact** authority.
+It is still an internal asset at maturity `DEV`:
 
-The repository is a builder-complete local extraction awaiting fresh
-independent review of the exact candidate OID. It remains on
-`migration/2026-07-13-135`, has no remote, and is deliberately
-`authority:false`, `installed:false`, and maturity `DEV`. Project_echo remains
-the active daemon, MCP endpoint, backup, and authority. No user or live ECHO
-state is read by the synthetic verification paths.
+- `installable: false`
+- `installed: false`
+- `runtime_authority: false`
+- `state_authority: false`
 
-## Sealed evidence
+Project_echo continues to own the active daemon, live context state, client MCP
+endpoint, backup, and rollback. Nothing in this repository changes a machine
+client, launches a service, reads a live database, or grants runtime authority.
+The source archive is verification material for the separately reviewed item
+137 installer; it is not an installer or a commercial package.
 
-- The raw pinned-source inventory is 217 paths: 144 byte-identical ports, seven
-  deterministic rewrites, one deliberate duplication, and 65 exclusions.
-  Same-path source SHA-256 and Git blob OIDs are cryptographically cross-bound
-  across source evidence, parity rows, replay output, and committed target
-  blobs.
-- `provenance/runtime-inventory.v1.json` is derived recursively from final Git
-  objects. It closes package scripts, executable tools, embedded launchers,
-  target modules, literal SQL assets, exact npm rows, `tsx`, `vite-node`, the
-  `better-sqlite3` native binding, and pinned system helpers. Computed imports,
-  repository-rooted reads, and process launches fail closed.
-- Context-tool parity launches both raw pinned source and target over stdio on
-  fresh synthetic state. The pinned source `src/mcp/server.ts` is HTTP-only, so
-  both sides use the same hash-bound scratch registrar harness. Evidence binds
-  the source's full 15-tool roster, seven classified ignored IDs, the projected
-  eight descriptors, ten ordered full-result cases, fixture/config/harness
-  bytes, and aggregate
-  `6569b0472372ad666404aa22bcf5b1e0e0c716b573dec35c4b9212864420bba2`.
-  The wait case maps the source's integer `timeout: 1` to a literal 10 ms wall
-  budget by advancing the identical harness's virtual clock 1000 ms.
-- The loopback service compiles and enforces `schemas/service-api.v1.json` for
-  every request and successful response. It caps bodies, IDs, and serialized
-  results; uses bounded storage retrieval; sanitizes its environment; enforces
-  request and shutdown deadlines; and treats forced teardown as failure.
-- Dependency installation is lockfile-only. Lifecycle evidence permits only
-  the pinned `better-sqlite3` rebuild under network-denying `sandbox-exec`, and
-  binds the resulting native artifact and toolchain.
+## Development checks
 
-The normal next gate is independent review against the exact clean target OID
-and tree. Review acceptance does not install, publish, promote, or grant this
-repository authority.
+Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. A clean clone runs:
+
+```sh
+npm ci
+npm run typecheck
+npm run lint
+npm run test:ci
+npm run verify:inventory
+npm run verify:authority
+```
+
+`npm run test:operator` is intentionally separate. It requires explicit
+`ECHO_SOURCE_GIT_DIR` and `ECHO_SOURCE_SHA` values and replays the accepted
+item-135 proof against pinned Project_echo Git objects; hosted CI never uses it.
+
+`tools/fresh-clone-acceptance.sh` is the authoritative source/release acceptance
+entrypoint. `npm run build:artifact -- --source-sha <sha> --out <directory>`
+creates one deterministic, explicitly non-installable source archive and its
+checksum and manifest sidecars from committed Git objects only.
+
+## Provenance
+
+The extraction accepted by item 135 remains frozen at commit
+`0cf7b006eba665c0bf55e82ff04da70f19f01ebb`, tree
+`70c5cf8352652b3c4c1dce68cd1a5e40d44e4b05`, and exactly 190 tracked paths.
+`provenance/extraction-baseline.v1.json` seals that object; successor checks
+require it to be an ancestor without rewriting any item-135 evidence bytes.

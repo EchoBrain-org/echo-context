@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "canonical_repository", "default_branch", "source_authority", "artifact_authority", "extraction_baseline", "runtime_authority", "state_authority", "installed", "maturity"],
+  "properties": {
+    "schema": { "const": "repository-authority.v1" },
+    "canonical_repository": { "const": "https://github.com/zhenye0616/echo-context" },
+    "default_branch": { "const": "main" },
+    "source_authority": { "const": "echo-context/main" },
+    "artifact_authority": { "const": "versioned-source-artifact" },
+    "extraction_baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree", "record"],
+      "properties": {
+        "commit": { "const": "0cf7b006eba665c0bf55e82ff04da70f19f01ebb" },
+        "tree": { "const": "70c5cf8352652b3c4c1dce68cd1a5e40d44e4b05" },
+        "record": { "const": "provenance/extraction-baseline.v1.json" }
+      }
+    },
+    "runtime_authority": { "const": false },
+    "state_authority": { "const": false },
+    "installed": { "const": false },
+    "maturity": { "const": "DEV" }
+  }
+}
