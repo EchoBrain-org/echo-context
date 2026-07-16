@@ -67,8 +67,8 @@
       "path": "tools/generate-extraction-baseline.mjs"
     },
     {
-      "blob_oid": "2086d66b70d2800fc35379b3f2368730a14b10f1",
-      "content_sha256": "1811e768f5a692527f3f4ca06302c233f3453546c9a88543a994581b6c468d9c",
+      "blob_oid": "cd46a3ce11c08b11355f7c5d858c8e600dc2c49c",
+      "content_sha256": "4cfc21beef5d1ee146111f827974c7f366b493c41e3932692ae253ddd1cd867d",
       "mode": "100755",
       "path": "tools/install-gitleaks.sh"
     },
