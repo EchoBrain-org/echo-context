@@ -132,11 +132,7 @@ function main() {
   const directory = mkdtempSync(join(tmpdir(), 'echo-context-secret-scan-'));
   const reportPath = join(directory, 'report.json');
   try {
-    const binary = process.env.GITLEAKS_BIN ?? (
-      process.platform === 'darwin' && process.arch === 'arm64'
-        ? '/opt/homebrew/bin/gitleaks'
-        : '/usr/local/bin/gitleaks'
-    );
+    const binary = process.env.GITLEAKS_BIN ?? join(process.env.HOME ?? '', 'bin', 'gitleaks');
     const result = scanWith({ binary, contract, reportPath });
     if (result.findings.length > 0) {
       for (const finding of result.findings.sort((a, b) => `${a.File}\0${a.RuleID}`.localeCompare(`${b.File}\0${b.RuleID}`))) {

@@ -43,8 +43,10 @@ source-only clean-clone acceptance.
 `tools/fresh-clone-acceptance.sh` is the authoritative local, source-only
 acceptance entrypoint. Immediately before entering its scrubbed, credential-free
 environment, the operator captures the complete advertised source-ref namespace
-with `git fetch origin '+refs/*:refs/echo-scan/*'`; the acceptance scanner then
-uses only those local refs and performs no authenticated network operation.
+with `git fetch origin '+refs/*:refs/echo-scan/*'` and installs the reviewed
+scanner into that sandbox using `tools/install-gitleaks.sh <HOME>/bin`; the
+acceptance scanner then uses only the pinned `<HOME>/bin/gitleaks` and local refs
+and performs no authenticated network operation.
 `npm run build:artifact -- --source-sha <sha> --out <directory>` creates one
 deterministic, explicitly non-installable source archive and its checksum and
 manifest sidecars from committed Git objects only.
