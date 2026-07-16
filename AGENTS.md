@@ -7,9 +7,9 @@ installed runtime, a live-state authority, or a separate commercial product.
   must never review or merge its own implementation.
 - Build and publish only exact reviewed Git objects. Never rebuild after review
   or substitute working-tree bytes for a committed source SHA.
-- A source release requires the exact approved source SHA, source tree, version,
-  source-archive SHA-256, lock hash, manifest hash, workflow run ID, workflow
-  artifact ID, and workflow-artifact digest.
+- The item-136 source seal is exactly the six-field content tuple: approved
+  source SHA, source tree, version, source-archive SHA-256, lock hash, and
+  manifest hash. It has no hosted workflow, tag, release, or artifact identity.
 - Default to no live-state access and no external mutation. Do not read or alter
   a live database, client configuration, credential, LaunchAgent, daemon, or
   machine context authority from this repository.

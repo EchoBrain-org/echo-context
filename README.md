@@ -37,12 +37,21 @@ npm run verify:authority
 
 `npm run test:operator` is intentionally separate. It requires explicit
 `ECHO_SOURCE_GIT_DIR` and `ECHO_SOURCE_SHA` values and replays the accepted
-item-135 proof against pinned Project_echo Git objects; hosted CI never uses it.
+item-135 proof against pinned Project_echo Git objects. It is not part of the
+source-only clean-clone acceptance.
 
-`tools/fresh-clone-acceptance.sh` is the authoritative source/release acceptance
-entrypoint. `npm run build:artifact -- --source-sha <sha> --out <directory>`
-creates one deterministic, explicitly non-installable source archive and its
-checksum and manifest sidecars from committed Git objects only.
+`tools/fresh-clone-acceptance.sh` is the authoritative local, source-only
+acceptance entrypoint. Immediately before entering its scrubbed, credential-free
+environment, the operator captures the complete advertised source-ref namespace
+with `git fetch origin '+refs/*:refs/echo-scan/*'`; the acceptance scanner then
+uses only those local refs and performs no authenticated network operation.
+`npm run build:artifact -- --source-sha <sha> --out <directory>` creates one
+deterministic, explicitly non-installable source archive and its checksum and
+manifest sidecars from committed Git objects only.
+
+Item 136 intentionally contains no GitHub Actions workflow, hosted gate,
+publication controller, tag, GitHub Release, or hosted artifact. Those controls
+are deferred to separately reviewed item 140.
 
 ## Provenance
 

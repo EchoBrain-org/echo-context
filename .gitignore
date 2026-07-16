@@ -11,3 +11,4 @@ coverage/
 .DS_Store
 .echo-context-state/
 .fresh-clone-artifacts-*/
+.fresh-clone-acceptance/

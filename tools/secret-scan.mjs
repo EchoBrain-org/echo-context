@@ -57,40 +57,25 @@ function git(args, options = {}) {
 function preflightHistory() {
   if (git(['rev-parse', '--is-shallow-repository']).trim() !== 'false') die('shallow checkout cannot prove full history');
   git(['fsck', '--full']);
-  const remote = git(['remote', 'get-url', 'origin']).trim();
-  if (!remote) die('origin is required for complete-ref preflight');
-  const listed = execFileSync('git', ['ls-remote', 'origin'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  }).split('\n').filter(Boolean).map((line) => {
-    const match = /^([0-9a-f]{40})\t(HEAD|refs\/.+)$/.exec(line);
-    if (!match) die(`malformed remote ref listing row: ${line}`);
+  if (!git(['remote', 'get-url', 'origin']).trim()) die('origin is required for complete-ref preflight');
+
+  // Fresh-clone acceptance runs with a credential-free temporary HOME.  The
+  // operator therefore performs one exhaustive fetch immediately before the
+  // scrubbed acceptance invocation:
+  //   git fetch origin '+refs/*:refs/echo-scan/*'
+  // These dedicated refs are immutable input to this process; the scanner
+  // performs no network access and gitleaks receives --all, so every fetched
+  // source ref remains reachable during the scan.
+  const rows = git(['for-each-ref', '--format=%(objectname)%09%(refname)', 'refs/echo-scan']).split('\n').filter(Boolean).map((line) => {
+    const match = /^([0-9a-f]{40})\t(refs\/echo-scan\/.+)$/u.exec(line);
+    if (!match) die(`malformed complete-ref snapshot row: ${line}`);
     return { oid: match[1], ref: match[2] };
   });
-  for (const { oid, ref } of listed) {
-    if (ref === 'HEAD') {
-      if (!listed.some((row) => row.ref.startsWith('refs/') && row.oid === oid)) die('remote HEAD does not resolve to an advertised source ref');
-      git(['cat-file', '-e', `${oid}^{object}`]);
-      continue;
-    }
-    const candidates = ref.startsWith('refs/heads/')
-        ? [`refs/remotes/origin/${ref.slice('refs/heads/'.length)}`, `refs/echo-scan/${ref.slice('refs/'.length)}`]
-        : ref.startsWith('refs/tags/')
-          ? [ref, `refs/echo-scan/${ref.slice('refs/'.length)}`]
-          : [ref, `refs/echo-scan/${ref.slice('refs/'.length)}`];
-    const localOid = candidates.map((candidate) => {
-      try {
-        return git(['rev-parse', candidate]).trim();
-      } catch {
-        return null;
-      }
-    }).find((candidateOid) => candidateOid === oid);
-    if (!localOid) die(`remote ref is absent, incomplete, or stale in checkout: ${ref}`);
-    git(['cat-file', '-e', `${oid}^{object}`]);
-  }
-  return listed.length;
+  if (rows.length === 0) die('complete-ref snapshot is missing; fetch +refs/*:refs/echo-scan/* before acceptance');
+  const main = rows.find((row) => row.ref === 'refs/echo-scan/heads/main');
+  if (!main) die('complete-ref snapshot lacks refs/heads/main');
+  for (const { oid } of rows) git(['cat-file', '-e', `${oid}^{object}`]);
+  return rows.length;
 }
 
 export function scanWith({ binary, contract, reportPath, spawn = spawnSync }) {
@@ -147,7 +132,11 @@ function main() {
   const directory = mkdtempSync(join(tmpdir(), 'echo-context-secret-scan-'));
   const reportPath = join(directory, 'report.json');
   try {
-    const binary = process.env.GITLEAKS_BIN ?? 'gitleaks';
+    const binary = process.env.GITLEAKS_BIN ?? (
+      process.platform === 'darwin' && process.arch === 'arm64'
+        ? '/opt/homebrew/bin/gitleaks'
+        : '/usr/local/bin/gitleaks'
+    );
     const result = scanWith({ binary, contract, reportPath });
     if (result.findings.length > 0) {
       for (const finding of result.findings.sort((a, b) => `${a.File}\0${a.RuleID}`.localeCompare(`${b.File}\0${b.RuleID}`))) {
@@ -155,7 +144,7 @@ function main() {
       }
       die(`${result.findings.length} secret finding(s); values suppressed`);
     }
-    process.stdout.write(`secret-scan OK: ${refCount} remote source ref(s), full reachable history\n`);
+    process.stdout.write(`secret-scan OK: ${refCount} snapshotted source ref(s), full reachable history\n`);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
