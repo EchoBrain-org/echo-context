@@ -47,4 +47,8 @@ if [ -z "$expected_binary_sha" ] || [ "$actual_binary_sha" != "$expected_binary_
 fi
 rm -f "$archive"
 "$out/gitleaks" version | grep -Fx "$version" >/dev/null
-printf '%s\n' "$out/gitleaks"
+# stdout is a PATH entry, not the executable itself. GitHub's GITHUB_PATH file
+# accepts directories only; emitting the binary path makes later tools resolve
+# "$out/gitleaks/git" and also breaks checkout cleanup.
+out=$(CDPATH= cd -- "$out" && pwd)
+printf '%s\n' "$out"

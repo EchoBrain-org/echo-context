@@ -17,6 +17,20 @@ const all = `${ci}\n${scan}\n${release}`;
 const PINNED_ACTION = /uses:\s+[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/gm;
 
 describe('AC4/AC6 — workflow policy', () => {
+  it('resolves hosted test executables from the active Node and Git environment', () => {
+    for (const path of [
+      'tests/migration/context-tool-evidence.test.ts',
+      'tests/integration/context-service.test.ts',
+    ]) {
+      const source = readFileSync(join(ROOT, path), 'utf8');
+      expect(source).toContain('const NODE = process.execPath;');
+      expect(source).not.toContain('/usr/local/bin/node');
+    }
+    const sourceIndependence = readFileSync(join(ROOT, 'tests/migration/source-independence.test.ts'), 'utf8');
+    expect(sourceIndependence).toContain("const GIT = process.env.ECHO_TEST_GIT_BIN ?? 'git';");
+    expect(sourceIndependence).not.toContain('/usr/local/bin/git');
+  });
+
   it('runs the exact protected contexts for every PR to main and push to main', () => {
     for (const source of [ci, scan]) {
       expect(source).toContain('pull_request:\n    branches: [main]');
@@ -51,6 +65,15 @@ describe('AC4/AC6 — workflow policy', () => {
     expect(scan).toContain("'+refs/*:refs/echo-scan/*'");
     expect(scan).toContain('tools/install-gitleaks.sh');
     expect(scan).toContain('tools/secret-scan.sh');
+    const installer = readFileSync(join(ROOT, 'tools/install-gitleaks.sh'), 'utf8');
+    expect(installer).toContain('printf \'%s\\n\' "$out"');
+    expect(installer).not.toContain('printf \'%s\\n\' "$out/gitleaks"');
+    for (const source of [ci, scan]) {
+      expect(source).toContain('scanner_dir=$(tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks")');
+      expect(source).toContain('test -x "$scanner_dir/gitleaks"');
+      expect(source).toContain('printf \'%s\\n\' "$scanner_dir" >> "$GITHUB_PATH"');
+      expect(source).not.toContain('tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"');
+    }
     expect(readFileSync(join(ROOT, 'tools/secret-scan.mjs'), 'utf8')).toContain("--log-opts=--all");
     expect(readFileSync(join(ROOT, 'tools/secret-scan.sh'), 'utf8')).toContain('secret-scan.mjs');
   });

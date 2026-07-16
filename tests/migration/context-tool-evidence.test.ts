@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const NODE = '/usr/local/bin/node';
+const NODE = process.execPath;
 const TOOL = join(ROOT, 'tools', 'verify-context-tools.mjs');
 const FIXTURE = join(ROOT, 'tests', 'fixtures', 'context-tool-parity.v1.json');
 const EVIDENCE = join(ROOT, 'provenance', 'context-tool-parity.v1.json');

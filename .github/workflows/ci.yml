@@ -25,7 +25,10 @@ jobs:
       - name: Fetch complete source refs
         run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' '+refs/*:refs/echo-scan/*' && test "$(git rev-parse --is-shallow-repository)" = false
       - name: Install pinned secret scanner
-        run: tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+        run: |
+          scanner_dir=$(tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks")
+          test -x "$scanner_dir/gitleaks"
+          printf '%s\n' "$scanner_dir" >> "$GITHUB_PATH"
       - name: Exact clean-clone source acceptance
         run: tools/fresh-clone-acceptance.sh --mode=source --source-sha "$GITHUB_SHA"
 
@@ -44,6 +47,9 @@ jobs:
       - name: Fetch complete source refs
         run: git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' '+refs/*:refs/echo-scan/*' && test "$(git rev-parse --is-shallow-repository)" = false
       - name: Install pinned secret scanner
-        run: tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+        run: |
+          scanner_dir=$(tools/install-gitleaks.sh "$RUNNER_TEMP/gitleaks")
+          test -x "$scanner_dir/gitleaks"
+          printf '%s\n' "$scanner_dir" >> "$GITHUB_PATH"
       - name: Exact clean-clone source acceptance
         run: tools/fresh-clone-acceptance.sh --mode=source --source-sha "$GITHUB_SHA"

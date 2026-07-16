@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 // modules, or live-state/home paths. (Test *fixtures* may embed sample paths as
 // data, so this scans src/ only for import specifiers + forbidden tokens.)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GIT = '/usr/local/bin/git';
+const GIT = process.env.ECHO_TEST_GIT_BIN ?? 'git';
 const gitOut = (args: string[]) => execFileSync(GIT, ['-C', ROOT, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 
 // Out-of-root sibling/product roots that the extraction excluded. An import of

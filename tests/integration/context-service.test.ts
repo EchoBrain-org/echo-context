@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const NODE = '/usr/local/bin/node';
+const NODE = process.execPath;
 const STDERR_LIMIT = 64 * 1024;
 
 interface Ready { host: string; port: number; pid: number }
