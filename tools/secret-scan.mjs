@@ -2,9 +2,9 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { accessSync, constants, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -87,7 +87,18 @@ export function scanWith({ binary, contract, reportPath, spawn = spawnSync }) {
   const key = platformKey();
   let binaryPath;
   try {
-    binaryPath = realpathSync(binary);
+    const candidate = binary.includes('/')
+      ? binary
+      : (process.env.PATH ?? '').split(delimiter).map((directory) => join(directory, binary)).find((path) => {
+          try {
+            accessSync(path, constants.X_OK);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+    if (!candidate) throw new Error('not found on PATH');
+    binaryPath = realpathSync(candidate);
   } catch {
     die('gitleaks binary is missing or unreadable');
   }
