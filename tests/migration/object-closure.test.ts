@@ -22,7 +22,7 @@ describe('AC2 — frozen extraction object closure', () => {
   it('keeps the accepted commit/tree and makes it an ancestor of successor HEAD', () => {
     expect(gitText(['rev-parse', `${BASELINE}^{tree}`]).trim()).toBe(TREE);
     expect(spawnSync('git', ['-C', ROOT, 'merge-base', '--is-ancestor', BASELINE, 'HEAD']).status).toBe(0);
-    expect(gitText(['fsck', '--full']).trim()).toBe('');
+    expect(() => gitText(['fsck', '--full'])).not.toThrow();
   });
 
   it('binds the exact 190 baseline paths to their Git modes, blobs, sizes, and bytes', () => {

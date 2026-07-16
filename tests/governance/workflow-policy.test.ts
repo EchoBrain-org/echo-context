@@ -31,9 +31,9 @@ describe('AC4/AC6 — workflow policy', () => {
   });
 
   it('pins every third-party action and grants read-only permissions by default', () => {
-    const uses = all.split('\n').filter((line) => line.trim().startsWith('uses:'));
+    const uses = all.split('\n').filter((line) => /^\s+(?:- )?uses:/.test(line));
     expect(uses).not.toHaveLength(0);
-    for (const line of uses) expect(line.trim()).toMatch(/^uses: [A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/);
+    for (const line of uses) expect(line.trim()).toMatch(/^(?:- )?uses: [A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/);
     expect(all.match(PINNED_ACTION)?.length).toBe(uses.length);
     expect(ci).toMatch(/permissions:\n  contents: read/);
     expect(scan).toMatch(/permissions:\n  contents: read/);
