@@ -179,6 +179,12 @@ export function buildRecentWorkContext(
   }
 
   const warnings = buildWarnings(errCounts);
+  if (graph.truncated === true) {
+    warnings.push(
+      '[GRAPH_BUDGET] shared-artifact graph reached its finite pair/edge budget; ' +
+        'cluster relations may be partial. Narrow the time/repo scope and retry.',
+    );
+  }
   // Loud signal when truncation drops entire clusters — the structured
   // `truncation.clusters_returned` vs `clusters_total` difference is easy for
   // a consumer to miss, and the silently-lost cluster is exactly what the
@@ -210,7 +216,7 @@ export function buildRecentWorkContext(
       atoms_total_in_window: atomsTotalInWindow,
       clusters_returned: truncated.clusters.length,
       clusters_total: clustersTotal,
-      truncated: truncated.didTruncate,
+      truncated: truncated.didTruncate || graph.truncated === true,
       source_breakdown: windowSourceBreakdown,
     },
     warnings,

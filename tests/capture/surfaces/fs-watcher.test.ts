@@ -1,16 +1,33 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import {
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+  appendFileSync,
+  unlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { FSWatcher } from 'chokidar';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CAPTURED_SOURCES, _isAllowedPathIn } from '../../../src/capture/sources.js';
+import {
+  CAPTURED_SOURCES,
+  _isAllowedPathIn,
+} from '../../../src/capture/sources.js';
 import {
   classifyKind,
+  createFsNotificationQueue,
   startFsWatcher,
   type FsWatcherHandle,
 } from '../../../src/capture/surfaces/fs-watcher.js';
 import type { CaptureEvent, EventId } from '../../../src/storage/interface.js';
 import { MemoryStorage } from '../../../src/storage/memory.js';
-import { resetAllowlist, restoreFsPaths, snapshotFsPaths } from '../../fixtures/allowlist.js';
+import {
+  resetAllowlist,
+  restoreFsPaths,
+  snapshotFsPaths,
+} from '../../fixtures/allowlist.js';
 import { waitFor } from '../../fixtures/jsonl.js';
 import { captureStdout } from '../../fixtures/stdout.js';
 
@@ -25,7 +42,9 @@ async function waitForCount(
     if (n >= target) return;
     await new Promise((r) => setTimeout(r, 25));
   }
-  throw new Error(`storage count never reached ${target}; current=${await storage.count()}`);
+  throw new Error(
+    `storage count never reached ${target}; current=${await storage.count()}`,
+  );
 }
 
 interface FsContent {
@@ -76,7 +95,7 @@ describe.skip('startFsWatcher', () => {
   });
 
   it('emits an add event when a file is created', async () => {
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     const filePath = join(dir, 'a.txt');
     writeFileSync(filePath, 'hello');
@@ -97,7 +116,7 @@ describe.skip('startFsWatcher', () => {
     const filePath = join(dir, 'b.txt');
     writeFileSync(filePath, 'first');
 
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     appendFileSync(filePath, ' second');
 
@@ -110,7 +129,7 @@ describe.skip('startFsWatcher', () => {
   });
 
   it('ignores Cursor SQLite WAL artifacts while still capturing normal files', async () => {
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     const walPath = join(dir, 'state.vscdb-wal');
     const filePath = join(dir, 'normal.txt');
@@ -128,7 +147,7 @@ describe.skip('startFsWatcher', () => {
     const filePath = join(dir, 'c.txt');
     writeFileSync(filePath, 'gone soon');
 
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     unlinkSync(filePath);
 
@@ -149,7 +168,7 @@ describe.skip('startFsWatcher', () => {
     // it as old, not a fresh post-ready event.
     await new Promise((r) => setTimeout(r, 600));
 
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     await new Promise((r) => setTimeout(r, 300));
     expect(await storage.count()).toBe(0);
@@ -161,7 +180,7 @@ describe.skip('startFsWatcher', () => {
   });
 
   it('stop() resolves and prevents further events from being captured', async () => {
-    handle = await startFsWatcher([dir], storage);
+    handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
     writeFileSync(join(dir, 'one.txt'), 'a');
     await waitForCount(storage, 1);
     const before = await storage.count();
@@ -172,6 +191,112 @@ describe.skip('startFsWatcher', () => {
     writeFileSync(join(dir, 'two.txt'), 'b');
     await new Promise((r) => setTimeout(r, 300));
     expect(await storage.count()).toBe(before);
+  });
+});
+
+class FakeFsWatcher extends EventEmitter {
+  async close(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  asFsWatcher(): FSWatcher {
+    return this as unknown as FSWatcher;
+  }
+}
+
+describe('bounded raw fs notifications', () => {
+  it('coalesces each path to its latest event, stays serial, and caps pending paths', async () => {
+    const processed: Array<{ eventType: string; path: string }> = [];
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst: () => void = () => undefined;
+    const firstRelease = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let markFirstStarted: () => void = () => undefined;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+
+    const queue = createFsNotificationQueue({
+      maxPendingPaths: 1,
+      process: async (notification) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        processed.push({
+          eventType: notification.eventType,
+          path: notification.path,
+        });
+        if (processed.length === 1) {
+          markFirstStarted();
+          await firstRelease;
+        }
+        active -= 1;
+      },
+    });
+
+    queue.enqueue({ eventType: 'add', path: '/a' });
+    await firstStarted;
+    queue.enqueue({ eventType: 'change', path: '/a' });
+    queue.enqueue({ eventType: 'unlink', path: '/a' });
+    queue.enqueue({ eventType: 'add', path: '/b' });
+    queue.enqueue({ eventType: 'change', path: '/b' });
+    queue.enqueue({ eventType: 'add', path: '/c' });
+
+    expect(queue.getHealth()).toEqual({ queueDepth: 1, overflowCount: 1 });
+    releaseFirst();
+    await queue.stop();
+
+    expect(processed).toEqual([
+      { eventType: 'add', path: '/a' },
+      { eventType: 'change', path: '/b' },
+      { eventType: 'unlink', path: '/a' },
+    ]);
+    expect(maxActive).toBe(1);
+    expect(queue.getHealth()).toEqual({ queueDepth: 0, overflowCount: 1 });
+  });
+
+  it('does not persist raw notifications by default, but supports explicit legacy persistence', async () => {
+    const originalFsPaths = snapshotFsPaths();
+    const dir = realpathSync(
+      mkdtempSync(join(tmpdir(), 'echo-fs-watcher-default-')),
+    );
+    (CAPTURED_SOURCES.fs_paths as unknown as string[]).push(`${dir}/`);
+    const filePath = join(dir, 'event.txt');
+    writeFileSync(filePath, 'hello');
+
+    try {
+      const defaultStorage = new MemoryStorage();
+      const defaultWatcher = new FakeFsWatcher();
+      const defaultHandlePromise = startFsWatcher([dir], defaultStorage, {
+        watcherFactory: () => {
+          queueMicrotask(() => defaultWatcher.emit('ready'));
+          return defaultWatcher.asFsWatcher();
+        },
+      });
+      const defaultHandle = await defaultHandlePromise;
+      defaultWatcher.emit('add', filePath);
+      await defaultHandle.stop();
+      expect(await defaultStorage.count()).toBe(0);
+
+      const legacyStorage = new MemoryStorage();
+      const legacyWatcher = new FakeFsWatcher();
+      const legacyHandlePromise = startFsWatcher([dir], legacyStorage, {
+        persistRawEvents: true,
+        watcherFactory: () => {
+          queueMicrotask(() => legacyWatcher.emit('ready'));
+          return legacyWatcher.asFsWatcher();
+        },
+      });
+      const legacyHandle = await legacyHandlePromise;
+      legacyWatcher.emit('add', filePath);
+      await legacyHandle.stop();
+      expect(await legacyStorage.count()).toBe(1);
+    } finally {
+      resetAllowlist();
+      restoreFsPaths(originalFsPaths);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -217,11 +342,22 @@ describe('startFsWatcher emit-path error containment (Bug C)', () => {
     };
     process.on('unhandledRejection', onUnhandled);
     try {
-      handle = await startFsWatcher([dir], new RejectingStorage());
-      writeFileSync(join(dir, 'a.txt'), 'hello');
+      const watcher = new FakeFsWatcher();
+      handle = await startFsWatcher([dir], new RejectingStorage(), {
+        persistRawEvents: true,
+        watcherFactory: () => {
+          queueMicrotask(() => watcher.emit('ready'));
+          return watcher.asFsWatcher();
+        },
+      });
+      const filePath = join(dir, 'a.txt');
+      writeFileSync(filePath, 'hello');
+      watcher.emit('add', filePath);
 
       await waitFor(
-        () => unhandled.length > 0 || captured.writes.join('').includes('handler_error'),
+        () =>
+          unhandled.length > 0 ||
+          captured.writes.join('').includes('handler_error'),
       );
       // Give any still-in-flight rejection a beat to surface as unhandled.
       await new Promise((r) => setTimeout(r, 100));
@@ -254,7 +390,9 @@ describe('_isAllowedPathIn tilde expansion (FS allowlist contract)', () => {
   it('accepts a Cursor workspace file under the tilde-prefixed allowlist entry', () => {
     const home = process.env['HOME']!;
     const concretePath = `${home}/Library/Application Support/Cursor/User/workspaceStorage/abc/state.vscdb`;
-    const allowlist = ['~/Library/Application Support/Cursor/User/workspaceStorage/'];
+    const allowlist = [
+      '~/Library/Application Support/Cursor/User/workspaceStorage/',
+    ];
     expect(_isAllowedPathIn(concretePath, allowlist)).toBe(true);
   });
 
@@ -276,7 +414,9 @@ describe('_isAllowedPathIn tilde expansion (FS allowlist contract)', () => {
 
   it('confirms the production CAPTURED_SOURCES.fs_paths covers the two intended prefixes', () => {
     const fsPaths = CAPTURED_SOURCES.fs_paths as unknown as string[];
-    expect(fsPaths).toContain('~/Library/Application Support/Cursor/User/workspaceStorage/');
+    expect(fsPaths).toContain(
+      '~/Library/Application Support/Cursor/User/workspaceStorage/',
+    );
     expect(fsPaths).toContain('~/.claude/projects/');
   });
 });

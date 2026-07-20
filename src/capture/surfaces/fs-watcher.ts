@@ -1,4 +1,4 @@
-import chokidar, { type FSWatcher } from 'chokidar';
+import chokidar, { type ChokidarOptions, type FSWatcher } from 'chokidar';
 import { stat, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { createLogger } from '../../logging/index.js';
@@ -20,14 +20,43 @@ export function classifyKind(absPath: string): FsFileKind | undefined {
   return undefined;
 }
 
-export interface FsWatcherHandle {
-  stop: () => Promise<void>;
+export type FsEventType = 'add' | 'change' | 'unlink';
+
+export interface FsNotification {
+  eventType: FsEventType;
+  path: string;
+  stats?: Stats;
 }
 
-type EventType = 'add' | 'change' | 'unlink';
+export interface FsNotificationQueueHealth {
+  queueDepth: number;
+  overflowCount: number;
+}
+
+export interface FsNotificationQueue {
+  enqueue: (notification: FsNotification) => void;
+  drain: () => Promise<void>;
+  stop: () => Promise<void>;
+  getHealth: () => FsNotificationQueueHealth;
+}
+
+export interface FsWatcherHandle {
+  stop: () => Promise<void>;
+  getHealth: () => FsNotificationQueueHealth;
+}
+
+export interface FsWatcherOptions {
+  /** Legacy compatibility only. Raw chokidar notifications are observability
+   *  signals, not semantic context events, so persistence is disabled by
+   *  default. */
+  persistRawEvents?: boolean;
+  maxPendingPaths?: number;
+  /** Test seam; production callers use chokidar.watch. */
+  watcherFactory?: (paths: string[], options: ChokidarOptions) => FSWatcher;
+}
 
 interface FsEventContent {
-  event_type: EventType;
+  event_type: FsEventType;
   path: string;
   mtime?: string;
   size?: number;
@@ -54,13 +83,11 @@ function ignored(filepath: string): boolean {
 }
 
 async function emitCandidate(
-  event_type: EventType,
+  event_type: FsEventType,
   absPath: string,
   stats: Stats | undefined,
   storage: Storage,
 ): Promise<void> {
-  log.debug('chokidar_event', { event_type, path: absPath });
-
   const content: FsEventContent = { event_type, path: absPath };
   if (event_type !== 'unlink') {
     const s = stats ?? (await statAsync(absPath));
@@ -88,12 +115,129 @@ async function emitCandidate(
   }
 }
 
+/** A serial, path-coalescing notification queue. At most `maxPendingPaths`
+ * distinct paths wait behind the active callback; repeated notifications for
+ * a path retain only the latest event. */
+export function createFsNotificationQueue(options: {
+  maxPendingPaths?: number;
+  process: (notification: FsNotification) => Promise<void>;
+  onError?: (error: unknown, notification: FsNotification) => void;
+  onOverflow?: (notification: FsNotification, overflowCount: number) => void;
+}): FsNotificationQueue {
+  const maxPendingPaths = positiveInteger(options.maxPendingPaths, 1024);
+  const pending = new Map<string, FsNotification>();
+  const idleWaiters = new Set<() => void>();
+  let accepting = true;
+  let activePath: string | null = null;
+  let activeReplacement: FsNotification | null = null;
+  let deferredActive: FsNotification | null = null;
+  let worker: Promise<void> | null = null;
+  let stopPromise: Promise<void> | null = null;
+  let overflowCount = 0;
+
+  function isIdle(): boolean {
+    return activePath === null && pending.size === 0 && deferredActive === null;
+  }
+
+  function notifyIdle(): void {
+    if (!isIdle()) return;
+    for (const resolve of idleWaiters) resolve();
+    idleWaiters.clear();
+  }
+
+  function drain(): Promise<void> {
+    if (isIdle()) return Promise.resolve();
+    return new Promise((resolve) => idleWaiters.add(resolve));
+  }
+
+  function kickWorker(): void {
+    if (worker !== null) return;
+    // Assign the worker slot before a no-work run can synchronously clear it.
+    worker = Promise.resolve().then(async () => {
+      try {
+        while (true) {
+          let next: FsNotification | undefined;
+          const first = pending.entries().next();
+          if (first.done !== true) {
+            const [path, notification] = first.value;
+            pending.delete(path);
+            next = notification;
+          } else if (deferredActive !== null) {
+            next = deferredActive;
+            deferredActive = null;
+          }
+          if (next === undefined) break;
+
+          activePath = next.path;
+          activeReplacement = null;
+          try {
+            await options.process(next);
+          } catch (err) {
+            options.onError?.(err, next);
+          } finally {
+            activePath = null;
+            if (activeReplacement !== null) {
+              deferredActive = activeReplacement;
+              activeReplacement = null;
+            }
+          }
+        }
+      } finally {
+        worker = null;
+        notifyIdle();
+        if (!isIdle()) kickWorker();
+      }
+    });
+  }
+
+  function enqueue(notification: FsNotification): void {
+    if (!accepting) return;
+    if (activePath === notification.path) {
+      activeReplacement = notification;
+      return;
+    }
+    if (deferredActive?.path === notification.path) {
+      deferredActive = notification;
+      return;
+    }
+    if (pending.has(notification.path)) {
+      pending.set(notification.path, notification);
+      return;
+    }
+    if (pending.size >= maxPendingPaths) {
+      overflowCount += 1;
+      options.onOverflow?.(notification, overflowCount);
+      return;
+    }
+    pending.set(notification.path, notification);
+    kickWorker();
+  }
+
+  return {
+    enqueue,
+    drain,
+    stop: async () => {
+      if (stopPromise !== null) return stopPromise;
+      stopPromise = (async () => {
+        accepting = false;
+        kickWorker();
+        await drain();
+        if (worker !== null) await worker;
+      })();
+      return stopPromise;
+    },
+    getHealth: () => ({ queueDepth: pending.size, overflowCount }),
+  };
+}
+
 export async function startFsWatcher(
   paths: ReadonlyArray<string>,
   storage: Storage,
+  options: FsWatcherOptions = {},
 ): Promise<FsWatcherHandle> {
   const expanded = paths.map(expandTilde);
-  const watcher: FSWatcher = chokidar.watch(expanded, {
+  const watch = options.watcherFactory ?? chokidar.watch;
+  const watcher: FSWatcher = watch(expanded, {
     ignoreInitial: true,
     persistent: true,
     alwaysStat: true,
@@ -101,23 +245,38 @@ export async function startFsWatcher(
     ignored,
   });
 
-  // emitCandidate has no internal try/catch, so a storage failure would
-  // otherwise escape the fire-and-forget call as an unhandled rejection and
-  // kill the daemon. Mirror the extractors' handler_error containment.
-  function emitSafely(event_type: EventType, p: string, stats: Stats | undefined): void {
-    emitCandidate(event_type, p, stats, storage).catch((err: unknown) => {
-      log.error('handler_error', { message: (err as Error).message, path: p });
-    });
-  }
+  const queue = createFsNotificationQueue({
+    maxPendingPaths: options.maxPendingPaths,
+    process: async ({ eventType, path, stats }) => {
+      log.debug('chokidar_event', { event_type: eventType, path });
+      if (options.persistRawEvents !== true) return;
+      await emitCandidate(eventType, path, stats, storage);
+    },
+    onError: (err, notification) => {
+      log.error('handler_error', {
+        message: (err as Error).message,
+        path: notification.path,
+      });
+    },
+    onOverflow: (notification, overflowCount) => {
+      if (overflowCount === 1 || overflowCount % 100 === 0) {
+        log.warn('pending_queue_overflow', {
+          path: notification.path,
+          max_pending_paths: positiveInteger(options.maxPendingPaths, 1024),
+          overflow_count: overflowCount,
+        });
+      }
+    },
+  });
 
   watcher.on('add', (p: string, stats?: Stats) => {
-    emitSafely('add', p, stats);
+    queue.enqueue({ eventType: 'add', path: p, stats });
   });
   watcher.on('change', (p: string, stats?: Stats) => {
-    emitSafely('change', p, stats);
+    queue.enqueue({ eventType: 'change', path: p, stats });
   });
   watcher.on('unlink', (p: string) => {
-    emitSafely('unlink', p, undefined);
+    queue.enqueue({ eventType: 'unlink', path: p });
   });
   watcher.on('error', (err: unknown) => {
     log.error('watcher_error', { message: (err as Error).message });
@@ -127,12 +286,23 @@ export async function startFsWatcher(
     watcher.once('ready', () => resolve());
   });
 
-  log.info('started', { paths: expanded });
+  log.info('started', {
+    paths: expanded,
+    persist_raw_events: options.persistRawEvents === true,
+  });
 
   return {
     stop: async () => {
       await watcher.close();
+      await queue.stop();
       log.info('stopped', {});
     },
+    getHealth: queue.getHealth,
   };
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback;
 }

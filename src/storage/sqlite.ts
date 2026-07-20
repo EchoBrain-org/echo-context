@@ -1,30 +1,78 @@
-import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
 import {
   METADATA_MATCH_KEY_WHITELIST,
+  type AppendOptions,
   type AtomIterationRecord,
+  type CaptureCheckpoint,
+  type CaptureCheckpointInput,
+  type CaptureCheckpointKey,
+  type CaptureCheckpointListOptions,
+  type CaptureCheckpointPage,
   type CaptureEvent,
   type CoordAtomIterationRecord,
   type EventId,
   type QueryFilter,
   type Storage,
-} from './interface.js';
-import { canonicalizeTimestamps, migrate } from './migrate.js';
+} from "./interface.js";
 import {
-  likePrefilterChunk,
-  normalizePathLikeSource,
-  sourceEquals,
-  sourceHasPrefix,
-} from './source-match.js';
-import { createLogger } from '../logging/index.js';
-import { canonicalizeTimestamp } from '../util/timestamp.js';
+  CAPTURE_CHECKPOINT_CURSOR_BYTES,
+  CAPTURE_CHECKPOINT_EXTRACTOR_BYTES,
+  CAPTURE_CHECKPOINT_FIELD_BUDGETS,
+  CAPTURE_CHECKPOINT_PARTITION_BYTES,
+  CAPTURE_CHECKPOINT_RESOURCE_BYTES,
+  CAPTURE_CHECKPOINT_STATE_BYTES,
+  CAPTURE_CHECKPOINT_UPDATED_AT_BYTES,
+  CaptureCheckpointFieldExceededError,
+  captureCheckpointCursor,
+  normalizeCaptureCheckpointInput,
+  normalizeCaptureCheckpointKey,
+  normalizeCaptureCheckpointListOptions,
+} from "./checkpoint.js";
+import { embeddingBytes, eventIdForDedupeKey } from "./dedupe.js";
+import {
+  assertStorageDescriptorField,
+  cappedStorageRowLimit,
+  eventStoredBytes,
+  STORAGE_DESCRIPTOR_FIELD_BUDGETS,
+  STORAGE_DESCRIPTOR_ID_BYTES,
+  STORAGE_DESCRIPTOR_PAGE_ROWS,
+  STORAGE_DESCRIPTOR_SOURCE_BYTES,
+  STORAGE_DESCRIPTOR_TIMESTAMP_BYTES,
+  STORAGE_GET_BY_IDS_MAX_IDS,
+  STORAGE_MAX_DESCRIPTOR_PAGES,
+  STORAGE_PAYLOAD_PAGE_BYTES,
+  STORAGE_PAYLOAD_PAGE_ROWS,
+  STORAGE_QUERY_STORED_BYTES,
+  StorageBudgetExceededError,
+  StorageDescriptorFieldExceededError,
+  StorageAppendScanBudgetExceededError,
+  StorageScanBudgetExceededError,
+  type SqliteStorageOptions,
+  type StoragePayloadOperation,
+  type StorageSelectPageObservation,
+} from "./budgets.js";
+import { migrate } from "./migrate.js";
+import { normalizePathLikeSource, sourceHasPrefix } from "./source-match.js";
+import { canonicalizeTimestamp } from "../util/timestamp.js";
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
+const MIGRATIONS_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "migrations",
+);
 
-const log = createLogger('storage.sqlite');
+function restrictAuthorityFile(path: string): void {
+  if (process.platform === "win32") return;
+  try {
+    chmodSync(path, 0o600);
+  } catch (error) {
+    // WAL/SHM files can disappear between a transaction closing and chmod.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
 
 interface EventRow {
   id: string;
@@ -33,6 +81,88 @@ interface EventRow {
   content: string;
   metadata: string | null;
   embedding: Buffer | null;
+}
+
+interface RawEventDescriptor {
+  id: string | null;
+  id_bytes: number;
+  source: string | null;
+  source_bytes: number;
+  timestamp: string | null;
+  timestamp_bytes: number;
+  stored_bytes: number;
+  post_filter_matches?: number;
+}
+
+interface EventDescriptor extends RawEventDescriptor {
+  id: string;
+  source: string;
+  timestamp: string;
+}
+
+interface RawAppendOrderEventDescriptor extends RawEventDescriptor {
+  sequence_id: number;
+}
+
+interface AppendOrderEventDescriptor extends EventDescriptor {
+  sequence_id: number;
+}
+
+interface RawCaptureCheckpointRow {
+  extractor: string | null;
+  extractor_bytes: number;
+  resource: string | null;
+  resource_bytes: number;
+  partition: string | null;
+  partition_bytes: number;
+  position: number | null;
+  cursor: string | null;
+  cursor_bytes: number | null;
+  ordinal: number | null;
+  mtime_ms: number | null;
+  state: string | null;
+  state_bytes: number;
+  updated_at: string | null;
+  updated_at_bytes: number;
+}
+
+interface CaptureCheckpointRow extends RawCaptureCheckpointRow {
+  extractor: string;
+  resource: string;
+  partition: string;
+  state: string;
+  updated_at: string;
+}
+
+function assertDescriptorFieldsFit<T extends RawEventDescriptor>(
+  descriptor: T,
+  operation: StoragePayloadOperation,
+): asserts descriptor is T & EventDescriptor {
+  const fields = [
+    ["id", descriptor.id, descriptor.id_bytes],
+    ["source", descriptor.source, descriptor.source_bytes],
+    ["timestamp", descriptor.timestamp, descriptor.timestamp_bytes],
+  ] as const;
+  for (const [field, value, fieldBytes] of fields) {
+    const budgetBytes = STORAGE_DESCRIPTOR_FIELD_BUDGETS[field];
+    if (value === null || fieldBytes > budgetBytes) {
+      throw new StorageDescriptorFieldExceededError({
+        operation,
+        field,
+        field_bytes: fieldBytes,
+        budget_bytes: budgetBytes,
+      });
+    }
+  }
+}
+
+function assertCursorDescriptorFields(
+  operation: StoragePayloadOperation,
+  cursor: { timestamp: string; id: string } | undefined,
+): void {
+  if (cursor === undefined) return;
+  assertStorageDescriptorField(operation, "timestamp", cursor.timestamp);
+  assertStorageDescriptorField(operation, "id", cursor.id);
 }
 
 function rowToEvent(row: EventRow): CaptureEvent {
@@ -48,118 +178,477 @@ function rowToEvent(row: EventRow): CaptureEvent {
   if (row.embedding !== null) {
     const buf = row.embedding;
     event.embedding = Array.from(
-      new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / Float32Array.BYTES_PER_ELEMENT),
+      new Float32Array(
+        buf.buffer,
+        buf.byteOffset,
+        buf.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      ),
     );
   }
   return event;
 }
 
+function assertCaptureCheckpointRowFits(
+  row: RawCaptureCheckpointRow,
+): asserts row is CaptureCheckpointRow {
+  const requiredFields = [
+    ["extractor", row.extractor, row.extractor_bytes],
+    ["resource", row.resource, row.resource_bytes],
+    ["partition", row.partition, row.partition_bytes],
+    ["state", row.state, row.state_bytes],
+    ["updated_at", row.updated_at, row.updated_at_bytes],
+  ] as const;
+  for (const [field, value, fieldBytes] of requiredFields) {
+    const budgetBytes = CAPTURE_CHECKPOINT_FIELD_BUDGETS[field];
+    if (value === null || fieldBytes > budgetBytes) {
+      throw new CaptureCheckpointFieldExceededError({
+        field,
+        field_bytes: fieldBytes,
+        budget_bytes: budgetBytes,
+      });
+    }
+  }
+  if (
+    row.cursor_bytes !== null &&
+    (row.cursor === null || row.cursor_bytes > CAPTURE_CHECKPOINT_CURSOR_BYTES)
+  ) {
+    throw new CaptureCheckpointFieldExceededError({
+      field: "cursor",
+      field_bytes: row.cursor_bytes,
+      budget_bytes: CAPTURE_CHECKPOINT_CURSOR_BYTES,
+    });
+  }
+}
+
+function rowToCaptureCheckpoint(
+  row: RawCaptureCheckpointRow,
+): CaptureCheckpoint {
+  assertCaptureCheckpointRowFits(row);
+  const checkpoint: CaptureCheckpoint = {
+    extractor: row.extractor,
+    resource: row.resource,
+    partition: row.partition,
+    state: JSON.parse(row.state) as Record<string, unknown>,
+    updated_at: row.updated_at,
+  };
+  if (row.position !== null) checkpoint.position = row.position;
+  if (row.cursor !== null) checkpoint.cursor = row.cursor;
+  if (row.ordinal !== null) checkpoint.ordinal = row.ordinal;
+  if (row.mtime_ms !== null) checkpoint.mtime_ms = row.mtime_ms;
+  return checkpoint;
+}
+
+/** CASE projections keep oversized or non-text legacy values inside SQLite;
+ * only a NULL sentinel and the byte count enter JS, where the row is rejected
+ * before JSON parsing or checkpoint materialization. */
+const CAPTURE_CHECKPOINT_COLUMNS = `
+  CASE
+    WHEN typeof(extractor) = 'text'
+      AND length(CAST(extractor AS BLOB)) <= ${CAPTURE_CHECKPOINT_EXTRACTOR_BYTES}
+    THEN extractor ELSE NULL
+  END AS extractor,
+  length(CAST(extractor AS BLOB)) AS extractor_bytes,
+  CASE
+    WHEN typeof(resource) = 'text'
+      AND length(CAST(resource AS BLOB)) <= ${CAPTURE_CHECKPOINT_RESOURCE_BYTES}
+    THEN resource ELSE NULL
+  END AS resource,
+  length(CAST(resource AS BLOB)) AS resource_bytes,
+  CASE
+    WHEN typeof(partition) = 'text'
+      AND length(CAST(partition AS BLOB)) <= ${CAPTURE_CHECKPOINT_PARTITION_BYTES}
+    THEN partition ELSE NULL
+  END AS partition,
+  length(CAST(partition AS BLOB)) AS partition_bytes,
+  position,
+  CASE
+    WHEN cursor IS NULL THEN NULL
+    WHEN typeof(cursor) = 'text'
+      AND length(CAST(cursor AS BLOB)) <= ${CAPTURE_CHECKPOINT_CURSOR_BYTES}
+    THEN cursor ELSE NULL
+  END AS cursor,
+  CASE WHEN cursor IS NULL THEN NULL ELSE length(CAST(cursor AS BLOB)) END AS cursor_bytes,
+  ordinal,
+  mtime_ms,
+  CASE
+    WHEN typeof(state) = 'text'
+      AND length(CAST(state AS BLOB)) <= ${CAPTURE_CHECKPOINT_STATE_BYTES}
+    THEN state ELSE NULL
+  END AS state,
+  length(CAST(state AS BLOB)) AS state_bytes,
+  CASE
+    WHEN typeof(updated_at) = 'text'
+      AND length(CAST(updated_at AS BLOB)) <= ${CAPTURE_CHECKPOINT_UPDATED_AT_BYTES}
+    THEN updated_at ELSE NULL
+  END AS updated_at,
+  length(CAST(updated_at AS BLOB)) AS updated_at_bytes`;
+
+const EVENT_PAYLOAD_COLUMNS =
+  "id, source, timestamp, content, metadata, embedding";
+const EVENT_STORED_BYTES_SQL = `(
+  length(CAST(id AS BLOB)) +
+  length(CAST(source AS BLOB)) +
+  length(CAST(timestamp AS BLOB)) +
+  length(CAST(content AS BLOB)) +
+  COALESCE(length(CAST(metadata AS BLOB)), 0) +
+  COALESCE(length(embedding), 0)
+)`;
+const QUALIFIED_EVENT_STORED_BYTES_SQL = `(
+  length(CAST(e.id AS BLOB)) +
+  length(CAST(e.source AS BLOB)) +
+  length(CAST(e.timestamp AS BLOB)) +
+  length(CAST(e.content AS BLOB)) +
+  COALESCE(length(CAST(e.metadata AS BLOB)), 0) +
+  COALESCE(length(e.embedding), 0)
+)`;
+
+/** CASE projections ensure an oversized legacy descriptor crosses the native
+ * SQLite boundary only as NULL plus its byte length. The full text remains in
+ * SQLite and is rejected before any source predicate or payload SELECT. */
+const EVENT_DESCRIPTOR_COLUMNS_SQL = `
+  CASE WHEN length(CAST(id AS BLOB)) <= ${STORAGE_DESCRIPTOR_ID_BYTES} THEN id ELSE NULL END AS id,
+  length(CAST(id AS BLOB)) AS id_bytes,
+  CASE WHEN length(CAST(source AS BLOB)) <= ${STORAGE_DESCRIPTOR_SOURCE_BYTES} THEN source ELSE NULL END AS source,
+  length(CAST(source AS BLOB)) AS source_bytes,
+  CASE WHEN length(CAST(timestamp AS BLOB)) <= ${STORAGE_DESCRIPTOR_TIMESTAMP_BYTES} THEN timestamp ELSE NULL END AS timestamp,
+  length(CAST(timestamp AS BLOB)) AS timestamp_bytes`;
+
+const EVENT_CANDIDATE_DESCRIPTOR_COLUMNS_SQL = `
+  CASE WHEN length(CAST(id AS BLOB)) <= ${STORAGE_DESCRIPTOR_ID_BYTES} THEN id ELSE NULL END AS descriptor_id,
+  length(CAST(id AS BLOB)) AS id_bytes,
+  CASE WHEN length(CAST(source AS BLOB)) <= ${STORAGE_DESCRIPTOR_SOURCE_BYTES} THEN source ELSE NULL END AS descriptor_source,
+  length(CAST(source AS BLOB)) AS source_bytes,
+  CASE WHEN length(CAST(timestamp AS BLOB)) <= ${STORAGE_DESCRIPTOR_TIMESTAMP_BYTES} THEN timestamp ELSE NULL END AS descriptor_timestamp,
+  length(CAST(timestamp AS BLOB)) AS timestamp_bytes`;
+
 export class SqliteStorage implements Storage {
   private readonly db: Database.Database;
   private readonly insertStmt: Database.Statement;
+  private readonly dedupeInsertStmt: Database.Statement;
+  private readonly eventIdExistsStmt: Database.Statement;
   private readonly countStmt: Database.Statement;
+  private readonly getCaptureCheckpointStmt: Database.Statement;
+  private readonly upsertCaptureCheckpointStmt: Database.Statement;
+  private readonly listCaptureCheckpointsStmt: Database.Statement;
+  private readonly listCaptureCheckpointsAfterStmt: Database.Statement;
   private readonly queryStmtCache = new Map<string, Database.Statement>();
+  private readonly payloadStmtCache = new Map<number, Database.Statement>();
+  private readonly onSelectPage:
+    ((observation: StorageSelectPageObservation) => void) | undefined;
 
-  constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      mkdirSync(dirname(dbPath), { recursive: true });
+  constructor(dbPath: string, options: SqliteStorageOptions = {}) {
+    const createsAuthority = dbPath !== ":memory:" && !existsSync(dbPath);
+    if (dbPath !== ":memory:") {
+      // `mode` applies only to directories created by this call; never rewrite
+      // permissions on an existing caller-owned parent directory.
+      mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     }
     this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    // NORMAL is safe under WAL and avoids per-append fsync — recommended by SQLite for app use.
-    this.db.pragma('synchronous = NORMAL');
-    this.db.pragma('foreign_keys = ON');
-    migrate(this.db, MIGRATIONS_DIR);
-    const { converted } = canonicalizeTimestamps(this.db);
-    if (converted > 0) {
-      log.info('canonicalized_timestamps', { converted });
+    // better-sqlite3 creates a new database with the process umask. Tighten
+    // only authority created by this constructor; pre-existing DBs are never
+    // chmodded as they may be caller-owned source material.
+    if (createsAuthority) restrictAuthorityFile(dbPath);
+    try {
+      // Run the schema-version guard before changing persistent journal mode;
+      // unknown future schemas fail closed without being rewritten.
+      migrate(this.db, MIGRATIONS_DIR);
+    } catch (error) {
+      this.db.close();
+      throw error;
     }
+    this.db.pragma("journal_mode = WAL");
+    // NORMAL is safe under WAL and avoids per-append fsync — recommended by SQLite for app use.
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("foreign_keys = ON");
+    if (createsAuthority) {
+      // SQLite normally derives these modes from the database, but assert the
+      // authority boundary explicitly for platforms where they currently exist.
+      restrictAuthorityFile(`${dbPath}-wal`);
+      restrictAuthorityFile(`${dbPath}-shm`);
+    }
+    this.onSelectPage = options.onSelectPage;
 
     this.insertStmt = this.db.prepare(
-      `INSERT INTO events (id, source, timestamp, content, metadata, embedding)
-       VALUES (@id, @source, @timestamp, @content, @metadata, @embedding)`,
+      `INSERT INTO events (id, source, source_key, timestamp, content, metadata, embedding)
+       VALUES (@id, @source, @source_key, @timestamp, @content, @metadata, @embedding)`,
+    );
+    this.dedupeInsertStmt = this.db.prepare(
+      `INSERT INTO events (id, source, source_key, timestamp, content, metadata, embedding)
+       VALUES (@id, @source, @source_key, @timestamp, @content, @metadata, @embedding)
+       ON CONFLICT(id) DO NOTHING`,
+    );
+    this.eventIdExistsStmt = this.db.prepare(
+      "SELECT 1 FROM events WHERE id = ?",
     );
     this.countStmt = this.db.prepare(`SELECT COUNT(*) AS n FROM events`);
+    this.getCaptureCheckpointStmt = this.db.prepare(
+      `SELECT ${CAPTURE_CHECKPOINT_COLUMNS}
+       FROM capture_checkpoints
+       WHERE extractor = @extractor AND resource = @resource AND partition = @partition`,
+    );
+    this.upsertCaptureCheckpointStmt = this.db.prepare(
+      `INSERT INTO capture_checkpoints (
+         extractor, resource, partition, position, cursor, ordinal, mtime_ms, state, updated_at
+       ) VALUES (
+         @extractor, @resource, @partition, @position, @cursor, @ordinal, @mtime_ms, @state, @updated_at
+       )
+       ON CONFLICT (extractor, resource, partition) DO UPDATE SET
+         position = excluded.position,
+         cursor = excluded.cursor,
+         ordinal = excluded.ordinal,
+         mtime_ms = excluded.mtime_ms,
+         state = excluded.state,
+         updated_at = excluded.updated_at`,
+    );
+    this.listCaptureCheckpointsStmt = this.db.prepare(
+      `SELECT ${CAPTURE_CHECKPOINT_COLUMNS}
+       FROM capture_checkpoints
+       WHERE extractor = @extractor
+       ORDER BY resource ASC, partition ASC
+       LIMIT @fetch_limit`,
+    );
+    this.listCaptureCheckpointsAfterStmt = this.db.prepare(
+      `SELECT ${CAPTURE_CHECKPOINT_COLUMNS}
+       FROM capture_checkpoints
+       WHERE extractor = @extractor
+         AND (resource, partition) > (@after_resource, @after_partition)
+       ORDER BY resource ASC, partition ASC
+       LIMIT @fetch_limit`,
+    );
   }
 
-  async append(event: Omit<CaptureEvent, 'id'>): Promise<EventId> {
-    const id: EventId = randomUUID();
-    const metadata = event.metadata !== undefined ? JSON.stringify(event.metadata) : null;
-    const embedding =
-      event.embedding !== undefined ? Buffer.from(new Float32Array(event.embedding).buffer) : null;
-    this.insertStmt.run({
+  async append(
+    event: Omit<CaptureEvent, "id">,
+    options?: AppendOptions,
+  ): Promise<EventId> {
+    const dedupe = options?.dedupeKey !== undefined;
+    const id: EventId = dedupe
+      ? eventIdForDedupeKey(options.dedupeKey!)
+      : randomUUID();
+    assertStorageDescriptorField("append", "source", event.source);
+    assertStorageDescriptorField("append", "timestamp", event.timestamp);
+    if (dedupe && this.eventIdExistsStmt.get(id) !== undefined) return id;
+    const serializedMetadata =
+      event.metadata !== undefined ? JSON.stringify(event.metadata) : null;
+    if (serializedMetadata === undefined) {
+      throw new TypeError("append metadata must serialize to a JSON value");
+    }
+    const metadata = serializedMetadata;
+    const timestamp = canonicalizeTimestamp(event.timestamp);
+    const storedBytes = eventStoredBytes({
       id,
       source: event.source,
-      timestamp: event.timestamp,
+      timestamp,
+      content: event.content,
+      metadataJson: metadata ?? null,
+      embeddingBytes:
+        (event.embedding?.length ?? 0) * Float32Array.BYTES_PER_ELEMENT,
+    });
+    if (storedBytes > STORAGE_PAYLOAD_PAGE_BYTES) {
+      throw new StorageBudgetExceededError({
+        code: "event_too_large",
+        operation: "append",
+        stored_bytes: storedBytes,
+        budget_bytes: STORAGE_PAYLOAD_PAGE_BYTES,
+      });
+    }
+    const embedding = embeddingBytes(event.embedding);
+    const row: EventRow & { source_key: string | null } = {
+      id,
+      source: event.source,
+      source_key: normalizePathLikeSource(event.source),
+      timestamp,
       content: event.content,
       metadata,
       embedding,
-    });
+    };
+    (dedupe ? this.dedupeInsertStmt : this.insertStmt).run(row);
+    // Deterministic identity is first-write-wins. Capture enrichment can
+    // legitimately differ across crash replay; never rewrite the durable atom.
     return id;
+  }
+
+  private observeSelectPage(observation: StorageSelectPageObservation): void {
+    this.onSelectPage?.(observation);
+  }
+
+  private assertPayloadRowFits(
+    descriptor: EventDescriptor,
+    operation: StoragePayloadOperation,
+  ): void {
+    if (descriptor.stored_bytes > STORAGE_PAYLOAD_PAGE_BYTES) {
+      throw new StorageBudgetExceededError({
+        code: "event_too_large",
+        operation,
+        stored_bytes: descriptor.stored_bytes,
+        budget_bytes: STORAGE_PAYLOAD_PAGE_BYTES,
+      });
+    }
+  }
+
+  /** Fetch admitted event payloads in pages bounded by both rows and SQLite
+   * stored bytes. Descriptor sizing happens before this method, so no rejected
+   * content or metadata value crosses the native SQLite → JS boundary. */
+  private fetchPayloadRows(
+    descriptors: readonly EventDescriptor[],
+    operation: StoragePayloadOperation,
+  ): Map<EventId, EventRow> {
+    const pages: EventDescriptor[][] = [];
+    let page: EventDescriptor[] = [];
+    let pageBytes = 0;
+
+    const flush = (): void => {
+      if (page.length === 0) return;
+      pages.push(page);
+      page = [];
+      pageBytes = 0;
+    };
+
+    for (const descriptor of descriptors) {
+      this.assertPayloadRowFits(descriptor, operation);
+      if (
+        page.length >= STORAGE_PAYLOAD_PAGE_ROWS ||
+        (page.length > 0 &&
+          pageBytes + descriptor.stored_bytes > STORAGE_PAYLOAD_PAGE_BYTES)
+      ) {
+        flush();
+      }
+      page.push(descriptor);
+      pageBytes += descriptor.stored_bytes;
+    }
+    flush();
+
+    const byId = new Map<EventId, EventRow>();
+    pages.forEach((descriptorsInPage, pageIndex) => {
+      let statement = this.payloadStmtCache.get(descriptorsInPage.length);
+      if (statement === undefined) {
+        const placeholders = descriptorsInPage.map(() => "?").join(",");
+        statement = this.db.prepare(
+          `SELECT ${EVENT_PAYLOAD_COLUMNS} FROM events WHERE id IN (${placeholders})`,
+        );
+        this.payloadStmtCache.set(descriptorsInPage.length, statement);
+      }
+      const rows = statement.all(
+        ...descriptorsInPage.map((descriptor) => descriptor.id),
+      ) as EventRow[];
+      const storedBytes = descriptorsInPage.reduce(
+        (total, descriptor) => total + descriptor.stored_bytes,
+        0,
+      );
+      this.observeSelectPage({
+        operation,
+        phase: "payload",
+        rows: rows.length,
+        stored_bytes: storedBytes,
+        page: pageIndex + 1,
+      });
+      for (const row of rows) byId.set(row.id, row);
+    });
+    return byId;
+  }
+
+  private cachedStatement(sql: string): Database.Statement {
+    let statement = this.queryStmtCache.get(sql);
+    if (statement === undefined) {
+      statement = this.db.prepare(sql);
+      this.queryStmtCache.set(sql, statement);
+    }
+    return statement;
   }
 
   async query(filter?: QueryFilter): Promise<CaptureEvent[]> {
     if (filter?.source !== undefined && filter?.source_prefix !== undefined) {
-      throw new Error('QueryFilter.source and source_prefix are mutually exclusive');
+      throw new Error(
+        "QueryFilter.source and source_prefix are mutually exclusive",
+      );
     }
-    if (filter?.before !== undefined && filter?.order === 'asc') {
+    if (filter?.before !== undefined && filter?.order === "asc") {
       throw new RangeError(
         'QueryFilter.before is defined for descending queries only; pass order: "desc" or omit it',
       );
     }
-    const since = filter?.since !== undefined ? canonicalizeTimestamp(filter.since) : undefined;
-    const until = filter?.until !== undefined ? canonicalizeTimestamp(filter.until) : undefined;
+    if (filter?.after !== undefined && filter?.order !== "asc") {
+      throw new RangeError(
+        "QueryFilter.after is defined for ascending queries only",
+      );
+    }
+    if (filter?.before !== undefined && filter?.after !== undefined) {
+      throw new RangeError(
+        "QueryFilter.before and after are mutually exclusive",
+      );
+    }
+    if (filter?.source !== undefined) {
+      assertStorageDescriptorField("query", "source", filter.source);
+    }
+    if (filter?.source_prefix !== undefined) {
+      assertStorageDescriptorField("query", "source", filter.source_prefix);
+    }
+    if (filter?.since !== undefined) {
+      assertStorageDescriptorField("query", "timestamp", filter.since);
+    }
+    if (filter?.until !== undefined) {
+      assertStorageDescriptorField("query", "timestamp", filter.until);
+    }
+    assertCursorDescriptorFields("query", filter?.before);
+    assertCursorDescriptorFields("query", filter?.after);
+    const since =
+      filter?.since !== undefined
+        ? canonicalizeTimestamp(filter.since)
+        : undefined;
+    const until =
+      filter?.until !== undefined
+        ? canonicalizeTimestamp(filter.until)
+        : undefined;
+    const rowLimit = cappedStorageRowLimit(filter?.limit);
     const clauses: string[] = [];
+    const postDescriptorSqlPredicates: string[] = [];
     const params: Record<string, unknown> = {};
-    // Source matching semantics are shared with MemoryStorage via
-    // source-match.ts — raw SQL `=` / `LIKE prefix%` diverged on
-    // backslash-stored Windows sources, component boundaries, prefix
-    // case (LIKE is ASCII-case-insensitive), and trailing-slash
-    // equality. When the JS predicate is needed, SQL keeps only a
-    // provably-superset coarse prefilter (LIKE on the pre-separator
-    // chunk — see likePrefilterChunk) and the predicate + LIMIT move to
-    // JS so the page can't run short.
+    // Exact path-like sources use a persisted normalized key and composite
+    // index. Prefixes are semantically richer (component boundaries and raw
+    // case-sensitive fallback), so they are applied to bounded timestamp
+    // descriptor pages in JS; scan exhaustion is explicit and resumable.
     let jsSourcePredicate: ((source: string) => boolean) | undefined;
     if (filter?.source !== undefined) {
       const source = filter.source;
-      if (normalizePathLikeSource(source) === null) {
+      const normalizedSource = normalizePathLikeSource(source);
+      if (normalizedSource === null) {
         // Non-path-like source: sourceEquals degrades to raw string
         // equality for every stored row, which SQL's BINARY `=`
         // implements exactly — keep the pure-SQL fast path.
-        clauses.push('source = @source');
-        params['source'] = source;
+        clauses.push("source = @source");
+        params["source"] = source;
       } else {
-        jsSourcePredicate = (s) => sourceEquals(s, source);
+        clauses.push("source_key = @source_key");
+        params["source_key"] = normalizedSource;
       }
     }
-    if (filter?.source_prefix !== undefined) {
-      // Even non-path-like prefixes need the JS predicate: LIKE's
-      // ASCII-case-insensitivity would let 'GIT:%' match 'git:...'.
+    if (
+      filter?.source_prefix !== undefined &&
+      filter.source_prefix.length > 0
+    ) {
       const prefix = filter.source_prefix;
-      jsSourcePredicate = (s) => sourceHasPrefix(s, prefix);
-    }
-    if (jsSourcePredicate !== undefined) {
-      const chunk = likePrefilterChunk(filter!.source ?? filter!.source_prefix!);
-      if (chunk !== null) {
-        clauses.push("source LIKE @source_chunk || '%' ESCAPE '\\'");
-        params['source_chunk'] = chunk.replace(/[\\%_]/g, '\\$&');
-      }
+      jsSourcePredicate = (source) => sourceHasPrefix(source, prefix);
     }
     if (since !== undefined) {
-      clauses.push('timestamp >= @since');
-      params['since'] = since;
+      clauses.push("timestamp >= @since");
+      params["since"] = since;
     }
     if (until !== undefined) {
-      clauses.push('timestamp < @until');
-      params['until'] = until;
+      clauses.push("timestamp < @until");
+      params["until"] = until;
     }
     if (filter?.before !== undefined) {
       // SQLite ≥3.0 supports row-value comparison; this is the canonical way
       // to express "rows strictly older than (ts, id)" in the composite-key
       // ordering and matches the JS predicate in MemoryStorage exactly.
-      clauses.push('(timestamp, id) < (@before_ts, @before_id)');
-      params['before_ts'] = filter.before.timestamp;
-      params['before_id'] = filter.before.id;
+      clauses.push("(timestamp, id) < (@before_ts, @before_id)");
+      params["before_ts"] = filter.before.timestamp;
+      params["before_id"] = filter.before.id;
+    }
+    if (filter?.after !== undefined) {
+      clauses.push("(timestamp, id) > (@after_ts, @after_id)");
+      params["after_ts"] = filter.after.timestamp;
+      params["after_id"] = filter.after.id;
     }
     if (filter?.metadata_match !== undefined) {
       // Whitelist enforcement lives at the storage seam (NOT only the MCP
@@ -173,7 +662,7 @@ export class SqliteStorage implements Storage {
           throw new Error(
             `QueryFilter.metadata_match key "${key}" is not on the whitelist (${[
               ...METADATA_MATCH_KEY_WHITELIST,
-            ].join(', ')})`,
+            ].join(", ")})`,
           );
         }
       }
@@ -187,7 +676,9 @@ export class SqliteStorage implements Storage {
       const matchKeys = Object.keys(filter.metadata_match).sort();
       matchKeys.forEach((key, i) => {
         const placeholder = `__metadata_match_${i}`;
-        clauses.push(`json_extract(metadata, '$.${key}') = @${placeholder}`);
+        postDescriptorSqlPredicates.push(
+          `json_extract(e.metadata, '$.${key}') = @${placeholder}`,
+        );
         params[placeholder] = filter.metadata_match![key];
       });
     }
@@ -204,40 +695,136 @@ export class SqliteStorage implements Storage {
         placeholders.push(`@${key}`);
         params[key] = surface;
       });
-      clauses.push(
-        `COALESCE(json_extract(metadata, '$.surface'), '') NOT IN (${placeholders.join(', ')})`,
+      postDescriptorSqlPredicates.push(
+        `COALESCE(json_extract(e.metadata, '$.surface'), '') NOT IN (${placeholders.join(", ")})`,
       );
     }
+    if (rowLimit === 0) return [];
 
-    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-    // When a JS source predicate is active, SQL's WHERE is only a superset
-    // prefilter — applying LIMIT in SQL would count rows the predicate
-    // later drops and return a short page. Move the limit to JS then.
-    const limitInSql = filter?.limit !== undefined && jsSourcePredicate === undefined;
-    const limitClause = limitInSql ? 'LIMIT @limit' : '';
-    if (limitInSql) params['limit'] = filter!.limit;
+    const order = filter?.order ?? "desc";
+    const orderSql = order === "asc" ? "ASC" : "DESC";
+    const descriptors: EventDescriptor[] = [];
+    const hasPostDescriptorPredicate =
+      jsSourcePredicate !== undefined || postDescriptorSqlPredicates.length > 0;
+    let admittedBytes = 0;
+    let scanCursor: { timestamp: string; id: string } | undefined;
+    let scannedRows = 0;
 
-    const order = filter?.order ?? 'desc';
-    const orderSql = order === 'asc' ? 'ASC' : 'DESC';
-    // `id` follows the same direction as `timestamp` so same-millisecond ties
-    // resolve deterministically. Mixing directions (e.g. `timestamp DESC, id
-    // ASC`) would reopen the same-ms tie-skip class of bug that the composite
-    // cursor was designed to close. Asc and desc both get parallel keys.
-    const sql = `SELECT id, source, timestamp, content, metadata, embedding FROM events ${where} ORDER BY timestamp ${orderSql}, id ${orderSql} ${limitClause}`;
-    let stmt = this.queryStmtCache.get(sql);
-    if (stmt === undefined) {
-      stmt = this.db.prepare(sql);
-      this.queryStmtCache.set(sql, stmt);
-    }
-    let rows = stmt.all(params) as EventRow[];
-    if (jsSourcePredicate !== undefined) {
-      const predicate = jsSourcePredicate;
-      rows = rows.filter((r) => predicate(r.source));
-      if (filter?.limit !== undefined && rows.length > filter.limit) {
-        rows = rows.slice(0, filter.limit);
+    for (
+      let page = 1;
+      page <= STORAGE_MAX_DESCRIPTOR_PAGES && descriptors.length < rowLimit;
+      page += 1
+    ) {
+      const pageClauses = [...clauses];
+      const pageParams: Record<string, unknown> = {
+        ...params,
+        __descriptor_limit: STORAGE_DESCRIPTOR_PAGE_ROWS,
+      };
+      if (scanCursor !== undefined) {
+        pageClauses.push(
+          order === "asc"
+            ? "(timestamp, id) > (@__scan_timestamp, @__scan_id)"
+            : "(timestamp, id) < (@__scan_timestamp, @__scan_id)",
+        );
+        pageParams["__scan_timestamp"] = scanCursor.timestamp;
+        pageParams["__scan_id"] = scanCursor.id;
       }
+      const where =
+        pageClauses.length > 0 ? `WHERE ${pageClauses.join(" AND ")}` : "";
+      const postFilterSql =
+        postDescriptorSqlPredicates.length === 0
+          ? "1"
+          : `CASE WHEN ${postDescriptorSqlPredicates.join(" AND ")} THEN 1 ELSE 0 END`;
+      // The MATERIALIZED bounded-descriptor CTE is an optimization fence: every
+      // non-indexable JSON predicate runs only after the timestamp/keyset page
+      // has selected at most 256 candidates. Oversized legacy descriptor text
+      // is projected as NULL; payload columns stay inside SQLite and only byte
+      // lengths / predicate booleans cross into JS before admission.
+      const sql = `WITH candidate_rows AS MATERIALIZED (
+                     SELECT rowid AS event_rowid,
+                            ${EVENT_CANDIDATE_DESCRIPTOR_COLUMNS_SQL}
+                     FROM events
+                     ${where}
+                     ORDER BY events.timestamp ${orderSql}, events.id ${orderSql}
+                     LIMIT @__descriptor_limit
+                   )
+                   SELECT c.descriptor_id AS id, c.id_bytes,
+                          c.descriptor_source AS source, c.source_bytes,
+                          c.descriptor_timestamp AS timestamp, c.timestamp_bytes,
+                          ${QUALIFIED_EVENT_STORED_BYTES_SQL} AS stored_bytes,
+                          ${postFilterSql} AS post_filter_matches
+                   FROM candidate_rows c
+                   JOIN events e ON e.rowid = c.event_rowid
+                   ORDER BY e.timestamp ${orderSql}, e.id ${orderSql}`;
+      const pageRows = this.cachedStatement(sql).all(
+        pageParams,
+      ) as RawEventDescriptor[];
+      scannedRows += pageRows.length;
+      this.observeSelectPage({
+        operation: "query",
+        phase: "descriptor",
+        rows: pageRows.length,
+        stored_bytes: pageRows.reduce(
+          (total, row) => total + row.stored_bytes,
+          0,
+        ),
+        page,
+      });
+      if (pageRows.length === 0) break;
+
+      for (const descriptor of pageRows) {
+        assertDescriptorFieldsFit(descriptor, "query");
+        if (
+          jsSourcePredicate !== undefined &&
+          !jsSourcePredicate(descriptor.source)
+        )
+          continue;
+        if (descriptor.post_filter_matches !== 1) continue;
+        this.assertPayloadRowFits(descriptor, "query");
+        if (
+          admittedBytes + descriptor.stored_bytes >
+          STORAGE_QUERY_STORED_BYTES
+        ) {
+          throw new StorageBudgetExceededError({
+            code: "request_too_large",
+            operation: "query",
+            stored_bytes: admittedBytes + descriptor.stored_bytes,
+            budget_bytes: STORAGE_QUERY_STORED_BYTES,
+          });
+        }
+        descriptors.push(descriptor);
+        admittedBytes += descriptor.stored_bytes;
+        if (descriptors.length >= rowLimit) break;
+      }
+      if (descriptors.length >= rowLimit) break;
+      if (pageRows.length < STORAGE_DESCRIPTOR_PAGE_ROWS) break;
+      const last = pageRows[pageRows.length - 1]!;
+      assertDescriptorFieldsFit(last, "query");
+      scanCursor = { timestamp: last.timestamp, id: last.id };
     }
-    return rows.map(rowToEvent);
+
+    if (
+      hasPostDescriptorPredicate &&
+      descriptors.length < rowLimit &&
+      scannedRows >=
+        STORAGE_DESCRIPTOR_PAGE_ROWS * STORAGE_MAX_DESCRIPTOR_PAGES &&
+      scanCursor !== undefined
+    ) {
+      throw new StorageScanBudgetExceededError({
+        order,
+        scanned_rows: scannedRows,
+        matched_ids: descriptors.map((descriptor) => descriptor.id),
+        resume_cursor: scanCursor,
+      });
+    }
+
+    const payloadById = this.fetchPayloadRows(descriptors, "query");
+    const events: CaptureEvent[] = [];
+    for (const descriptor of descriptors) {
+      const row = payloadById.get(descriptor.id);
+      if (row !== undefined) events.push(rowToEvent(row));
+    }
+    return events;
   }
 
   async count(): Promise<number> {
@@ -247,27 +834,114 @@ export class SqliteStorage implements Storage {
 
   async getByIds(ids: readonly EventId[]): Promise<CaptureEvent[]> {
     if (ids.length === 0) return [];
-    // Bind each id positionally — IN-list expansion isn't supported via
-    // named params in better-sqlite3. `WHERE id IN (?...)` returns rows in
-    // storage order, so we re-order by the input `ids[]` to satisfy the
-    // interface's order-preserving contract. Missing ids are silently
-    // dropped here; the get_atoms tool surfaces them in atoms_dropped_ids.
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = this.db
-      .prepare(
-        `SELECT id, source, timestamp, content, metadata, embedding FROM events WHERE id IN (${placeholders})`,
-      )
-      .all(...ids) as EventRow[];
-    const byId = new Map<EventId, CaptureEvent>();
-    for (const row of rows) {
-      byId.set(row.id, rowToEvent(row));
+    if (ids.length > STORAGE_GET_BY_IDS_MAX_IDS) {
+      throw new RangeError(
+        `getByIds accepts at most ${STORAGE_GET_BY_IDS_MAX_IDS} ids`,
+      );
     }
+    for (const id of ids) assertStorageDescriptorField("getByIds", "id", id);
+
+    const uniqueIds = [...new Set(ids)];
+    const placeholders = uniqueIds.map(() => "?").join(",");
+    const descriptors = this.db
+      .prepare(
+        `SELECT ${EVENT_DESCRIPTOR_COLUMNS_SQL}, ${EVENT_STORED_BYTES_SQL} AS stored_bytes
+         FROM events
+         WHERE id IN (${placeholders})`,
+      )
+      .all(...uniqueIds) as RawEventDescriptor[];
+    this.observeSelectPage({
+      operation: "getByIds",
+      phase: "descriptor",
+      rows: descriptors.length,
+      stored_bytes: descriptors.reduce(
+        (total, descriptor) => total + descriptor.stored_bytes,
+        0,
+      ),
+      page: 1,
+    });
+    let requestedBytes = 0;
+    const admittedDescriptors: EventDescriptor[] = [];
+    for (const descriptor of descriptors) {
+      assertDescriptorFieldsFit(descriptor, "getByIds");
+      this.assertPayloadRowFits(descriptor, "getByIds");
+      requestedBytes += descriptor.stored_bytes;
+      if (requestedBytes > STORAGE_QUERY_STORED_BYTES) {
+        throw new StorageBudgetExceededError({
+          code: "request_too_large",
+          operation: "getByIds",
+          stored_bytes: requestedBytes,
+          budget_bytes: STORAGE_QUERY_STORED_BYTES,
+        });
+      }
+      admittedDescriptors.push(descriptor);
+    }
+
+    const payloadById = this.fetchPayloadRows(admittedDescriptors, "getByIds");
+    const eventById = new Map<EventId, CaptureEvent>();
+    for (const [id, row] of payloadById) eventById.set(id, rowToEvent(row));
     const out: CaptureEvent[] = [];
     for (const id of ids) {
-      const ev = byId.get(id);
+      const ev = eventById.get(id);
       if (ev !== undefined) out.push(ev);
     }
     return out;
+  }
+
+  async getCaptureCheckpoint(
+    key: CaptureCheckpointKey,
+  ): Promise<CaptureCheckpoint | null> {
+    const normalized = normalizeCaptureCheckpointKey(key);
+    const row = this.getCaptureCheckpointStmt.get(normalized) as
+      RawCaptureCheckpointRow | undefined;
+    return row === undefined ? null : rowToCaptureCheckpoint(row);
+  }
+
+  async upsertCaptureCheckpoint(
+    input: CaptureCheckpointInput,
+  ): Promise<CaptureCheckpoint> {
+    const checkpoint = normalizeCaptureCheckpointInput(input);
+    this.upsertCaptureCheckpointStmt.run({
+      extractor: checkpoint.extractor,
+      resource: checkpoint.resource,
+      partition: checkpoint.partition,
+      position: checkpoint.position ?? null,
+      cursor: checkpoint.cursor ?? null,
+      ordinal: checkpoint.ordinal ?? null,
+      mtime_ms: checkpoint.mtime_ms ?? null,
+      state: JSON.stringify(checkpoint.state),
+      updated_at: checkpoint.updated_at,
+    });
+    return checkpoint;
+  }
+
+  async listCaptureCheckpoints(
+    options: CaptureCheckpointListOptions,
+  ): Promise<CaptureCheckpointPage> {
+    const normalized = normalizeCaptureCheckpointListOptions(options);
+    const params: Record<string, unknown> = {
+      extractor: normalized.extractor,
+      // One-row overfetch proves whether another bounded keyset page exists.
+      fetch_limit: normalized.limit + 1,
+    };
+    let statement = this.listCaptureCheckpointsStmt;
+    if (normalized.after !== undefined) {
+      statement = this.listCaptureCheckpointsAfterStmt;
+      params["after_resource"] = normalized.after.resource;
+      params["after_partition"] = normalized.after.partition;
+    }
+    const rows = statement.all(params) as RawCaptureCheckpointRow[];
+    const hasMore = rows.length > normalized.limit;
+    const checkpoints = rows
+      .slice(0, normalized.limit)
+      .map(rowToCaptureCheckpoint);
+    return {
+      checkpoints,
+      next_cursor:
+        hasMore && checkpoints.length > 0
+          ? captureCheckpointCursor(checkpoints[checkpoints.length - 1]!)
+          : null,
+    };
   }
 
   // 057a AC3 / 113 AC3 — durable append-order seam. SQLite's `rowid` is
@@ -292,9 +966,9 @@ export class SqliteStorage implements Storage {
     prefixes.forEach((prefix, i) => {
       const key = `__prefix_${i}`;
       ors.push(`source LIKE @${key} ESCAPE '\\'`);
-      params[key] = `${prefix.replace(/[\\%_]/g, '\\$&')}%`;
+      params[key] = `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
     });
-    return `(${ors.join(' OR ')})`;
+    return `(${ors.join(" OR ")})`;
   }
 
   async iterateAtomsByAppendOrder(opts?: {
@@ -303,30 +977,138 @@ export class SqliteStorage implements Storage {
     limit?: number;
   }): Promise<AtomIterationRecord[]> {
     const sinceSeq = opts?.sinceSeq ?? 1;
-    const limit = opts?.limit;
-    const params: Record<string, unknown> = { sinceSeq };
-    const clauses = ['rowid >= @sinceSeq'];
-    const prefixClause = this.buildPrefixClause(opts?.sourcePrefixes, params);
-    if (prefixClause !== null) clauses.push(prefixClause);
-    const baseSql = `SELECT rowid AS sequence_id, id, source, timestamp, content, metadata, embedding
-                     FROM events
-                     WHERE ${clauses.join(' AND ')}
-                     ORDER BY rowid ASC`;
-    const sql = limit !== undefined ? `${baseSql} LIMIT @limit` : baseSql;
-    if (limit !== undefined) params['limit'] = limit;
-    const rows = this.db.prepare(sql).all(params) as Array<EventRow & { sequence_id: number }>;
-    return rows.map((r) => {
-      const base = rowToEvent(r);
-      return Object.assign({}, base, { sequence_id: r.sequence_id });
-    });
+    if (!Number.isSafeInteger(sinceSeq) || sinceSeq < 1) {
+      throw new RangeError(
+        "iterateAtomsByAppendOrder sinceSeq must be a positive safe integer",
+      );
+    }
+    const rowLimit = cappedStorageRowLimit(opts?.limit);
+    if (rowLimit === 0) return [];
+
+    for (const prefix of opts?.sourcePrefixes ?? []) {
+      assertStorageDescriptorField(
+        "iterateAtomsByAppendOrder",
+        "source",
+        prefix,
+      );
+    }
+
+    const baseParams: Record<string, unknown> = { sinceSeq };
+    const clauses = ["rowid >= @sinceSeq"];
+    const prefixes = opts?.sourcePrefixes;
+    const hasPrefixFilter = prefixes !== undefined && prefixes.length > 0;
+    const descriptors: AppendOrderEventDescriptor[] = [];
+    let admittedBytes = 0;
+    let lastSequence: number | undefined;
+    let scannedRows = 0;
+
+    for (
+      let page = 1;
+      page <= STORAGE_MAX_DESCRIPTOR_PAGES && descriptors.length < rowLimit;
+      page += 1
+    ) {
+      const pageClauses = [...clauses];
+      const pageParams: Record<string, unknown> = {
+        ...baseParams,
+        __descriptor_limit: STORAGE_DESCRIPTOR_PAGE_ROWS,
+      };
+      if (lastSequence !== undefined) {
+        pageClauses.push("rowid > @__last_sequence");
+        pageParams["__last_sequence"] = lastSequence;
+      }
+      const sql = `SELECT rowid AS sequence_id, ${EVENT_DESCRIPTOR_COLUMNS_SQL},
+                          ${EVENT_STORED_BYTES_SQL} AS stored_bytes
+                   FROM events
+                   WHERE ${pageClauses.join(" AND ")}
+                   ORDER BY rowid ASC
+                   LIMIT @__descriptor_limit`;
+      const pageRows = this.cachedStatement(sql).all(
+        pageParams,
+      ) as RawAppendOrderEventDescriptor[];
+      scannedRows += pageRows.length;
+      this.observeSelectPage({
+        operation: "iterateAtomsByAppendOrder",
+        phase: "descriptor",
+        rows: pageRows.length,
+        stored_bytes: pageRows.reduce(
+          (total, row) => total + row.stored_bytes,
+          0,
+        ),
+        page,
+      });
+      if (pageRows.length === 0) break;
+
+      for (const descriptor of pageRows) {
+        assertDescriptorFieldsFit(descriptor, "iterateAtomsByAppendOrder");
+        if (
+          hasPrefixFilter &&
+          !prefixes!.some((prefix) => descriptor.source.startsWith(prefix))
+        ) {
+          continue;
+        }
+        this.assertPayloadRowFits(descriptor, "iterateAtomsByAppendOrder");
+        if (
+          admittedBytes + descriptor.stored_bytes >
+          STORAGE_QUERY_STORED_BYTES
+        ) {
+          throw new StorageBudgetExceededError({
+            code: "request_too_large",
+            operation: "iterateAtomsByAppendOrder",
+            stored_bytes: admittedBytes + descriptor.stored_bytes,
+            budget_bytes: STORAGE_QUERY_STORED_BYTES,
+          });
+        }
+        descriptors.push(descriptor);
+        admittedBytes += descriptor.stored_bytes;
+        if (descriptors.length >= rowLimit) break;
+      }
+      if (descriptors.length >= rowLimit) break;
+      if (pageRows.length < STORAGE_DESCRIPTOR_PAGE_ROWS) break;
+      lastSequence = pageRows[pageRows.length - 1]!.sequence_id;
+    }
+
+    if (
+      hasPrefixFilter &&
+      descriptors.length < rowLimit &&
+      scannedRows >=
+        STORAGE_DESCRIPTOR_PAGE_ROWS * STORAGE_MAX_DESCRIPTOR_PAGES &&
+      lastSequence !== undefined
+    ) {
+      throw new StorageAppendScanBudgetExceededError({
+        scanned_rows: scannedRows,
+        matched: descriptors.map((descriptor) => ({
+          id: descriptor.id,
+          sequence_id: descriptor.sequence_id,
+        })),
+        resume_since_seq: lastSequence + 1,
+      });
+    }
+
+    const payloadById = this.fetchPayloadRows(
+      descriptors,
+      "iterateAtomsByAppendOrder",
+    );
+    const records: AtomIterationRecord[] = [];
+    for (const descriptor of descriptors) {
+      const row = payloadById.get(descriptor.id);
+      if (row === undefined) continue;
+      records.push({ ...rowToEvent(row), sequence_id: descriptor.sequence_id });
+    }
+    return records;
   }
 
-  async getCurrentSequence(opts?: { sourcePrefixes?: readonly string[] }): Promise<number> {
+  async getCurrentSequence(opts?: {
+    sourcePrefixes?: readonly string[];
+  }): Promise<number> {
     const params: Record<string, unknown> = {};
     const prefixClause = this.buildPrefixClause(opts?.sourcePrefixes, params);
-    const where = prefixClause !== null ? `WHERE ${prefixClause}` : '';
-    const stmt = this.db.prepare(`SELECT COALESCE(MAX(rowid), 0) AS seq FROM events ${where}`);
-    const row = (prefixClause !== null ? stmt.get(params) : stmt.get()) as { seq: number };
+    const where = prefixClause !== null ? `WHERE ${prefixClause}` : "";
+    const stmt = this.db.prepare(
+      `SELECT COALESCE(MAX(rowid), 0) AS seq FROM events ${where}`,
+    );
+    const row = (prefixClause !== null ? stmt.get(params) : stmt.get()) as {
+      seq: number;
+    };
     return row.seq;
   }
 
@@ -336,13 +1118,13 @@ export class SqliteStorage implements Storage {
   }): Promise<CoordAtomIterationRecord[]> {
     return this.iterateAtomsByAppendOrder({
       sinceSeq: opts?.sinceSeq,
-      sourcePrefixes: ['coord:'],
+      sourcePrefixes: ["coord:"],
       limit: opts?.limit,
     });
   }
 
   async getCurrentCoordSequence(): Promise<number> {
-    return this.getCurrentSequence({ sourcePrefixes: ['coord:'] });
+    return this.getCurrentSequence({ sourcePrefixes: ["coord:"] });
   }
 
   close(): void {

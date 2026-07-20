@@ -9,11 +9,77 @@ export interface CaptureEvent {
   embedding?: number[];
 }
 
+export interface AppendOptions {
+  /** Stable extractor-owned replay identity. First write wins: every retry of
+   * the same key returns the original event id without rewriting payload. */
+  dedupeKey?: string;
+}
+
+/** Durable capture progress for one extractor-owned resource partition.
+ *
+ * `resource` is the concrete source path/identifier consumed by an extractor.
+ * Most file extractors use the default empty partition; Cursor uses one
+ * partition per composer within its shared global database. Numeric progress
+ * fields are intentionally generic so the same substrate can represent byte
+ * offsets, turn ordinals, and source mtimes without coupling storage to an
+ * extractor implementation. */
+export interface CaptureCheckpoint {
+  extractor: string;
+  resource: string;
+  partition: string;
+  position?: number;
+  cursor?: string;
+  ordinal?: number;
+  mtime_ms?: number;
+  state: Record<string, unknown>;
+  updated_at: string;
+}
+
+export interface CaptureCheckpointKey {
+  extractor: string;
+  resource: string;
+  /** Defaults to the empty partition. */
+  partition?: string;
+}
+
+export interface CaptureCheckpointInput extends CaptureCheckpointKey {
+  position?: number;
+  cursor?: string;
+  ordinal?: number;
+  mtime_ms?: number;
+  /** Defaults to an empty JSON object. */
+  state?: Record<string, unknown>;
+  updated_at: string;
+}
+
+/** Opaque-to-callers keyset boundary returned by checkpoint listing. */
+export interface CaptureCheckpointListCursor {
+  extractor: string;
+  resource: string;
+  partition: string;
+}
+
+export interface CaptureCheckpointListOptions {
+  /** Required namespace bound: startup callers page one extractor at a time. */
+  extractor: string;
+  /** Required and runtime-capped; see MAX_CAPTURE_CHECKPOINT_PAGE_SIZE. */
+  limit: number;
+  /** Return keys strictly after this `(extractor, resource, partition)` tuple. */
+  after?: CaptureCheckpointListCursor;
+}
+
+export interface CaptureCheckpointPage {
+  checkpoints: CaptureCheckpoint[];
+  next_cursor: CaptureCheckpointListCursor | null;
+}
+
 export interface QueryFilter {
   source?: string;
   source_prefix?: string;
   since?: string;
   until?: string;
+  /** Maximum returned rows. Omitted uses the storage default; adapters enforce
+   * a finite hard ceiling even when callers request a larger value. */
   limit?: number;
   // Default 'desc' (newest-first). Flipped from historical ASC because every
   // current caller's intent is "give me the recent N events" — ASC + LIMIT
@@ -45,6 +111,9 @@ export interface QueryFilter {
   // would re-introduce the same kind of "minus 1ms" tie-skip bug the
   // composite cursor was designed to close.
   before?: { timestamp: string; id: string };
+  /** Ascending counterpart to `before`, used to resume an explicitly bounded
+   * descriptor scan. Passing it with descending order is invalid. */
+  after?: { timestamp: string; id: string };
 }
 
 // Whitelist of metadata keys callers may reach via `QueryFilter.metadata_match`.
@@ -62,15 +131,24 @@ export const METADATA_MATCH_KEY_WHITELIST: ReadonlySet<string> = new Set([
 ]);
 
 export interface Storage {
-  append(event: Omit<CaptureEvent, 'id'>): Promise<EventId>;
+  append(event: Omit<CaptureEvent, 'id'>, options?: AppendOptions): Promise<EventId>;
   query(filter?: QueryFilter): Promise<CaptureEvent[]>;
   count(): Promise<number>;
-  // Order-preserving fetch by id list. Returns events in the order of the
+  // Order-preserving, hard-capped fetch by id list. Returns events in the order of the
   // input `ids[]`; missing ids are silently filtered out (caller diffs the
   // input vs output id sets if it cares about misses). Required by the
   // V1.6 `get_atoms` MCP tool, which materialises atom bodies for ids the
   // caller already obtained from `find_clusters` / `search_memories`.
   getByIds(ids: readonly EventId[]): Promise<CaptureEvent[]>;
+
+  /** Exact bounded checkpoint lookup. Missing keys return null. */
+  getCaptureCheckpoint(key: CaptureCheckpointKey): Promise<CaptureCheckpoint | null>;
+
+  /** Insert or replace one checkpoint atomically at its composite primary key. */
+  upsertCaptureCheckpoint(checkpoint: CaptureCheckpointInput): Promise<CaptureCheckpoint>;
+
+  /** Keyset-paginated checkpoint scan. `limit` is mandatory and hard-capped. */
+  listCaptureCheckpoints(options: CaptureCheckpointListOptions): Promise<CaptureCheckpointPage>;
 
   // 057a AC3 — durable append-order coord seam for the deadline tracker's
   // boot reconstruction + periodic reconciliation paths. The r4 design
@@ -118,7 +196,8 @@ export interface Storage {
    *  `source` begins with any of the given prefixes (e.g. `['fs:', 'git:']`);
    *  omitted/empty means all sources. Half-open interval: returns atoms with
    *  `sequence_id >= sinceSeq`; `sinceSeq` omitted means "from the beginning
-   *  of the ledger" (`sinceSeq = 1`). `limit` caps the append-ordered result.
+   *  of the ledger" (`sinceSeq = 1`). `limit` caps the append-ordered result;
+   *  omitted limits use the storage default and all requests have a hard ceiling.
    *  This generalizes `iterateCoordAtomsByAppendOrder` — coord iteration is
    *  now `sourcePrefixes: ['coord:']` over this method. */
   iterateAtomsByAppendOrder(opts?: {

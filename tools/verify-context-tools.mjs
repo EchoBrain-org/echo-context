@@ -785,7 +785,7 @@ process.stdin.on('data', (chunk) => {
   let closeError;
   try {
     try {
-      await peer.request('probe', {}, 250);
+      await peer.request('probe', {}, probeCase === 'valid' ? 5_000 : 250);
       await new Promise((resolveWait) => setTimeout(resolveWait, 20));
     } catch (error) {
       requestError = error;

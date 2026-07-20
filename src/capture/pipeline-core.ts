@@ -10,6 +10,7 @@ export interface CandidateEvent {
   timestamp: string;
   content: string;
   metadata?: Record<string, unknown>;
+  dedupe_key?: string;
 }
 
 export type CandidateShapeRejection = 'malformed_event';
@@ -37,16 +38,25 @@ export function validateCandidateShape(
   | { accepted: true; event: CandidateEvent }
   | { accepted: false; reason: CandidateShapeRejection } {
   if (!isPlainObject(event)) return { accepted: false, reason: 'malformed_event' };
-  const { source, timestamp, content, metadata } = event;
+  const { source, timestamp, content, metadata, dedupe_key: dedupeKey } = event;
   if (!isNonEmptyString(source) || !isNonEmptyString(timestamp) || typeof content !== 'string') {
     return { accepted: false, reason: 'malformed_event' };
   }
   if (metadata !== undefined && !isPlainObject(metadata)) {
     return { accepted: false, reason: 'malformed_event' };
   }
+  if (dedupeKey !== undefined && !isNonEmptyString(dedupeKey)) {
+    return { accepted: false, reason: 'malformed_event' };
+  }
   return {
     accepted: true,
-    event: metadata === undefined ? { source, timestamp, content } : { source, timestamp, content, metadata },
+    event: {
+      source,
+      timestamp,
+      content,
+      ...(metadata !== undefined ? { metadata } : {}),
+      ...(dedupeKey !== undefined ? { dedupe_key: dedupeKey } : {}),
+    },
   };
 }
 
@@ -83,6 +93,11 @@ export async function processCandidateWithPolicy<Reason extends string>(
     content: shaped.event.content,
   };
   if (shaped.event.metadata !== undefined) toAppend.metadata = shaped.event.metadata;
-  const id = await storage.append(toAppend);
+  const id = await storage.append(
+    toAppend,
+    shaped.event.dedupe_key !== undefined
+      ? { dedupeKey: shaped.event.dedupe_key }
+      : undefined,
+  );
   return { accepted: true, id };
 }

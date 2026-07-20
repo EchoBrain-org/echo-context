@@ -1,22 +1,26 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
-  filterToCurrentSignalRuns,
   GRANOLA_SIGNAL_INDEX_SOURCE,
   GRANOLA_SIGNAL_SOURCE,
-} from '../../enrich/granola-signals.js';
+  resolveCurrentGranolaSignalRuns,
+} from '../util/granola-signal-runs.js';
 import {
   METADATA_MATCH_KEY_WHITELIST,
   type CaptureEvent,
   type QueryFilter,
   type Storage,
 } from '../../storage/interface.js';
+import {
+  STORAGE_GET_BY_IDS_MAX_IDS,
+  StorageScanBudgetExceededError,
+} from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, isoString, TZ_NAIVE_WARNING } from '../util/iso8601.js';
 import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 import { projectMatch } from '../wire-shape/match.js';
-import { CursorDecodeError, decodeCursor, emitCursor } from './_cursor.js';
+import { CursorDecodeError, decodeCursor, emitCursor, encodeCursor } from './_cursor.js';
 // Re-export for any pre-existing callers / tests that imported the cursor
 // helpers from search-memories. New callers should import from `_cursor.ts`.
 export { CursorDecodeError, decodeCursor, encodeCursor, type DecodedCursor } from './_cursor.js';
@@ -26,6 +30,17 @@ export const SEARCH_MEMORIES_DESCRIPTION =
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
+// Hard work budget for paths that need post-storage filtering (literal
+// substring search, array-valued metadata filters, and current-Granola-run
+// filtering). A request inspects at most PAGE_ROWS * MAX_PAGES rows and stops
+// early at MAX_BYTES. Continuing older history is explicit through the opaque
+// next_cursor; no request is allowed to materialise the whole ledger.
+export const SEARCH_SCAN_PAGE_ROWS = 128;
+export const SEARCH_SCAN_MAX_PAGES = 16;
+export const SEARCH_SCAN_MAX_ROWS = SEARCH_SCAN_PAGE_ROWS * SEARCH_SCAN_MAX_PAGES;
+export const SEARCH_SCAN_MAX_BYTES = 16 * 1024 * 1024;
+export const SEARCH_MANIFEST_PAGE_ROWS = 128;
+export const SEARCH_MANIFEST_MAX_PAGES = 8;
 export type MetadataMatchValue = string | string[];
 
 const TOOL_METADATA_MATCH_KEYS: ReadonlySet<string> = new Set([
@@ -160,6 +175,218 @@ function sortDesc(events: CaptureEvent[]): CaptureEvent[] {
     if (a.id > b.id) return -1;
     return 0;
   });
+}
+
+function eventBytes(event: CaptureEvent): number {
+  let bytes =
+    Buffer.byteLength(event.id, 'utf8') +
+    Buffer.byteLength(event.source, 'utf8') +
+    Buffer.byteLength(event.timestamp, 'utf8') +
+    Buffer.byteLength(event.content, 'utf8');
+  if (event.metadata !== undefined) {
+    bytes += Buffer.byteLength(JSON.stringify(event.metadata), 'utf8');
+  }
+  if (event.embedding !== undefined) {
+    bytes += event.embedding.length * Float32Array.BYTES_PER_ELEMENT;
+  }
+  return bytes;
+}
+
+interface BoundedScanResult {
+  matches: CaptureEvent[];
+  next_cursor: string | null;
+  budgetExhausted: boolean;
+  rowsScanned: number;
+  bytesScanned: number;
+  pagesScanned: number;
+}
+
+interface ManifestWindow {
+  events: CaptureEvent[];
+  truncated: boolean;
+}
+
+interface StorageQueryPage {
+  rows: CaptureEvent[];
+  resume: QueryFilter['before'];
+  scanBudgetExhausted: boolean;
+}
+
+async function queryStoragePage(
+  storage: Storage,
+  filter: QueryFilter,
+): Promise<StorageQueryPage> {
+  try {
+    return {
+      rows: sortDesc(await storage.query(filter)),
+      resume: undefined,
+      scanBudgetExhausted: false,
+    };
+  } catch (err) {
+    if (!(err instanceof StorageScanBudgetExceededError) || err.order !== 'desc') throw err;
+    if (err.matched_ids.length > SEARCH_SCAN_PAGE_ROWS) {
+      throw new RangeError(
+        `storage scan returned ${err.matched_ids.length} matches for a ${SEARCH_SCAN_PAGE_ROWS}-row page`,
+      );
+    }
+    const rows: CaptureEvent[] = [];
+    for (let offset = 0; offset < err.matched_ids.length; offset += STORAGE_GET_BY_IDS_MAX_IDS) {
+      rows.push(
+        ...(await storage.getByIds(
+          err.matched_ids.slice(offset, offset + STORAGE_GET_BY_IDS_MAX_IDS),
+        )),
+      );
+    }
+    return {
+      rows: sortDesc(rows),
+      resume: err.resume_cursor,
+      scanBudgetExhausted: true,
+    };
+  }
+}
+
+async function loadBoundedManifestWindow(storage: Storage): Promise<ManifestWindow> {
+  const events: CaptureEvent[] = [];
+  let before: QueryFilter['before'];
+  for (let page = 0; page < SEARCH_MANIFEST_MAX_PAGES; page += 1) {
+    const rows = await storage.query({
+      source: GRANOLA_SIGNAL_INDEX_SOURCE,
+      limit: SEARCH_MANIFEST_PAGE_ROWS,
+      ...(before !== undefined ? { before } : {}),
+    });
+    const ordered = sortDesc(rows);
+    events.push(...ordered);
+    if (ordered.length < SEARCH_MANIFEST_PAGE_ROWS) {
+      return { events, truncated: false };
+    }
+    const last = ordered[ordered.length - 1]!;
+    before = { timestamp: last.timestamp, id: last.id };
+  }
+  return { events, truncated: true };
+}
+
+async function scanFilteredPages(
+  storage: Storage,
+  baseFilter: QueryFilter,
+  limitApplied: number,
+  predicate: (event: CaptureEvent) => boolean,
+): Promise<BoundedScanResult> {
+  const matches: CaptureEvent[] = [];
+  let before = baseFilter.before;
+  let lastScanned: CaptureEvent | undefined;
+  let rowsScanned = 0;
+  let bytesScanned = 0;
+  let pagesScanned = 0;
+  let reachedEnd = false;
+
+  while (
+    pagesScanned < SEARCH_SCAN_MAX_PAGES &&
+    rowsScanned < SEARCH_SCAN_MAX_ROWS &&
+    bytesScanned < SEARCH_SCAN_MAX_BYTES
+  ) {
+    const storagePage = await queryStoragePage(storage, {
+      ...baseFilter,
+      ...(before !== undefined ? { before } : {}),
+      limit: SEARCH_SCAN_PAGE_ROWS,
+    });
+    const rows = storagePage.rows;
+    pagesScanned += 1;
+    if (rows.length === 0) {
+      if (storagePage.scanBudgetExhausted) {
+        return {
+          matches,
+          next_cursor:
+            storagePage.resume === undefined ? null : encodeCursor(storagePage.resume),
+          budgetExhausted: true,
+          rowsScanned,
+          bytesScanned,
+          pagesScanned,
+        };
+      }
+      reachedEnd = true;
+      break;
+    }
+
+    let rowsConsumedFromPage = 0;
+    for (const row of rows) {
+      const size = eventBytes(row);
+      // Always permit one row so a single large atom cannot pin the cursor
+      // forever. The SQLite adapter independently enforces its per-call byte
+      // ceiling before this layer receives rows.
+      if (rowsScanned > 0 && bytesScanned + size > SEARCH_SCAN_MAX_BYTES) {
+        break;
+      }
+      rowsScanned += 1;
+      bytesScanned += size;
+      lastScanned = row;
+      rowsConsumedFromPage += 1;
+      if (predicate(row)) matches.push(row);
+      if (matches.length > limitApplied) {
+        const { kept, next_cursor } = emitCursor(matches, limitApplied);
+        return {
+          matches: kept,
+          next_cursor,
+          budgetExhausted: false,
+          rowsScanned,
+          bytesScanned,
+          pagesScanned,
+        };
+      }
+      if (rowsScanned >= SEARCH_SCAN_MAX_ROWS || bytesScanned >= SEARCH_SCAN_MAX_BYTES) break;
+    }
+
+    // A byte/row stop can happen in the middle of even a short final storage
+    // page. In that case the page length says nothing about end-of-history:
+    // the unconsumed suffix must remain reachable from `lastScanned` on the
+    // next request. The same rule takes precedence over a deeper storage-scan
+    // resume cursor, which may already be older than the hydrated page.
+    const pagePartiallyConsumed = rowsConsumedFromPage < rows.length;
+
+    if (storagePage.scanBudgetExhausted) {
+      const overflow = emitCursor(matches, limitApplied);
+      let continuationCursor = overflow.next_cursor;
+      if (matches.length <= limitApplied) {
+        if (pagePartiallyConsumed && lastScanned !== undefined) {
+          continuationCursor = encodeCursor({
+            timestamp: lastScanned.timestamp,
+            id: lastScanned.id,
+          });
+        } else if (storagePage.resume !== undefined) {
+          continuationCursor = encodeCursor(storagePage.resume);
+        }
+      }
+      return {
+        matches: overflow.kept,
+        next_cursor: continuationCursor,
+        budgetExhausted: true,
+        rowsScanned,
+        bytesScanned,
+        pagesScanned,
+      };
+    }
+
+    if (pagePartiallyConsumed) break;
+    if (rows.length < SEARCH_SCAN_PAGE_ROWS) {
+      reachedEnd = true;
+      break;
+    }
+    if (lastScanned === undefined) break;
+    before = { timestamp: lastScanned.timestamp, id: lastScanned.id };
+  }
+
+  const budgetExhausted = !reachedEnd && lastScanned !== undefined;
+  const nextCursor =
+    budgetExhausted && lastScanned !== undefined
+      ? encodeCursor({ timestamp: lastScanned.timestamp, id: lastScanned.id })
+      : null;
+  return {
+    matches,
+    next_cursor: nextCursor,
+    budgetExhausted,
+    rowsScanned,
+    bytesScanned,
+    pagesScanned,
+  };
 }
 
 function metadataMatchValuesContain(expected: MetadataMatchValue, actual: string): boolean {
@@ -359,43 +586,57 @@ export async function searchMemories(
     metadata_match,
   );
 
-  // Two paths through the result list, two overfetch sites — keep them legible
-  // so the next reader doesn't collapse them into one and re-introduce item
-  // 022's filter-before-slice bug:
-  //   (A) recency-only path (`query === undefined`): pass `limit + 1` to
-  //       storage. Storage returns rows already ordered DESC; we drop the
-  //       extra and emit a cursor if it was present.
-  //   (B) substring-query path (`query !== undefined`): do NOT pass any limit
-  //       to storage — the substring filter runs in JS over the FULL window,
-  //       so an upstream limit would silently drop matches outside the
-  //       newest-N. Slice to `limit + 1` AFTER the substring filter and emit
-  //       cursor from the last kept row.
+  // Two bounded paths through the result list:
+  //   (A) recency-only requests overfetch exactly one row in SQLite.
+  //   (B) requests needing a JS predicate scan fixed-size keyset pages until
+  //       limit+1 matches, end-of-window, or a hard rows/bytes/pages budget.
+  //       A budget stop returns a cursor at the last INSPECTED row, allowing
+  //       the caller to continue without reloading or skipping history.
   const requiresFullWindowFilter =
     query !== undefined || metadata_match !== undefined || restrictToCurrentGranolaSignals;
-  if (!requiresFullWindowFilter) filter.limit = limitApplied + 1;
+  let kept: CaptureEvent[];
+  let next_cursor: string | null;
+  let scanBudgetExhausted = false;
+  let manifestWindowTruncated = false;
 
-  const all = await storage.query(filter);
-  const sorted = sortDesc(all);
-  let candidates = sorted;
-
-  if (query !== undefined) {
-    candidates = candidates.filter((e) => queryMatches(e, query));
+  if (!requiresFullWindowFilter) {
+    filter.limit = limitApplied + 1;
+    const storagePage = await queryStoragePage(storage, filter);
+    ({ kept, next_cursor } = emitCursor(storagePage.rows, limitApplied));
+    if (
+      next_cursor === null &&
+      storagePage.scanBudgetExhausted &&
+      storagePage.resume !== undefined
+    ) {
+      next_cursor = encodeCursor(storagePage.resume);
+    }
+    scanBudgetExhausted = storagePage.scanBudgetExhausted;
+  } else {
+    let currentGranolaSignalIds: Set<string> | null = null;
+    if (restrictToCurrentGranolaSignals) {
+      const window = await loadBoundedManifestWindow(storage);
+      manifestWindowTruncated = window.truncated;
+      currentGranolaSignalIds = new Set<string>();
+      for (const manifest of resolveCurrentGranolaSignalRuns(window.events).values()) {
+        for (const id of manifest.signal_atom_ids) currentGranolaSignalIds.add(id);
+      }
+    }
+    const scan = await scanFilteredPages(storage, filter, limitApplied, (event) => {
+      if (query !== undefined && !queryMatches(event, query)) return false;
+      if (metadata_match !== undefined && !matchesMetadata(event, metadata_match)) return false;
+      if (
+        restrictToCurrentGranolaSignals &&
+        event.source === GRANOLA_SIGNAL_SOURCE &&
+        !currentGranolaSignalIds!.has(event.id)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    kept = scan.matches;
+    next_cursor = scan.next_cursor;
+    scanBudgetExhausted = scan.budgetExhausted;
   }
-
-  if (metadata_match !== undefined) {
-    candidates = candidates.filter((e) => matchesMetadata(e, metadata_match));
-  }
-
-  if (restrictToCurrentGranolaSignals) {
-    const manifestEvents = await storage.query({ source: GRANOLA_SIGNAL_INDEX_SOURCE });
-    candidates = filterToCurrentSignalRuns(candidates, manifestEvents);
-  }
-
-  // Path-aware overfetch slicing. Both paths converge here once their
-  // candidate list is in DESC order: keep up to `limit + 1`, drop the extra,
-  // emit cursor from the last kept row.
-  const overfetched = candidates.slice(0, limitApplied + 1);
-  const { kept, next_cursor } = emitCursor(overfetched, limitApplied);
 
   // V1.5.7 (Gap 6): same TZ-naive warning as get_recent_work_context. The
   // schema regex ISO8601_RE is intentionally permissive (accepts naive
@@ -408,6 +649,16 @@ export async function searchMemories(
     (until !== undefined && !hasTzMarker(until))
   ) {
     warnings.push(TZ_NAIVE_WARNING);
+  }
+  if (scanBudgetExhausted) {
+    warnings.push(
+      `search scan budget reached (${SEARCH_SCAN_MAX_ROWS} rows / ${SEARCH_SCAN_MAX_BYTES} bytes / ${SEARCH_SCAN_MAX_PAGES} pages maximum per request); pass next_cursor to continue incrementally`,
+    );
+  }
+  if (manifestWindowTruncated) {
+    warnings.push(
+      `Granola manifest lookup reached its bounded ${SEARCH_MANIFEST_PAGE_ROWS * SEARCH_MANIFEST_MAX_PAGES}-row window; narrow the query if an older note's current run is missing`,
+    );
   }
 
   return {

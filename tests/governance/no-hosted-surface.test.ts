@@ -24,11 +24,12 @@ describe('AC4/AC6 — item 140 hosted surfaces remain absent', () => {
     expect(forbidden).toEqual([]);
   });
 
-  it('keeps package scripts and authority guidance source-only', () => {
+  it('keeps package scripts unhosted and exact-artifact authority explicit', () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
     expect(Object.keys(pkg.scripts).filter((name) => /publish|release|hosted|workflow/u.test(name))).toEqual([]);
     const guidance = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
-    expect(guidance).toContain('six-field content tuple');
+    expect(guidance).toContain('one exact reviewed Git object');
+    expect(guidance).toContain('query/startup memory bounded');
     expect(guidance).not.toContain('workflow run ID');
     expect(guidance).not.toContain('workflow artifact ID');
   });

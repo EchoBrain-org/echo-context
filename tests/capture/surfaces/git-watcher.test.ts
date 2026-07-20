@@ -369,8 +369,8 @@ describe('startGitWatcher', () => {
 });
 
 describe('CAPTURED_SOURCES.git_repos', () => {
-  it('initial entry contains Project_echo as documented', () => {
-    expect(CAPTURED_SOURCES.git_repos).toContain('~/Desktop/Project_echo/');
+  it('starts empty so git capture requires explicit configuration', () => {
+    expect(CAPTURED_SOURCES.git_repos).toEqual([]);
   });
 });
 

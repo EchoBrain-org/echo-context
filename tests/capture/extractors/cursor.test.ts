@@ -1,11 +1,29 @@
-import { mkdtempSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
+import type { FSWatcher } from 'chokidar';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CAPTURED_SOURCES, _isAllowedPathIn } from '../../../src/capture/sources.js';
 import {
+  CAPTURED_SOURCES,
+  _isAllowedPathIn,
+} from '../../../src/capture/sources.js';
+import {
+  CURSOR_DEFAULT_PARSE_MAX_ROWS,
+  CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES,
+  CURSOR_RUNTIME_CACHE_ENTRIES,
+  CURSOR_RAW_ROWID_ASC_PAGE_SQL,
+  CURSOR_RAW_ROWID_DESC_PAGE_SQL,
   CURSOR_REPOLL_INTERVAL_MS,
+  __cursorWarningCacheTestHooks,
   extractCursorTurns,
   maxGlobalDbFamilyMtime,
   startCursorExtractor,
@@ -16,7 +34,11 @@ import {
   type CursorExtractorHandle,
 } from '../../../src/capture/extractors/cursor.js';
 import { MemoryStorage } from '../../../src/storage/memory.js';
-import { resetAllowlist, restoreFsPaths, snapshotFsPaths } from '../../fixtures/allowlist.js';
+import {
+  resetAllowlist,
+  restoreFsPaths,
+  snapshotFsPaths,
+} from '../../fixtures/allowlist.js';
 import {
   appendBubble,
   appendRawCursorDiskKVRow,
@@ -49,12 +71,14 @@ describe('extractCursorTurns (pure)', () => {
   let captured: ReturnType<typeof captureStdout>;
 
   beforeEach(() => {
+    __cursorWarningCacheTestHooks.reset();
     dir = tmpDir();
     dbPath = join(dir, 'state.vscdb');
     captured = captureStdout();
   });
 
   afterEach(() => {
+    __cursorWarningCacheTestHooks.reset();
     captured.restore();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -268,7 +292,12 @@ describe('extractCursorTurns (pure)', () => {
   it('continuation: emits continuation atom for new assistant bubbles after the checkpoint', async () => {
     // First tick — empty checkpoint, full single-cluster turn.
     const bubbles: FixtureBubble[] = [
-      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'fix the verdict turn' },
+      {
+        composer_id: 'c1',
+        bubble_id: 'u1',
+        type: 1,
+        text: 'fix the verdict turn',
+      },
       { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'thinking...' },
       { composer_id: 'c1', bubble_id: 'a2', type: 2, text: 'still working...' },
       { composer_id: 'c1', bubble_id: 'a3', type: 2, text: 'partial answer' },
@@ -290,7 +319,12 @@ describe('extractCursorTurns (pure)', () => {
       type: 2,
       text: 'verdict: ECHO works',
     });
-    appendBubble(dbPath, { composer_id: 'c1', bubble_id: 'a5', type: 2, text: 'final summary' });
+    appendBubble(dbPath, {
+      composer_id: 'c1',
+      bubble_id: 'a5',
+      type: 2,
+      text: 'final summary',
+    });
     turns = await extractCursorTurns(dbPath, new Map([['c1', checkpoint]]));
     expect(turns).toHaveLength(1);
     expect(turns[0]).toMatchObject({
@@ -440,7 +474,10 @@ describe('extractCursorTurns (pure)', () => {
   });
 
   it('warns and returns empty when the DB file does not exist', async () => {
-    const turns = await extractCursorTurns(join(dir, 'missing.vscdb'), new Map());
+    const turns = await extractCursorTurns(
+      join(dir, 'missing.vscdb'),
+      new Map(),
+    );
     expect(turns).toHaveLength(0);
     expect(captured.writes.join('')).toContain('open_failed');
   });
@@ -530,6 +567,122 @@ describe('extractCursorTurns (pure)', () => {
     const occurrences = log.match(/not_in_composer_headers/g) ?? [];
     expect(occurrences).toHaveLength(1);
   });
+
+  it('caps and resets the missing-header warning dedupe window', async () => {
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c-warning-cap', bubble_id: 'b1', type: 1, text: 'q' },
+      { composer_id: 'c-warning-cap', bubble_id: 'b2', type: 2, text: 'a' },
+    ]);
+    const db = new Database(dbPath);
+    try {
+      const insert = db.prepare(
+        'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+      );
+      const insertAll = db.transaction(() => {
+        for (
+          let index = 0;
+          index < CURSOR_RUNTIME_CACHE_ENTRIES + 1;
+          index += 1
+        ) {
+          const bubbleId = `orphan-${index}`;
+          insert.run(
+            `bubbleId:c-warning-cap:${bubbleId}`,
+            JSON.stringify({
+              _v: 3,
+              type: 2,
+              text: 'not in composer header',
+              bubbleId,
+            }),
+          );
+        }
+      });
+      insertAll();
+    } finally {
+      db.close();
+    }
+
+    await extractCursorTurns(dbPath, new Map());
+    expect(__cursorWarningCacheTestHooks.sizes()).toEqual({
+      missingComposerHeader: CURSOR_RUNTIME_CACHE_ENTRIES,
+      repoRootResolutionFailed: 0,
+    });
+
+    __cursorWarningCacheTestHooks.reset();
+    expect(__cursorWarningCacheTestHooks.sizes()).toEqual({
+      missingComposerHeader: 0,
+      repoRootResolutionFailed: 0,
+    });
+  });
+
+  it('hard-caps the default raw-row scan before relevant tail payloads', async () => {
+    const db = new Database(dbPath);
+    try {
+      db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+      const insert = db.prepare('INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)');
+      db.transaction(() => {
+        for (let index = 0; index < CURSOR_DEFAULT_PARSE_MAX_ROWS; index += 1) {
+          insert.run(`noise:${index}`, 'irrelevant');
+        }
+        insert.run(
+          'composerData:c-tail',
+          JSON.stringify({
+            composerId: 'c-tail',
+            createdAt: 0,
+            fullConversationHeadersOnly: [
+              { bubbleId: 'u1', type: 1 },
+              { bubbleId: 'a1', type: 2 },
+            ],
+          }),
+        );
+        insert.run(
+          'bubbleId:c-tail:u1',
+          JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'tail q' }),
+        );
+        insert.run(
+          'bubbleId:c-tail:a1',
+          JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: 'tail a' }),
+        );
+      })();
+    } finally {
+      db.close();
+    }
+
+    expect(await extractCursorTurns(dbPath, new Map())).toEqual([]);
+    expect(captured.writes.join('')).toContain('default_read_budget_exhausted');
+  });
+
+  it('rejects a relevant default-path value larger than the aggregate byte budget', async () => {
+    const db = new Database(dbPath);
+    try {
+      db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+      const insert = db.prepare('INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)');
+      insert.run(
+        'composerData:c-huge',
+        JSON.stringify({
+          composerId: 'c-huge',
+          createdAt: 0,
+          fullConversationHeadersOnly: [
+            { bubbleId: 'u1', type: 1 },
+            { bubbleId: 'a1', type: 2 },
+          ],
+          padding: 'x'.repeat(CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES),
+        }),
+      );
+      insert.run(
+        'bubbleId:c-huge:u1',
+        JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'q' }),
+      );
+      insert.run(
+        'bubbleId:c-huge:a1',
+        JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: 'a' }),
+      );
+    } finally {
+      db.close();
+    }
+
+    expect(await extractCursorTurns(dbPath, new Map())).toEqual([]);
+    expect(captured.writes.join('')).toContain('default_read_budget_exhausted');
+  });
 });
 
 // SKIPPED: every test in this block exercises the chokidar/FSEvents watcher
@@ -572,7 +725,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('emits a CandidateEvent per turn through the pipeline on globalStorage change', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     createGlobalStorageFixture(
       globalDbPath,
@@ -606,7 +762,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
     const walPath = `${globalDbPath}-wal`;
     writeFileSync(walPath, '');
 
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     const touchedAt = new Date(Date.now() + 1000);
     utimesSync(walPath, touchedAt, touchedAt);
@@ -626,7 +785,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
     const walPath = `${globalDbPath}-wal`;
     writeFileSync(walPath, '');
 
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     for (let i = 0; i < 3; i += 1) {
       const touchedAt = new Date(Date.now() + 1000 + i * 1000);
@@ -641,7 +803,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('emits distinct timestamps for multiple turns flushed in a single FS event', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     createGlobalStorageFixture(
       globalDbPath,
@@ -659,7 +824,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
     expect(events).toHaveLength(2);
     const timestamps = events.map((e) => e.timestamp);
     expect(new Set(timestamps).size).toBe(2);
-    expect(timestamps).toEqual([new Date(1001).toISOString(), new Date(1003).toISOString()]);
+    expect(timestamps).toEqual([
+      new Date(1001).toISOString(),
+      new Date(1003).toISOString(),
+    ]);
   });
 
   it('populates workspace_id when the per-workspace inference index has the composer', async () => {
@@ -668,7 +836,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
     mkdirSync(wsDir, { recursive: true });
     const wsDbPath = join(wsDir, 'state.vscdb');
 
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     // Create the workspace DB AFTER the watcher is ready so chokidar sees the
     // 'add' event and the workspace-inference handler runs before the global
@@ -696,7 +867,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('populates session_id as the composer_id (canonical alias for cross-source correlation)', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     createGlobalStorageFixture(globalDbPath, [
       { composer_id: 'composer-xyz', bubble_id: 'b1', type: 1, text: 'q' },
@@ -711,7 +885,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('flattens turn.context paths into a deduped metadata.files_referenced array', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     createGlobalStorageFixture(globalDbPath, [
       {
@@ -745,7 +922,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('omits metadata.files_referenced when no bubble carried any file references', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     createGlobalStorageFixture(globalDbPath, [
       { composer_id: 'c1', bubble_id: 'b1', type: 1, text: 'hi' },
@@ -760,7 +940,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
 
   it('end-to-end: chronological appends produce ordered, non-duplicate turns', async () => {
     createGlobalStorageFixture(globalDbPath, []);
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     const turnPairs: FixtureBubble[][] = [
       [
@@ -808,10 +991,17 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
       source: `fs:${globalDbPath}`,
       timestamp: '2026-04-30T00:00:00Z',
       content: 'USER: old-q\n\nASSISTANT: old-a',
-      metadata: { composer_id: 'c1', user_bubble_id: 'b1', assistant_bubble_id: 'b2' },
+      metadata: {
+        composer_id: 'c1',
+        user_bubble_id: 'b1',
+        assistant_bubble_id: 'b2',
+      },
     });
 
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
 
     appendBubble(globalDbPath, {
       composer_id: 'c1',
@@ -839,7 +1029,10 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
   });
 
   it('stop() resolves cleanly and prevents further events', async () => {
-    handle = await startCursorExtractor(storage, { globalDbPath, workspacePrefix });
+    handle = await startCursorExtractor(storage, {
+      globalDbPath,
+      workspacePrefix,
+    });
     createGlobalStorageFixture(globalDbPath, [
       { composer_id: 'c1', bubble_id: 'b1', type: 1, text: 'q' },
       { composer_id: 'c1', bubble_id: 'b2', type: 2, text: 'a' },
@@ -864,6 +1057,681 @@ describe.skip('startCursorExtractor (lifecycle + integration)', () => {
     });
     await new Promise((r) => setTimeout(r, 300));
     expect(await storage.count()).toBe(before);
+  });
+});
+
+describe('startCursorExtractor bounded checkpoint startup', () => {
+  class FakeCursorWatcher extends EventEmitter {
+    async close(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    asFsWatcher(): FSWatcher {
+      return this as unknown as FSWatcher;
+    }
+  }
+
+  class NoHistoryQueryStorage extends MemoryStorage {
+    queryCalls = 0;
+
+    override async query(): Promise<never> {
+      this.queryCalls += 1;
+      throw new Error('history query is forbidden during Cursor startup');
+    }
+  }
+
+  let dir: string;
+  let dbPath: string;
+  let workspacePrefix: string;
+  let originalFsPaths: string[];
+  let handle: CursorExtractorHandle | null = null;
+
+  beforeEach(() => {
+    originalFsPaths = snapshotFsPaths();
+    dir = tmpDir();
+    dbPath = join(dir, 'state.vscdb');
+    workspacePrefix = `${dir}/workspaceStorage/`;
+    mkdirSync(workspacePrefix, { recursive: true });
+    (CAPTURED_SOURCES.fs_paths as unknown as string[]).push(`${dir}/`);
+  });
+
+  afterEach(async () => {
+    if (handle !== null) {
+      await handle.stop();
+      handle = null;
+    }
+    resetAllowlist();
+    restoreFsPaths(originalFsPaths);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('uses exact checkpoints only and keeps every SQL page/queue/read below configured caps', async () => {
+    const storage = new NoHistoryQueryStorage();
+    createGlobalStorageFixture(
+      dbPath,
+      ['c1', 'c2', 'c3'].flatMap((composer_id) => [
+        {
+          composer_id,
+          bubble_id: 'u1',
+          type: 1 as const,
+          text: `q-${composer_id}`,
+        },
+        {
+          composer_id,
+          bubble_id: 'a1',
+          type: 2 as const,
+          text: `a-${composer_id}`,
+        },
+      ]),
+    );
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 2,
+        maxScanPagesPerSlice: 1,
+        maxPendingComposers: 1,
+        composerPageRows: 1,
+        composerMaxRows: 4,
+        composerMaxStoredBytes: 32 * 1024,
+        composerMaxPages: 4,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(storage.queryCalls).toBe(0);
+    expect(await storage.count()).toBe(3);
+    const metrics = handle.__testHooks!.getBoundedReadMetrics();
+    expect(metrics.maxScanPageRows).toBeLessThanOrEqual(2);
+    expect(metrics.maxPendingComposers).toBeLessThanOrEqual(1);
+    expect(metrics.maxComposerRows).toBeLessThanOrEqual(4);
+    expect(metrics.maxComposerStoredBytes).toBeLessThanOrEqual(32 * 1024);
+    expect(metrics.maxComposerPages).toBeLessThanOrEqual(4);
+    expect(handle.getHealth()).toMatchObject({
+      state: 'healthy',
+      reconciliationPending: true,
+    });
+    expect(handle.getHealth().queueDepth).toBeLessThanOrEqual(1);
+  });
+
+  it('pages sparse cursorDiskKV data by raw rowid before filtering', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare('INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)');
+    insert.run(
+      'composerData:c1',
+      JSON.stringify({
+        composerId: 'c1',
+        createdAt: 0,
+        fullConversationHeadersOnly: [
+          { bubbleId: 'u1', type: 1 },
+          { bubbleId: 'a1', type: 2 },
+        ],
+      }),
+    );
+    for (let i = 0; i < 40; i += 1) {
+      insert.run(`irrelevant-before:${String(i).padStart(3, '0')}`, 'x');
+    }
+    insert.run(
+      'bubbleId:c1:u1',
+      JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'sparse question' }),
+    );
+    // This oversized irrelevant key proves discovery never materializes the
+    // full key merely to decide that it is not a Cursor conversation row.
+    insert.run(`irrelevant-huge:${'x'.repeat(32 * 1024)}`, 'x');
+    for (let i = 0; i < 40; i += 1) {
+      insert.run(`irrelevant-after:${String(i).padStart(3, '0')}`, 'x');
+    }
+    insert.run(
+      'bubbleId:c1:a1',
+      JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: 'sparse answer' }),
+    );
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 3,
+        maxScanPagesPerSlice: 1,
+        maxPendingComposers: 1,
+        composerPageRows: 2,
+        composerMaxRows: 6,
+        composerMaxPages: 3,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(1);
+    const event = (await storage.query({}))[0]!;
+    expect(event.content).toBe('USER: sparse question\n\nASSISTANT: sparse answer');
+    const metrics = handle.__testHooks!.getBoundedReadMetrics();
+    expect(metrics.maxScanPageRows).toBeLessThanOrEqual(3);
+    expect(metrics.maxComposerRows).toBeLessThanOrEqual(6);
+    expect(metrics.maxComposerPages).toBeLessThanOrEqual(3);
+    expect(handle.getHealth().state).toBe('healthy');
+  });
+
+  it('recovers a migrated checkpoint user from composer metadata without a backwards scan', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    insert.run(
+      'composerData:c1',
+      JSON.stringify({
+        composerId: 'c1',
+        createdAt: 0,
+        fullConversationHeadersOnly: [
+          { bubbleId: 'u1', type: 1 },
+          { bubbleId: 'a1', type: 2 },
+          { bubbleId: 'a2', type: 2 },
+        ],
+      }),
+    );
+    insert.run(
+      'bubbleId:c1:u1',
+      JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'question' }),
+    );
+    for (let i = 0; i < 40; i += 1) insert.run(`noise:${i}`, 'x');
+    insert.run(
+      'bubbleId:c1:a1',
+      JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: 'first' }),
+    );
+    insert.run(
+      'bubbleId:c1:a2',
+      JSON.stringify({ _v: 3, type: 2, bubbleId: 'a2', text: 'continued' }),
+    );
+    db.close();
+
+    // Legacy/migrated checkpoints have a cursor but no user_bubble_id state.
+    await storage.upsertCaptureCheckpoint({
+      extractor: 'cursor',
+      resource: dbPath,
+      partition: 'c1',
+      cursor: 'a1',
+      position: 0,
+      state: {},
+      updated_at: new Date().toISOString(),
+    });
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 4,
+        maxScanPagesPerSlice: 1,
+        composerPageRows: 2,
+        composerMaxRows: 2,
+        composerMaxPages: 1,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(1);
+    const event = (await storage.query({}))[0]!;
+    expect(event.content).toBe('USER: question\n\nASSISTANT: continued');
+    expect(event.metadata).toMatchObject({
+      user_bubble_id: 'u1',
+      assistant_bubble_id: 'a2',
+      is_continuation: true,
+      continuation_of_assistant_bubble_id: 'a1',
+    });
+    expect(handle.getHealth().state).toBe('healthy');
+    expect(
+      handle.__testHooks!.getBoundedReadMetrics().maxComposerPages,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('resumes a persisted reconciliation cursor on a 10k-row restart within one fixed budget', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    db.transaction(() => {
+      for (let i = 0; i < 10_000; i += 1) {
+        insert.run(`noise:${String(i).padStart(5, '0')}`, 'x');
+      }
+    })();
+    db.close();
+
+    await storage.upsertCaptureCheckpoint({
+      extractor: 'cursor',
+      resource: dbPath,
+      partition: '__scan__',
+      position: 10_000,
+      state: {
+        reconciliation_row_id: 5_000,
+        reconciliation_target_row_id: 10_000,
+      },
+      updated_at: new Date().toISOString(),
+    });
+    const options = {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: { scanPageRows: 10, maxScanPagesPerSlice: 2 },
+    } as const;
+
+    handle = await startCursorExtractor(storage, options);
+    await handle.initialCatchUp;
+    expect(handle.__testHooks!.getBoundedReadMetrics()).toMatchObject({
+      deltaPages: 0,
+      reconciliationPages: 2,
+      scanPages: 2,
+    });
+    const first = await storage.getCaptureCheckpoint({
+      extractor: 'cursor',
+      resource: dbPath,
+      partition: '__scan__',
+    });
+    expect(first?.state['reconciliation_row_id']).toBe(5_020);
+    expect(first?.state['reconciliation_target_row_id']).toBe(10_000);
+    await handle.stop();
+    handle = null;
+
+    handle = await startCursorExtractor(storage, options);
+    await handle.initialCatchUp;
+    expect(handle.__testHooks!.getBoundedReadMetrics()).toMatchObject({
+      deltaPages: 0,
+      reconciliationPages: 2,
+      scanPages: 2,
+    });
+    const second = await storage.getCaptureCheckpoint({
+      extractor: 'cursor',
+      resource: dbPath,
+      partition: '__scan__',
+    });
+    expect(second?.state['reconciliation_row_id']).toBe(5_040);
+    expect(second?.state['reconciliation_target_row_id']).toBe(10_000);
+    expect(handle.getHealth().reconciliationPending).toBe(true);
+  });
+
+  it('caps every live tick while delta is immediate and old in-place rows are eventually revisited', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    for (let i = 0; i < 20; i += 1) insert.run(`noise:${i}`, 'x');
+    insert.run(
+      'composerData:old',
+      JSON.stringify({
+        composerId: 'old',
+        createdAt: 0,
+        fullConversationHeadersOnly: [
+          { bubbleId: 'u1', type: 1 },
+          { bubbleId: 'a1', type: 2 },
+        ],
+      }),
+    );
+    insert.run(
+      'bubbleId:old:u1',
+      JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'old q' }),
+    );
+    insert.run(
+      'bubbleId:old:a1',
+      JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: '' }),
+    );
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: { scanPageRows: 4, maxScanPagesPerSlice: 1 },
+    });
+    await handle.initialCatchUp;
+    expect(await storage.count()).toBe(0);
+
+    const update = new Database(dbPath);
+    update.prepare('UPDATE cursorDiskKV SET value = ? WHERE key = ?').run(
+      JSON.stringify({
+        _v: 3,
+        type: 2,
+        bubbleId: 'a1',
+        text: 'old answer completed in place',
+      }),
+      'bubbleId:old:a1',
+    );
+    update.close();
+    appendBubble(dbPath, {
+      composer_id: 'new',
+      bubble_id: 'u1',
+      type: 1,
+      text: 'new q',
+    });
+    appendBubble(dbPath, {
+      composer_id: 'new',
+      bubble_id: 'a1',
+      type: 2,
+      text: 'new answer',
+    });
+
+    let previousMetrics = handle.__testHooks!.getBoundedReadMetrics();
+    await handle.__testHooks!.triggerRepoll();
+    let currentMetrics = handle.__testHooks!.getBoundedReadMetrics();
+    expect(currentMetrics.deltaPages - previousMetrics.deltaPages).toBe(1);
+    expect(
+      currentMetrics.reconciliationPages -
+        previousMetrics.reconciliationPages,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      (await storage.query({})).some(
+        (event) => event.metadata?.['composer_id'] === 'new',
+      ),
+    ).toBe(true);
+
+    for (let tick = 0; tick < 8; tick += 1) {
+      if (
+        (await storage.query({})).some(
+          (event) => event.metadata?.['composer_id'] === 'old',
+        )
+      ) {
+        break;
+      }
+      previousMetrics = currentMetrics;
+      await handle.__testHooks!.triggerRepoll();
+      currentMetrics = handle.__testHooks!.getBoundedReadMetrics();
+      expect(currentMetrics.deltaPages - previousMetrics.deltaPages).toBe(0);
+      expect(
+        currentMetrics.reconciliationPages -
+          previousMetrics.reconciliationPages,
+      ).toBeLessThanOrEqual(1);
+      expect(currentMetrics.scanPages - previousMetrics.scanPages).toBeLessThanOrEqual(
+        1,
+      );
+    }
+    expect(
+      (await storage.query({})).some(
+        (event) => event.metadata?.['composer_id'] === 'old',
+      ),
+    ).toBe(true);
+  });
+
+  it('uses rowid seek plans with no temporary sort for every raw list page', () => {
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'q' },
+      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'a' },
+    ]);
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const plans = [
+        db
+          .prepare(`EXPLAIN QUERY PLAN ${CURSOR_RAW_ROWID_ASC_PAGE_SQL}`)
+          .all(0, Number.MAX_SAFE_INTEGER, 8),
+        db
+          .prepare(`EXPLAIN QUERY PLAN ${CURSOR_RAW_ROWID_DESC_PAGE_SQL}`)
+          .all(Number.MAX_SAFE_INTEGER, 8),
+      ] as Array<Array<{ detail: string }>>;
+      for (const plan of plans) {
+        const details = plan.map((row) => row.detail).join('\n');
+        expect(details).toMatch(/INTEGER PRIMARY KEY/);
+        expect(details).not.toMatch(/TEMP B-TREE|USE TEMP/i);
+      }
+      expect(CURSOR_RAW_ROWID_ASC_PAGE_SQL).not.toMatch(/LIKE|ORDER BY key/i);
+      expect(CURSOR_RAW_ROWID_DESC_PAGE_SQL).not.toMatch(/LIKE|ORDER BY key/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('resumes bounded rotating reconciliation on restart to recover an in-place KV update', async () => {
+    const storage = new NoHistoryQueryStorage();
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'question' },
+      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: '' },
+    ]);
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: { scanPageRows: 1, maxScanPagesPerSlice: 1 },
+    });
+    await handle.initialCatchUp;
+    expect(await storage.count()).toBe(0);
+    await handle.stop();
+    handle = null;
+
+    const db = new Database(dbPath);
+    db.prepare('UPDATE cursorDiskKV SET value = ? WHERE key = ?').run(
+      JSON.stringify({
+        _v: 3,
+        type: 2,
+        bubbleId: 'a1',
+        text: 'finished answer',
+      }),
+      'bubbleId:c1:a1',
+    );
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: { scanPageRows: 1, maxScanPagesPerSlice: 1 },
+    });
+    await handle.initialCatchUp;
+
+    expect(storage.queryCalls).toBe(0);
+    expect(await storage.count()).toBe(1);
+    expect(handle.getHealth().state).toBe('healthy');
+  });
+
+  it('restarts sparse per-composer progress before checking an in-place update', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare('INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)');
+    insert.run(
+      'composerData:c1',
+      JSON.stringify({
+        composerId: 'c1',
+        createdAt: 0,
+        fullConversationHeadersOnly: [
+          { bubbleId: 'u1', type: 1 },
+          { bubbleId: 'a1', type: 2 },
+        ],
+      }),
+    );
+    for (let i = 0; i < 12; i += 1) insert.run(`noise-a:${i}`, 'x');
+    insert.run(
+      'bubbleId:c1:u1',
+      JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'question' }),
+    );
+    for (let i = 0; i < 12; i += 1) insert.run(`noise-b:${i}`, 'x');
+    insert.run(
+      'bubbleId:c1:a1',
+      JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: '' }),
+    );
+    for (let i = 0; i < 12; i += 1) insert.run(`noise-c:${i}`, 'x');
+    db.close();
+
+    const extractorOptions = {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 2,
+        maxScanPagesPerSlice: 1,
+        composerPageRows: 2,
+        composerMaxRows: 4,
+        composerMaxPages: 2,
+      },
+    } as const;
+    handle = await startCursorExtractor(storage, extractorOptions);
+    await handle.initialCatchUp;
+    expect(await storage.count()).toBe(0);
+    await handle.stop();
+    handle = null;
+
+    const update = new Database(dbPath);
+    update.prepare('UPDATE cursorDiskKV SET value = ? WHERE key = ?').run(
+      JSON.stringify({
+        _v: 3,
+        type: 2,
+        bubbleId: 'a1',
+        text: 'finished after restart',
+      }),
+      'bubbleId:c1:a1',
+    );
+    update.close();
+
+    handle = await startCursorExtractor(storage, extractorOptions);
+    await handle.initialCatchUp;
+    for (let i = 0; i < 24 && (await storage.count()) === 0; i += 1) {
+      await handle.__testHooks!.triggerRepoll();
+    }
+    expect(await storage.count()).toBe(1);
+    expect((await storage.query({}))[0]?.content).toContain(
+      'finished after restart',
+    );
+    expect(handle.getHealth().state).toBe('healthy');
+  });
+
+  it('carries a trailing user row across a hard composer window without losing the turn', async () => {
+    const storage = new MemoryStorage();
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c1', bubble_id: 'orphan-1', type: 2, text: 'orphan 1' },
+      { composer_id: 'c1', bubble_id: 'orphan-2', type: 2, text: 'orphan 2' },
+      { composer_id: 'c1', bubble_id: 'orphan-3', type: 2, text: 'orphan 3' },
+      {
+        composer_id: 'c1',
+        bubble_id: 'u1',
+        type: 1,
+        text: 'boundary question',
+      },
+      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'boundary answer' },
+    ]);
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        composerPageRows: 2,
+        composerMaxRows: 4,
+        composerMaxPages: 2,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(1);
+    const event = (await storage.query({}))[0]!;
+    expect(event.content).toBe(
+      'USER: boundary question\n\nASSISTANT: boundary answer',
+    );
+    expect(handle.getHealth().state).toBe('healthy');
+    expect(
+      handle.__testHooks!.getBoundedReadMetrics().maxComposerRows,
+    ).toBeLessThanOrEqual(4);
+  });
+
+  it('settles startup on watcher error and retains unhealthy health', async () => {
+    const watcher = new FakeCursorWatcher();
+    handle = await startCursorExtractor(new MemoryStorage(), {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      __watcherFactory: () => {
+        queueMicrotask(() =>
+          watcher.emit('error', new Error('synthetic watcher startup error')),
+        );
+        return watcher.asFsWatcher();
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(handle.getHealth()).toMatchObject({
+      state: 'unhealthy',
+      errorCount: 1,
+      lastError: 'synthetic watcher startup error',
+    });
+  });
+
+  it('reports a missing optional Cursor database explicitly as absent', async () => {
+    const watcher = new FakeCursorWatcher();
+    handle = await startCursorExtractor(new MemoryStorage(), {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      __watcherFactory: () => {
+        queueMicrotask(() => watcher.emit('ready'));
+        return watcher.asFsWatcher();
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(handle.getHealth()).toMatchObject({
+      state: 'healthy',
+      sourceStatus: 'absent',
+      errorCount: 0,
+      lastError: null,
+    });
+  });
+
+  it('reports an existing incompatible Cursor database as unhealthy', async () => {
+    createSchemaUnrecognizedFixture(dbPath);
+    const watcher = new FakeCursorWatcher();
+    handle = await startCursorExtractor(new MemoryStorage(), {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      __watcherFactory: () => {
+        queueMicrotask(() => watcher.emit('ready'));
+        return watcher.asFsWatcher();
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(handle.getHealth()).toMatchObject({
+      state: 'unhealthy',
+      sourceStatus: 'active',
+      errorCount: 1,
+    });
+    expect(handle.getHealth().lastError).toMatch(/schema is incompatible/);
+  });
+
+  it('reports an existing unreadable/non-SQLite Cursor database as unhealthy', async () => {
+    writeFileSync(dbPath, 'not a sqlite database');
+    const watcher = new FakeCursorWatcher();
+    handle = await startCursorExtractor(new MemoryStorage(), {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      __watcherFactory: () => {
+        queueMicrotask(() => watcher.emit('ready'));
+        return watcher.asFsWatcher();
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(handle.getHealth()).toMatchObject({
+      state: 'unhealthy',
+      sourceStatus: 'active',
+      errorCount: 1,
+    });
+    expect(handle.getHealth().lastError).toMatch(/schema is incompatible/);
   });
 });
 
@@ -1037,7 +1905,9 @@ describe('parseBubbleRow fallback chain (AC2 — item 034)', () => {
     ]);
     const turns = await extractCursorTurns(dbPath, new Map());
     expect(turns).toHaveLength(0);
-    expect(captured.writes.join('')).not.toContain('missing_text_and_fallbacks');
+    expect(captured.writes.join('')).not.toContain(
+      'missing_text_and_fallbacks',
+    );
     expect(captured.writes.join('')).not.toContain('unrecognized_bubble_shape');
   });
 
@@ -1047,7 +1917,12 @@ describe('parseBubbleRow fallback chain (AC2 — item 034)', () => {
   it('case (i): multi-bubble cluster records bubble_text_sources per bubble', async () => {
     createGlobalStorageFixture(dbPath, [
       { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'multi-step' },
-      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'I will think then code' },
+      {
+        composer_id: 'c1',
+        bubble_id: 'a1',
+        type: 2,
+        text: 'I will think then code',
+      },
       {
         composer_id: 'c1',
         bubble_id: 'a2',
@@ -1066,7 +1941,11 @@ describe('parseBubbleRow fallback chain (AC2 — item 034)', () => {
     const turns = await extractCursorTurns(dbPath, new Map());
     expect(turns).toHaveLength(1);
     expect(turns[0]?.assistant_bubble_ids).toEqual(['a1', 'a2', 'a3']);
-    expect(turns[0]?.bubble_text_sources).toEqual(['text', 'toolFormerData', 'codeBlocks']);
+    expect(turns[0]?.bubble_text_sources).toEqual([
+      'text',
+      'toolFormerData',
+      'codeBlocks',
+    ]);
   });
 
   // Fixture (j) — single-bubble 'text' cluster → bubble_text_sources omitted.
@@ -1085,17 +1964,27 @@ describe('parseBubbleRow fallback chain (AC2 — item 034)', () => {
   // throw" contract from Implementation Notes.
   it('parsers return null on shape mismatch and never throw', () => {
     expect(tryExtractToolFormerText({})).toBeNull();
-    expect(tryExtractToolFormerText({ toolFormerData: 'string-not-object' })).toBeNull();
-    expect(tryExtractToolFormerText({ toolFormerData: { text: '' } })).toBeNull();
-    expect(tryExtractToolFormerText({ toolFormerData: { params: {} } })).toBeNull();
+    expect(
+      tryExtractToolFormerText({ toolFormerData: 'string-not-object' }),
+    ).toBeNull();
+    expect(
+      tryExtractToolFormerText({ toolFormerData: { text: '' } }),
+    ).toBeNull();
+    expect(
+      tryExtractToolFormerText({ toolFormerData: { params: {} } }),
+    ).toBeNull();
 
     expect(tryExtractFileDiffText({})).toBeNull();
     expect(tryExtractFileDiffText({ attachedHumanChanges: {} })).toBeNull();
-    expect(tryExtractFileDiffText({ attachedHumanChanges: { fileDiff: '' } })).toBeNull();
+    expect(
+      tryExtractFileDiffText({ attachedHumanChanges: { fileDiff: '' } }),
+    ).toBeNull();
 
     expect(tryExtractCodeBlocksText({})).toBeNull();
     expect(tryExtractCodeBlocksText({ codeBlocks: [] })).toBeNull();
-    expect(tryExtractCodeBlocksText({ codeBlocks: [{ uri: { path: '/p' } }] })).toBeNull();
+    expect(
+      tryExtractCodeBlocksText({ codeBlocks: [{ uri: { path: '/p' } }] }),
+    ).toBeNull();
 
     expect(tryExtractThinkingText({})).toBeNull();
     expect(tryExtractThinkingText({ thinkingContent: '' })).toBeNull();
@@ -1122,7 +2011,12 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
     storage = new MemoryStorage();
     captured = captureStdout();
     (CAPTURED_SOURCES.fs_paths as unknown as string[]).push(`${dir}/`);
-    vi.useFakeTimers();
+    // Startup catch-up yields with setImmediate between bounded SQL slices.
+    // Fake only the timer APIs these repoll tests control; setImmediate must
+    // stay real so the bounded startup state machine can advance.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
   });
 
   afterEach(async () => {
@@ -1137,12 +2031,13 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // Test 1 — first tick after checkpoint reset captures seeded fixture.
-  // R2 Codex Finding 3: the checkpoint auto-inits at extractor start to
-  // the current family-max mtime, so a naive "seed → start → trigger →
-  // expect atom" short-circuits. The fix is to reset the checkpoint via
-  // __testHooks.setLastSeenScanMtime(0) immediately after start.
-  it('test 1: first tick after checkpoint reset captures seeded fixture (1 pair → 1 atom)', async () => {
+  // Test 1 — a direct periodic tick captures the seeded fixture. Resetting
+  // the diagnostic mtime checkpoint also verifies that the tick advances it;
+  // capture/reconciliation no longer depends on an mtime gate.
+  it('test 1: configured custom DB is extractor-scoped and the first tick captures it', async () => {
+    resetAllowlist();
+    restoreFsPaths(originalFsPaths);
+    expect(CAPTURED_SOURCES.fs_paths).not.toContain(`${dir}/`);
     createGlobalStorageFixture(dbPath, [
       { composer_id: 'c1', bubble_id: 'b1', type: 1, text: 'q' },
       { composer_id: 'c1', bubble_id: 'b2', type: 2, text: 'a' },
@@ -1156,10 +2051,12 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
     handle.__testHooks!.setLastSeenScanMtime(0);
     await handle.__testHooks!.triggerRepoll();
     expect(await storage.count()).toBe(1);
+    expect((await storage.query({ order: 'asc' }))[0]!.source).toBe(`fs:${dbPath}`);
   });
 
-  // Test 2 — no mtime change → short-circuit.
-  it('test 2: second tick with no mtime change short-circuits (no new atom)', async () => {
+  // Test 2 — no mtime change still advances bounded reconciliation without
+  // duplicating an already captured atom.
+  it('test 2: second tick with no mtime change advances reconciliation without a duplicate atom', async () => {
     createGlobalStorageFixture(dbPath, [
       { composer_id: 'c1', bubble_id: 'b1', type: 1, text: 'q' },
       { composer_id: 'c1', bubble_id: 'b2', type: 2, text: 'a' },
@@ -1194,8 +2091,18 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
     await handle.__testHooks!.triggerRepoll();
     expect(await storage.count()).toBe(1);
 
-    appendBubble(dbPath, { composer_id: 'c1', bubble_id: 'b3', type: 1, text: 'q2' });
-    appendBubble(dbPath, { composer_id: 'c1', bubble_id: 'b4', type: 2, text: 'a2' });
+    appendBubble(dbPath, {
+      composer_id: 'c1',
+      bubble_id: 'b3',
+      type: 1,
+      text: 'q2',
+    });
+    appendBubble(dbPath, {
+      composer_id: 'c1',
+      bubble_id: 'b4',
+      type: 2,
+      text: 'a2',
+    });
     // Force state.vscdb mtime forward to ensure the guard sees an advance.
     const future = new Date(Date.now() + 5000);
     utimesSync(dbPath, future, future);
@@ -1243,8 +2150,8 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
     // the pair.
     expect(await storage.count()).toBe(1);
 
-    // Counter: touch state.vscdb to an OLDER timestamp, with no -wal
-    // advance → maxMtime falls below checkpoint → short-circuit.
+    // Counter: an older family mtime does not move the mtime checkpoint even
+    // though the independent rotating reconciliation page still advances.
     const olderHandle = await startCursorExtractor(new MemoryStorage(), {
       globalDbPath: dbPath,
       workspacePrefix: `${dir}/workspaceStorage/`,
@@ -1252,15 +2159,18 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
       exposeTestHooks: true,
     });
     try {
-      const olderStorage = (olderHandle as unknown as { _storage?: never })._storage;
+      const olderStorage = (olderHandle as unknown as { _storage?: never })
+        ._storage;
       void olderStorage;
       const veryFuture = new Date(Date.now() + 999_999);
       olderHandle.__testHooks!.setLastSeenScanMtime(veryFuture.getTime());
-      // No file mutation; current max < checkpoint → short-circuit.
+      // No file mutation; current max remains below the diagnostic checkpoint.
       const beforeTrigger = olderHandle.__testHooks!.getLastSeenScanMtime();
       await olderHandle.__testHooks!.triggerRepoll();
-      // Checkpoint unchanged (guard short-circuited before updating it).
-      expect(olderHandle.__testHooks!.getLastSeenScanMtime()).toBe(beforeTrigger);
+      // The mtime checkpoint remains monotonic.
+      expect(olderHandle.__testHooks!.getLastSeenScanMtime()).toBe(
+        beforeTrigger,
+      );
     } finally {
       await olderHandle.stop();
     }
@@ -1274,10 +2184,20 @@ describe('startCursorExtractor periodic re-poll (AC1 — item 034)', () => {
   // silently dropped; the second atom never appeared.
   it('item 036: continuation cluster between ticks emits a second atom with continuation metadata', async () => {
     createGlobalStorageFixture(dbPath, [
-      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'walk through the change' },
+      {
+        composer_id: 'c1',
+        bubble_id: 'u1',
+        type: 1,
+        text: 'walk through the change',
+      },
       { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'starting...' },
       { composer_id: 'c1', bubble_id: 'a2', type: 2, text: 'mid-stream' },
-      { composer_id: 'c1', bubble_id: 'a3', type: 2, text: 'tick-1 last bubble' },
+      {
+        composer_id: 'c1',
+        bubble_id: 'a3',
+        type: 2,
+        text: 'tick-1 last bubble',
+      },
     ]);
     handle = await startCursorExtractor(storage, {
       globalDbPath: dbPath,
@@ -1398,7 +2318,9 @@ describe('startCursorExtractor 034 revert-mechanism (AC3 — item 034)', () => {
     storage = new MemoryStorage();
     captured = captureStdout();
     (CAPTURED_SOURCES.fs_paths as unknown as string[]).push(`${dir}/`);
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
   });
 
   afterEach(async () => {
@@ -1626,7 +2548,9 @@ describe('startCursorExtractor repo_root resolution (item 037 / AC1)', () => {
 
     const atomsAfterTick1 = await storage.query({});
     expect(atomsAfterTick1.length).toBe(1);
-    expect(atomsAfterTick1[0]!.metadata?.['repo_root']).toBe('/tmp/echo-test-repo');
+    expect(atomsAfterTick1[0]!.metadata?.['repo_root']).toBe(
+      '/tmp/echo-test-repo',
+    );
     expect(stage2Calls).toBe(1);
 
     // Cache prevents re-walk on the next turn for the same composer.
@@ -1751,7 +2675,9 @@ describe('startCursorExtractor repo_root resolution (item 037 / AC1)', () => {
 
     const atomsAfterTick2 = await storage.query({});
     expect(atomsAfterTick2.length).toBe(2);
-    const newest = atomsAfterTick2.find((a) => a.metadata?.['user_bubble_id'] === 'b3');
+    const newest = atomsAfterTick2.find(
+      (a) => a.metadata?.['user_bubble_id'] === 'b3',
+    );
     expect(newest).toBeDefined();
     // Registry priority: Stage 1's result overwrote the Stage 2 cache.
     expect(newest!.metadata?.['repo_root']).toBe('/tmp/from-registry');
@@ -1763,7 +2689,10 @@ describe('startCursorExtractor repo_root resolution (item 037 / AC1)', () => {
     // URI malformed, mocked here as null).
     const wsDir = join(dir, 'workspaceStorage', 'WS-MAL');
     mkdirSync(wsDir, { recursive: true });
-    writeFileSync(join(wsDir, 'workspace.json'), JSON.stringify({ folder: 'not-a-file-uri' }));
+    writeFileSync(
+      join(wsDir, 'workspace.json'),
+      JSON.stringify({ folder: 'not-a-file-uri' }),
+    );
     const wsDb = new Database(join(wsDir, 'state.vscdb'));
     wsDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)');
     wsDb

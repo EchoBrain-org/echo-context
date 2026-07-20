@@ -38,12 +38,10 @@ describe('AC6 — source independence', () => {
   });
 
   it('no src/ file READS a sibling/live-state path at import/module scope (escape)', () => {
-    // Source-independence = no runtime escape, not "no incidental string". The
-    // byte-exact ported `src/capture/sources.ts` carries a source default
-    // `DEFAULT_GIT_REPOS = ['~/Desktop/Project_echo/']` — a config default that
-    // ECHO_CONTEXT_HOME/config overrides, not a live-state read; it is out of
-    // scope to change (byte-exact port; portability is a later config item). So
-    // this checks for actual live-DB / sibling-repo READS, not string mentions.
+    // Source-independence = no runtime escape, not "no incidental string".
+    // Git capture now has an empty built-in default and is populated only by
+    // the context-scoped capture-sources config; this check separately guards
+    // against actual live-DB / sibling-repository reads.
     const escapeRe = /(readFileSync|existsSync|openSync|new\s+SqliteStorage)\s*\([^)]*(echo-brain|echo-loop|Library\/Application Support\/ECHO)/;
     for (const f of srcFiles) {
       const text = execFileSync(GIT, ['-C', ROOT, 'cat-file', 'blob', `HEAD:${f}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });

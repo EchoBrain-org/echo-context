@@ -112,6 +112,34 @@ describe('canonicalizeTimestamps (item 022 Bug A migration)', () => {
     expect(result.converted).toBe(0);
   });
 
+  it('converts more than one bounded page without materializing the full ledger', () => {
+    const insert = db.prepare(
+      "INSERT INTO events (id, source, timestamp, content) VALUES (?, 'git:test', ?, 'x')",
+    );
+    const seedMany = db.transaction(() => {
+      for (let index = 0; index < 600; index += 1) {
+        insert.run(`paged-${index}`, '2026-05-08T00:18:26.123-07:00');
+      }
+    });
+    seedMany();
+    expect(canonicalizeTimestamps(db)).toEqual({ converted: 600 });
+    expect(
+      (db
+        .prepare("SELECT count(*) AS n FROM events WHERE timestamp NOT LIKE '%Z'")
+        .get() as { n: number }).n,
+    ).toBe(0);
+  });
+
+  it('rejects an oversized legacy timestamp before its text crosses into JS', () => {
+    seed(db, [{ id: 'oversized', ts: 'x'.repeat(129) }]);
+    expect(() => canonicalizeTimestamps(db)).toThrow(/descriptor_field_too_large/);
+    expect(
+      (db.prepare('SELECT timestamp FROM events WHERE id = ?').get('oversized') as {
+        timestamp: string;
+      }).timestamp,
+    ).toHaveLength(129);
+  });
+
   it('preserves row content unchanged (only timestamp updates)', () => {
     db.prepare(
       "INSERT INTO events (id, source, timestamp, content) VALUES ('a', 'git:repo', '2026-05-08T00:18:26.123-07:00', 'commit X')",

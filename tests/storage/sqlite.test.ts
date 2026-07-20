@@ -1,13 +1,23 @@
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CaptureEvent } from '../../src/storage/interface.js';
-import { migrate } from '../../src/storage/migrate.js';
+import { loadMigrations, migrate } from '../../src/storage/migrate.js';
 import { SqliteStorage } from '../../src/storage/sqlite.js';
 
 const MIGRATIONS_DIR = new URL('../../src/storage/migrations/', import.meta.url).pathname;
+const MIGRATIONS = loadMigrations(MIGRATIONS_DIR);
+const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
+const INITIAL_MIGRATION = new URL(
+  '../../src/storage/migrations/0001_initial.sql',
+  import.meta.url,
+).pathname;
+const CHECKPOINT_MIGRATION = new URL(
+  '../../src/storage/migrations/0002_capture_checkpoints.sql',
+  import.meta.url,
+).pathname;
 
 function eventInput(overrides: Partial<Omit<CaptureEvent, 'id'>> = {}): Omit<CaptureEvent, 'id'> {
   return {
@@ -339,25 +349,44 @@ describe('SqliteStorage durability', () => {
 });
 
 describe('migration runner', () => {
-  it('starts at user_version 0 on a fresh DB and applies 0001 to reach 1', () => {
+  it('starts at user_version 0 on a fresh DB and applies all packaged migrations', () => {
     const db = new Database(':memory:');
     expect(db.pragma('user_version', { simple: true })).toBe(0);
     const v = migrate(db, MIGRATIONS_DIR);
-    expect(v).toBe(1);
-    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    expect(v).toBe(LATEST_SCHEMA_VERSION);
+    expect(db.pragma('temp_store', { simple: true })).toBe(1);
+    expect(db.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
-      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='events'`)
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type='table' AND name IN ('events', 'capture_checkpoints')
+         ORDER BY name`,
+      )
       .all() as { name: string }[];
-    expect(tables).toHaveLength(1);
+    expect(tables.map((row) => row.name)).toEqual(['capture_checkpoints', 'events']);
     db.close();
   });
 
   it('is a no-op on a DB already at the latest version', () => {
     const db = new Database(':memory:');
     migrate(db, MIGRATIONS_DIR);
-    const v2 = migrate(db, MIGRATIONS_DIR);
-    expect(v2).toBe(1);
-    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    const latest = migrate(db, MIGRATIONS_DIR);
+    expect(latest).toBe(LATEST_SCHEMA_VERSION);
+    expect(db.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
+    db.close();
+  });
+
+  it('fails closed when user_version is newer than the package schema', () => {
+    const db = new Database(':memory:');
+    db.exec('CREATE TABLE future_authority (value TEXT NOT NULL)');
+    db.prepare('INSERT INTO future_authority (value) VALUES (?)').run('preserve');
+    db.pragma('user_version = 999');
+
+    expect(() => migrate(db, MIGRATIONS_DIR)).toThrow(
+      new RegExp(`schema version 999 is newer than supported version ${LATEST_SCHEMA_VERSION}`),
+    );
+    expect(db.pragma('user_version', { simple: true })).toBe(999);
+    expect(db.prepare('SELECT value FROM future_authority').pluck().get()).toBe('preserve');
     db.close();
   });
 });
@@ -373,37 +402,112 @@ describe('SqliteStorage timestamp canonicalization migration (item 022 Bug A)', 
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('mixed-form window query: -07:00 row inserted raw, then canonicalized on reopen, returned by Z-form window', async () => {
+  it('canonicalizes new offset timestamps at the append seam', async () => {
     const dbPath = join(dir, 'echo.db');
-    // First open: applies SQL migrations + canonicalize (no-op on empty DB).
     const a = new SqliteStorage(dbPath);
-    // SqliteStorage.append stores the timestamp verbatim (canonicalization
-    // lives in the capture pipeline, not in storage's append). Append a
-    // -07:00 row directly so this exercises the migration path that runs on
-    // SqliteStorage construction.
     await a.append({
       source: 'git:repo',
       timestamp: '2026-05-08T00:00:00.000-07:00', // = 2026-05-08T07:00:00.000Z
-      content: 'commit-pre-canon',
+      content: 'commit-canonical',
     });
-    // Sanity: pre-fix lex compare drops this row from the Z-form window.
-    const preMig = await a.query({
+    const inWindow = await a.query({
       since: '2026-05-08T05:00:00.000Z',
       until: '2026-05-08T09:00:00.000Z',
     });
-    expect(preMig).toHaveLength(0);
+    expect(inWindow).toHaveLength(1);
+    expect(inWindow[0]!.timestamp).toBe('2026-05-08T07:00:00.000Z');
     a.close();
+  });
 
-    // Reopen: ctor runs canonicalizeTimestamps and rewrites the -07:00 row.
+  it('canonicalizes a version-2 legacy ledger once during schema migration', async () => {
+    const dbPath = join(dir, 'echo.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(readFileSync(INITIAL_MIGRATION, 'utf8'));
+    legacy.exec(readFileSync(CHECKPOINT_MIGRATION, 'utf8'));
+    legacy.pragma('user_version = 2');
+    legacy
+      .prepare(
+        `INSERT INTO events (id, source, timestamp, content)
+         VALUES ('legacy-offset', 'git:repo', '2026-05-08T00:18:26.123-07:00', 'legacy')`,
+      )
+      .run();
+    legacy.close();
+
     const b = new SqliteStorage(dbPath);
-    const postMig = await b.query({
+    const migrated = await b.query({
       since: '2026-05-08T05:00:00.000Z',
       until: '2026-05-08T09:00:00.000Z',
     });
-    expect(postMig).toHaveLength(1);
-    expect(postMig[0]!.timestamp).toBe('2026-05-08T07:00:00.000Z');
-    expect(postMig[0]!.content).toBe('commit-pre-canon');
+    expect(migrated).toHaveLength(1);
+    expect(migrated[0]!.timestamp).toBe('2026-05-08T07:18:26.123Z');
     b.close();
+
+    const inspect = new Database(dbPath, { readonly: true });
+    expect(inspect.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
+    expect(inspect.prepare('SELECT timestamp FROM events').pluck().get()).toBe(
+      '2026-05-08T07:18:26.123Z',
+    );
+    inspect.close();
+  });
+
+  it('rolls back and leaves version 2 when a legacy timestamp is unparsable', () => {
+    const dbPath = join(dir, 'invalid.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(readFileSync(INITIAL_MIGRATION, 'utf8'));
+    legacy.exec(readFileSync(CHECKPOINT_MIGRATION, 'utf8'));
+    legacy.pragma('user_version = 2');
+    legacy
+      .prepare(
+        `INSERT INTO events (id, source, timestamp, content)
+         VALUES ('invalid', 'git:repo', 'not-a-timestamp', 'preserve')`,
+      )
+      .run();
+    legacy.close();
+
+    expect(() => new SqliteStorage(dbPath)).toThrow(/CHECK constraint failed/);
+    const inspect = new Database(dbPath, { readonly: true });
+    expect(inspect.pragma('user_version', { simple: true })).toBe(2);
+    expect(inspect.prepare('SELECT timestamp FROM events').pluck().get()).toBe('not-a-timestamp');
+    inspect.close();
+  });
+});
+
+describe('SqliteStorage authority permissions', () => {
+  const posixIt = process.platform === 'win32' ? it.skip : it;
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'echo-private-db-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  posixIt('creates private database, directory, and live WAL/SHM authority', async () => {
+    const authorityDir = join(dir, 'new', 'authority');
+    const dbPath = join(authorityDir, 'context.db');
+    const storage = new SqliteStorage(dbPath);
+    await storage.append(eventInput());
+
+    expect(statSync(authorityDir).mode & 0o777).toBe(0o700);
+    expect(statSync(dbPath).mode & 0o777).toBe(0o600);
+    for (const suffix of ['-wal', '-shm']) {
+      const sidecar = `${dbPath}${suffix}`;
+      expect(existsSync(sidecar)).toBe(true);
+      expect(statSync(sidecar).mode & 0o777).toBe(0o600);
+    }
+    storage.close();
+  });
+
+  posixIt('does not chmod a pre-existing caller-owned database', () => {
+    const dbPath = join(dir, 'existing.db');
+    new SqliteStorage(dbPath).close();
+    chmodSync(dbPath, 0o640);
+
+    const reopened = new SqliteStorage(dbPath);
+    reopened.close();
+    expect(statSync(dbPath).mode & 0o777).toBe(0o640);
   });
 });
 

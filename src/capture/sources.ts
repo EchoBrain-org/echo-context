@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { isNonEmptyString } from '../guards.js';
-import { ECHO_HOME_PATHS } from '../echo-home/paths.js';
+import { ECHO_STATE_PATHS } from '../echo-home/state-paths.js';
 import { parseJson } from '../util/json.js';
 
-export const DEFAULT_GIT_REPOS = ['~/Desktop/Project_echo/'] as const;
+// Git capture is opt-in. A standalone context package must never assume that
+// a product repository exists at a developer-specific path.
+export const DEFAULT_GIT_REPOS = [] as const;
 
 export const CAPTURED_SOURCES = {
   apps: {},
@@ -16,18 +19,17 @@ export const CAPTURED_SOURCES = {
     '~/.codex/sessions/',
   ],
   apis: ['granola'],
-  derived: ['granola-signals', 'granola-signals-index', 'team-decisions'],
   git_repos: [...DEFAULT_GIT_REPOS],
 } as const;
 
-// ~/.echo/state/capture-sources.json schema:
+// ~/.echo-context/state/capture-sources.json schema:
 // {
 //   "schema_version": 1,
 //   "updated_at": "2026-05-28T00:00:00.000Z",
 //   "git_repos": ["/absolute/path/to/git/repo"]
 // }
-// The file stores user-managed capture repos. The daemon merges them with
-// DEFAULT_GIT_REPOS at boot for backward compatibility.
+// The file stores user-managed capture repos. With an empty default, every
+// actively captured git repository must be named explicitly in this file.
 export interface CaptureSourcesConfig {
   schema_version: 1;
   updated_at: string;
@@ -87,11 +89,6 @@ export function _isAllowedApiIn(name: unknown, apis: ReadonlyArray<string>): boo
   return apis.includes(name);
 }
 
-export function _isAllowedDerivedIn(name: unknown, derived: ReadonlyArray<string>): boolean {
-  if (!isNonEmptyString(name)) return false;
-  return derived.includes(name);
-}
-
 function stripTrailingSlash(p: string): string {
   let out = p;
   while (out.length > 1 && out.endsWith('/')) out = out.slice(0, -1);
@@ -138,7 +135,7 @@ export function mergeGitRepos(
 }
 
 export function readCaptureSourcesConfig(
-  filePath = ECHO_HOME_PATHS.stateCaptureSources,
+  filePath = join(ECHO_STATE_PATHS.state, 'capture-sources.json'),
 ): CaptureSourcesConfig | null {
   let raw: string;
   try {
@@ -185,14 +182,14 @@ export function readCaptureSourcesConfig(
 }
 
 export function loadGitReposFromCaptureConfig(
-  filePath = ECHO_HOME_PATHS.stateCaptureSources,
+  filePath = join(ECHO_STATE_PATHS.state, 'capture-sources.json'),
 ): string[] {
   const config = readCaptureSourcesConfig(filePath);
   return mergeGitRepos(DEFAULT_GIT_REPOS, config?.git_repos ?? []);
 }
 
 export function applyGitReposFromCaptureConfig(
-  filePath = ECHO_HOME_PATHS.stateCaptureSources,
+  filePath = join(ECHO_STATE_PATHS.state, 'capture-sources.json'),
 ): string[] {
   const repos = loadGitReposFromCaptureConfig(filePath);
   const target = CAPTURED_SOURCES.git_repos as unknown as string[];
@@ -220,10 +217,6 @@ export function isAllowedPath(path: string): boolean {
 
 export function isAllowedApi(name: string): boolean {
   return _isAllowedApiIn(name, CAPTURED_SOURCES.apis);
-}
-
-export function isAllowedDerived(name: string): boolean {
-  return _isAllowedDerivedIn(name, CAPTURED_SOURCES.derived);
 }
 
 export function isAllowedRepo(repoPath: string): boolean {

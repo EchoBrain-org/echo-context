@@ -1,13 +1,36 @@
 import { randomUUID } from 'node:crypto';
 import {
   METADATA_MATCH_KEY_WHITELIST,
+  type AppendOptions,
   type AtomIterationRecord,
+  type CaptureCheckpoint,
+  type CaptureCheckpointInput,
+  type CaptureCheckpointKey,
+  type CaptureCheckpointListOptions,
+  type CaptureCheckpointPage,
   type CaptureEvent,
   type CoordAtomIterationRecord,
   type EventId,
   type QueryFilter,
   type Storage,
 } from './interface.js';
+import {
+  captureCheckpointCursor,
+  cloneCaptureCheckpoint,
+  compareCaptureCheckpointKeys,
+  normalizeCaptureCheckpointInput,
+  normalizeCaptureCheckpointKey,
+  normalizeCaptureCheckpointListOptions,
+} from './checkpoint.js';
+import { eventIdForDedupeKey } from './dedupe.js';
+import {
+  assertStorageDescriptorField,
+  cappedStorageRowLimit,
+  eventStoredBytes,
+  STORAGE_GET_BY_IDS_MAX_IDS,
+  STORAGE_PAYLOAD_PAGE_BYTES,
+  StorageBudgetExceededError,
+} from './budgets.js';
 import { sourceEquals, sourceHasPrefix } from './source-match.js';
 import { canonicalizeTimestamp } from '../util/timestamp.js';
 
@@ -37,12 +60,40 @@ function stripSeq(e: InternalEvent): CaptureEvent {
 
 export class MemoryStorage implements Storage {
   private readonly events: InternalEvent[] = [];
+  private readonly captureCheckpoints = new Map<string, CaptureCheckpoint>();
   private seqCounter = 0;
 
-  async append(event: Omit<CaptureEvent, 'id'>): Promise<EventId> {
-    const id: EventId = randomUUID();
+  async append(event: Omit<CaptureEvent, 'id'>, options?: AppendOptions): Promise<EventId> {
+    const dedupe = options?.dedupeKey !== undefined;
+    const id: EventId = dedupe ? eventIdForDedupeKey(options.dedupeKey!) : randomUUID();
+    assertStorageDescriptorField('append', 'source', event.source);
+    assertStorageDescriptorField('append', 'timestamp', event.timestamp);
+    if (dedupe && this.events.some((candidate) => candidate.id === id)) return id;
+    const timestamp = canonicalizeTimestamp(event.timestamp);
+    const metadataJson = event.metadata === undefined ? null : JSON.stringify(event.metadata);
+    const storedBytes = eventStoredBytes({
+      id,
+      source: event.source,
+      timestamp,
+      content: event.content,
+      metadataJson: metadataJson ?? null,
+      embeddingBytes: (event.embedding?.length ?? 0) * Float32Array.BYTES_PER_ELEMENT,
+    });
+    if (storedBytes > STORAGE_PAYLOAD_PAGE_BYTES) {
+      throw new StorageBudgetExceededError({
+        code: 'event_too_large',
+        operation: 'append',
+        stored_bytes: storedBytes,
+        budget_bytes: STORAGE_PAYLOAD_PAGE_BYTES,
+      });
+    }
     this.seqCounter += 1;
-    this.events.push({ ...event, id, _seq: this.seqCounter });
+    this.events.push({
+      ...event,
+      timestamp,
+      id,
+      _seq: this.seqCounter,
+    });
     return id;
   }
 
@@ -57,11 +108,36 @@ export class MemoryStorage implements Storage {
         'QueryFilter.before is defined for descending queries only; pass order: "desc" or omit it',
       );
     }
+    if (filter?.after !== undefined && filter?.order !== 'asc') {
+      throw new RangeError('QueryFilter.after is defined for ascending queries only');
+    }
+    if (filter?.before !== undefined && filter?.after !== undefined) {
+      throw new RangeError('QueryFilter.before and after are mutually exclusive');
+    }
+    if (source !== undefined) assertStorageDescriptorField('query', 'source', source);
+    if (sourcePrefix !== undefined) {
+      assertStorageDescriptorField('query', 'source', sourcePrefix);
+    }
+    if (filter?.since !== undefined) {
+      assertStorageDescriptorField('query', 'timestamp', filter.since);
+    }
+    if (filter?.until !== undefined) {
+      assertStorageDescriptorField('query', 'timestamp', filter.until);
+    }
+    if (filter?.before !== undefined) {
+      assertStorageDescriptorField('query', 'timestamp', filter.before.timestamp);
+      assertStorageDescriptorField('query', 'id', filter.before.id);
+    }
+    if (filter?.after !== undefined) {
+      assertStorageDescriptorField('query', 'timestamp', filter.after.timestamp);
+      assertStorageDescriptorField('query', 'id', filter.after.id);
+    }
     const since = filter?.since !== undefined ? canonicalizeTimestamp(filter.since) : undefined;
     const until = filter?.until !== undefined ? canonicalizeTimestamp(filter.until) : undefined;
-    const limit = filter?.limit;
+    const limit = cappedStorageRowLimit(filter?.limit);
     const order = filter?.order ?? 'desc';
     const before = filter?.before;
+    const after = filter?.after;
     const excludeSurfaces =
       filter?.exclude_metadata_surface !== undefined && filter.exclude_metadata_surface.length > 0
         ? new Set(filter.exclude_metadata_surface)
@@ -102,6 +178,10 @@ export class MemoryStorage implements Storage {
         if (event.timestamp > before.timestamp) continue;
         if (event.timestamp === before.timestamp && event.id >= before.id) continue;
       }
+      if (after !== undefined) {
+        if (event.timestamp < after.timestamp) continue;
+        if (event.timestamp === after.timestamp && event.id <= after.id) continue;
+      }
       if (excludeSurfaces !== undefined) {
         const surface = (event.metadata as { surface?: unknown } | undefined)?.surface;
         if (typeof surface === 'string' && excludeSurfaces.has(surface)) continue;
@@ -127,8 +207,7 @@ export class MemoryStorage implements Storage {
       if (a.id > b.id) return order === 'asc' ? 1 : -1;
       return 0;
     });
-    const truncated =
-      limit !== undefined && filtered.length > limit ? filtered.slice(0, limit) : filtered;
+    const truncated = filtered.length > limit ? filtered.slice(0, limit) : filtered;
     return truncated.map(stripSeq);
   }
 
@@ -138,6 +217,10 @@ export class MemoryStorage implements Storage {
 
   async getByIds(ids: readonly EventId[]): Promise<CaptureEvent[]> {
     if (ids.length === 0) return [];
+    if (ids.length > STORAGE_GET_BY_IDS_MAX_IDS) {
+      throw new RangeError(`getByIds accepts at most ${STORAGE_GET_BY_IDS_MAX_IDS} ids`);
+    }
+    for (const id of ids) assertStorageDescriptorField('getByIds', 'id', id);
     // Re-order by input `ids[]` so the order-preserving contract holds
     // regardless of insertion order. Missing ids are silently dropped
     // here; get_atoms surfaces them in atoms_dropped_ids.
@@ -152,6 +235,54 @@ export class MemoryStorage implements Storage {
       if (ev !== undefined) out.push(stripSeq(ev));
     }
     return out;
+  }
+
+  private captureCheckpointMapKey(key: CaptureCheckpointKey): string {
+    const normalized = normalizeCaptureCheckpointKey(key);
+    return JSON.stringify([normalized.extractor, normalized.resource, normalized.partition]);
+  }
+
+  async getCaptureCheckpoint(key: CaptureCheckpointKey): Promise<CaptureCheckpoint | null> {
+    const checkpoint = this.captureCheckpoints.get(this.captureCheckpointMapKey(key));
+    return checkpoint === undefined ? null : cloneCaptureCheckpoint(checkpoint);
+  }
+
+  async upsertCaptureCheckpoint(
+    input: CaptureCheckpointInput,
+  ): Promise<CaptureCheckpoint> {
+    const checkpoint = normalizeCaptureCheckpointInput(input);
+    this.captureCheckpoints.set(
+      this.captureCheckpointMapKey(checkpoint),
+      cloneCaptureCheckpoint(checkpoint),
+    );
+    return cloneCaptureCheckpoint(checkpoint);
+  }
+
+  async listCaptureCheckpoints(
+    options: CaptureCheckpointListOptions,
+  ): Promise<CaptureCheckpointPage> {
+    const normalized = normalizeCaptureCheckpointListOptions(options);
+    const matching: CaptureCheckpoint[] = [];
+    for (const checkpoint of this.captureCheckpoints.values()) {
+      if (checkpoint.extractor !== normalized.extractor) continue;
+      if (
+        normalized.after !== undefined &&
+        compareCaptureCheckpointKeys(captureCheckpointCursor(checkpoint), normalized.after) <= 0
+      ) {
+        continue;
+      }
+      matching.push(checkpoint);
+    }
+    matching.sort((left, right) =>
+      compareCaptureCheckpointKeys(captureCheckpointCursor(left), captureCheckpointCursor(right)),
+    );
+    const hasMore = matching.length > normalized.limit;
+    const kept = matching.slice(0, normalized.limit).map(cloneCaptureCheckpoint);
+    return {
+      checkpoints: kept,
+      next_cursor:
+        hasMore && kept.length > 0 ? captureCheckpointCursor(kept[kept.length - 1]!) : null,
+    };
   }
 
   // 057a AC3 / 113 AC3 — durable append-order seam (parity with
@@ -173,8 +304,12 @@ export class MemoryStorage implements Storage {
     limit?: number;
   }): Promise<AtomIterationRecord[]> {
     const sinceSeq = opts?.sinceSeq ?? 1;
-    const limit = opts?.limit;
+    const limit = cappedStorageRowLimit(opts?.limit);
+    if (limit === 0) return [];
     const prefixes = opts?.sourcePrefixes;
+    for (const prefix of prefixes ?? []) {
+      assertStorageDescriptorField('iterateAtomsByAppendOrder', 'source', prefix);
+    }
     const out: AtomIterationRecord[] = [];
     // Iterate in insertion order (this.events.push appends, so iteration
     // order IS insertion order). Filter to matching sources with _seq >= sinceSeq.
@@ -185,7 +320,7 @@ export class MemoryStorage implements Storage {
       // as a top-level `sequence_id` field per the iteration contract.
       const publicEvent = stripSeq(e);
       out.push({ ...publicEvent, sequence_id: e._seq });
-      if (limit !== undefined && out.length >= limit) break;
+      if (out.length >= limit) break;
     }
     return out;
   }

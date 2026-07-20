@@ -4,10 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CURSOR_RESOLVER_COMPOSER_VALUE_MAX_BYTES,
+  CURSOR_RESOLVER_MAX_COMPOSER_ID_BYTES,
+  CURSOR_RESOLVER_MAX_COMPOSER_IDS,
+  CURSOR_RESOLVER_MAX_WORKSPACE_ENTRIES,
+  CURSOR_RESOLVER_REGISTRY_MAX_BYTES,
+  CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES,
   normaliseRepoPath,
   resolveCursorComposerForRepoPath,
   resolveRepoRootForWorkspaceId,
 } from '../../src/mcp/cursor-workspace-resolver.js';
+import { captureStdout } from '../fixtures/stdout.js';
 
 // Build a temp-dir fixture that mirrors the real Cursor layout:
 //
@@ -27,12 +34,14 @@ interface WorkspaceFixture {
   // shape (`selectedComposerIds[]` / `lastFocusedComposerIds[]`) or any future
   // shape variation without re-baking the fixture builder.
   composerDataOverride?: Record<string, unknown>;
+  composerDataRaw?: string;
 }
 
 interface GlobalComposerFixture {
   composerId: string;
   lastUpdatedAt?: number;
   createdAt?: number;
+  valueOverride?: string;
 }
 
 interface Fixture {
@@ -55,15 +64,20 @@ function buildFixture(opts: {
     if (ws.workspaceJson !== null) {
       writeFileSync(join(dir, 'workspace.json'), ws.workspaceJson);
     }
-    if (ws.composers !== undefined || ws.composerDataOverride !== undefined) {
+    if (
+      ws.composers !== undefined ||
+      ws.composerDataOverride !== undefined ||
+      ws.composerDataRaw !== undefined
+    ) {
       const db = new Database(join(dir, 'state.vscdb'));
       try {
         db.prepare('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)').run();
-        const composerDataValue =
-          ws.composerDataOverride ?? { allComposers: ws.composers };
+        const composerDataValue = ws.composerDataRaw ?? JSON.stringify(
+          ws.composerDataOverride ?? { allComposers: ws.composers },
+        );
         db.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)').run(
           'composer.composerData',
-          JSON.stringify(composerDataValue),
+          composerDataValue,
         );
       } finally {
         db.close();
@@ -81,7 +95,10 @@ function buildFixture(opts: {
       const body: Record<string, unknown> = { composerId: c.composerId };
       if (c.lastUpdatedAt !== undefined) body['lastUpdatedAt'] = c.lastUpdatedAt;
       if (c.createdAt !== undefined) body['createdAt'] = c.createdAt;
-      stmt.run(`composerData:${c.composerId}`, JSON.stringify(body));
+      stmt.run(
+        `composerData:${c.composerId}`,
+        c.valueOverride ?? JSON.stringify(body),
+      );
     }
   } finally {
     gdb.close();
@@ -347,6 +364,198 @@ describe('resolveCursorComposerForRepoPath', () => {
     );
     expect(resolved).toEqual({ workspace_id: 'WS-MIXED', composer_id: 'MIG-2' });
   });
+
+  it('skips workspace.json files that exceed the hard byte budget', () => {
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-OVERSIZED',
+          workspaceJson: JSON.stringify({
+            folder: 'file:///tmp/bounded-workspace',
+            padding: 'x'.repeat(CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES),
+          }),
+          composers: [{ composerId: 'OVERSIZED' }],
+        },
+        {
+          hash: 'WS-VALID',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/bounded-workspace' }),
+          composers: [{ composerId: 'VALID' }],
+        },
+      ],
+      globalComposers: [
+        { composerId: 'OVERSIZED', lastUpdatedAt: 999 },
+        { composerId: 'VALID', lastUpdatedAt: 1 },
+      ],
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/bounded-workspace',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toEqual({ workspace_id: 'WS-VALID', composer_id: 'VALID' });
+  });
+
+  it('caps workspace directory inspections and reports budget exhaustion', () => {
+    fixture = buildFixture({
+      workspaces: Array.from(
+        { length: CURSOR_RESOLVER_MAX_WORKSPACE_ENTRIES + 1 },
+        (_, index) => ({
+          hash: `WS-BUDGET-${String(index).padStart(5, '0')}`,
+          workspaceJson: null,
+        }),
+      ),
+      globalComposers: [],
+    });
+    const captured = captureStdout();
+    try {
+      expect(
+        resolveCursorComposerForRepoPath(
+          '/tmp/no-workspace-in-budget',
+          fixture.globalDbPath,
+          fixture.workspaceStorageDir,
+        ),
+      ).toBeNull();
+    } finally {
+      captured.restore();
+    }
+    expect(captured.writes.join('')).toContain('workspace_entry_budget_exhausted');
+  });
+
+  it('rejects an oversized workspace composer registry before parsing it', () => {
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-HUGE-REGISTRY',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/huge-registry' }),
+          composerDataRaw: JSON.stringify({
+            selectedComposerIds: ['HUGE'],
+            padding: 'x'.repeat(CURSOR_RESOLVER_REGISTRY_MAX_BYTES),
+          }),
+        },
+      ],
+      globalComposers: [{ composerId: 'HUGE', lastUpdatedAt: 999 }],
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/huge-registry',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toBeNull();
+  });
+
+  it('caps composer ids and never considers ids beyond the registry budget', () => {
+    const ids = Array.from(
+      { length: CURSOR_RESOLVER_MAX_COMPOSER_IDS + 1 },
+      (_, index) => `ID-${index}`,
+    );
+    const beyondBudget = ids.at(-1)!;
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-MANY',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/many-composers' }),
+          composerDataOverride: { selectedComposerIds: ids },
+        },
+      ],
+      globalComposers: [{ composerId: beyondBudget, lastUpdatedAt: 999 }],
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/many-composers',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toBeNull();
+  });
+
+  it('ignores overlong composer ids while retaining bounded valid ids', () => {
+    const overlong = 'x'.repeat(CURSOR_RESOLVER_MAX_COMPOSER_ID_BYTES + 1);
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-LONG-ID',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/long-id' }),
+          composerDataOverride: {
+            selectedComposerIds: [overlong, 'VALID'],
+          },
+        },
+      ],
+      globalComposers: [
+        { composerId: overlong, lastUpdatedAt: 999 },
+        { composerId: 'VALID', lastUpdatedAt: 1 },
+      ],
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/long-id',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toEqual({ workspace_id: 'WS-LONG-ID', composer_id: 'VALID' });
+  });
+
+  it('queries exact composer keys in batches and can select an MRU in a later batch', () => {
+    const ids = Array.from({ length: 70 }, (_, index) => `BATCH-${index}`);
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-BATCHED',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/batched' }),
+          composerDataOverride: { selectedComposerIds: ids },
+        },
+      ],
+      globalComposers: ids.map((composerId, index) => ({
+        composerId,
+        lastUpdatedAt: index,
+      })),
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/batched',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toEqual({ workspace_id: 'WS-BATCHED', composer_id: 'BATCH-69' });
+  });
+
+  it('rejects oversized global composer JSON while retaining a small MRU candidate', () => {
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-HUGE-COMPOSER',
+          workspaceJson: JSON.stringify({ folder: 'file:///tmp/huge-composer' }),
+          composerDataOverride: {
+            selectedComposerIds: ['HUGE', 'VALID'],
+          },
+        },
+      ],
+      globalComposers: [
+        {
+          composerId: 'HUGE',
+          valueOverride: JSON.stringify({
+            lastUpdatedAt: 999,
+            padding: 'x'.repeat(CURSOR_RESOLVER_COMPOSER_VALUE_MAX_BYTES),
+          }),
+        },
+        { composerId: 'VALID', lastUpdatedAt: 1 },
+      ],
+    });
+
+    expect(
+      resolveCursorComposerForRepoPath(
+        '/tmp/huge-composer',
+        fixture.globalDbPath,
+        fixture.workspaceStorageDir,
+      ),
+    ).toEqual({ workspace_id: 'WS-HUGE-COMPOSER', composer_id: 'VALID' });
+  });
 });
 
 // Item 037 / AC1 — the INVERSE direction (`workspace_id → repo_root`) needed
@@ -449,6 +658,26 @@ describe('resolveRepoRootForWorkspaceId (item 037 / AC1)', () => {
     expect(resolveRepoRootForWorkspaceId('WS-TRAILING', fixture.workspaceStorageDir)).toBe(
       '/tmp/trailing-repo',
     );
+  });
+
+  it('returns null for an oversized workspace.json in the inverse direction', () => {
+    fixture = buildFixture({
+      workspaces: [
+        {
+          hash: 'WS-OVERSIZED',
+          workspaceJson: JSON.stringify({
+            folder: 'file:///tmp/oversized-inverse',
+            padding: 'x'.repeat(CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES),
+          }),
+          composers: [{ composerId: 'C1' }],
+        },
+      ],
+      globalComposers: [{ composerId: 'C1', lastUpdatedAt: 1 }],
+    });
+
+    expect(
+      resolveRepoRootForWorkspaceId('WS-OVERSIZED', fixture.workspaceStorageDir),
+    ).toBeNull();
   });
 });
 

@@ -1,4 +1,10 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  openSync,
+  opendirSync,
+  readSync,
+  statSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, normalize as pathNormalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +14,15 @@ import { createLogger } from '../logging/index.js';
 const log = createLogger('mcp.cursor-resolver');
 
 const HOME = homedir();
+
+/** Hard resident/read budgets for the retrieval-side Cursor resolver. */
+export const CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES = 64 * 1024;
+export const CURSOR_RESOLVER_REGISTRY_MAX_BYTES = 1024 * 1024;
+export const CURSOR_RESOLVER_MAX_COMPOSER_IDS = 1024;
+export const CURSOR_RESOLVER_MAX_COMPOSER_ID_BYTES = 512;
+export const CURSOR_RESOLVER_COMPOSER_VALUE_MAX_BYTES = 4 * 1024 * 1024;
+export const CURSOR_RESOLVER_COMPOSER_BATCH_SIZE = 64;
+export const CURSOR_RESOLVER_MAX_WORKSPACE_ENTRIES = 1024;
 
 // Defaults match the cursor extractor (`src/capture/extractors/cursor.ts`).
 // Tests inject alternate paths via the explicit arguments.
@@ -40,6 +55,33 @@ interface WorkspaceMatch {
   workspaceDbMtimeMs: number;
 }
 
+/** Read at most maxBytes + one sentinel byte, so a racing file growth can
+ * never turn an admitted file into an unbounded read. */
+function readUtf8FileBounded(path: string, maxBytes: number): string | null {
+  let fd: number;
+  try {
+    fd = openSync(path, 'r');
+  } catch {
+    return null;
+  }
+  try {
+    const buffer = Buffer.allocUnsafe(maxBytes + 1);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const bytesRead = readSync(fd, buffer, offset, buffer.length - offset, null);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    if (offset > maxBytes) {
+      log.warn('bounded_file_rejected', { path, max_bytes: maxBytes });
+      return null;
+    }
+    return buffer.toString('utf8', 0, offset);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 // Scan the workspaceStorage directory for the workspace whose `workspace.json`
 // `folder` field URL-decodes to the target repo path. Returns the matching
 // hash + path to that workspace's state.vscdb, or null when nothing matches.
@@ -58,9 +100,9 @@ function findWorkspaceForRepoPath(
   normalisedRepoPath: string,
   workspaceStorageDir: string,
 ): WorkspaceMatch | null {
-  let entries: string[];
+  let dir: ReturnType<typeof opendirSync>;
   try {
-    entries = readdirSync(workspaceStorageDir);
+    dir = opendirSync(workspaceStorageDir);
   } catch (err) {
     log.warn('workspace_storage_unreadable', {
       path: workspaceStorageDir,
@@ -69,74 +111,90 @@ function findWorkspaceForRepoPath(
     return null;
   }
 
-  const candidates: WorkspaceMatch[] = [];
-  for (const entry of entries) {
-    const workspaceJsonPath = join(workspaceStorageDir, entry, 'workspace.json');
-    let raw: string;
-    try {
-      raw = readFileSync(workspaceJsonPath, 'utf8');
-    } catch {
-      // Missing / unreadable workspace.json is common — many workspaceStorage
-      // entries are scratch dirs without a folder mapping. Quiet skip.
-      continue;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      log.warn('workspace_json_not_json', {
-        path: workspaceJsonPath,
-        message: (err as Error).message,
-      });
-      continue;
-    }
-    if (typeof parsed !== 'object' || parsed === null) continue;
-    const folder = (parsed as Record<string, unknown>)['folder'];
-    if (typeof folder !== 'string') continue;
-    // Validate the URL shape before fileURLToPath — remote workspaces
-    // (`vscode-remote://`) and multi-root workspaces (no `folder`, often
-    // a `configuration` field instead) reach here too. Skip non-`file:`
-    // shapes silently — they're expected.
-    if (!folder.startsWith('file://')) continue;
-    let decoded: string;
-    try {
-      decoded = fileURLToPath(folder);
-    } catch (err) {
-      log.warn('workspace_folder_url_invalid', {
-        path: workspaceJsonPath,
-        folder,
-        message: (err as Error).message,
-      });
-      continue;
-    }
-    const decodedNormalised = normaliseRepoPath(decoded);
-    if (decodedNormalised !== normalisedRepoPath) continue;
+  let best: WorkspaceMatch | null = null;
+  let entriesInspected = 0;
+  try {
+    for (;;) {
+      const entry = dir.readSync();
+      if (entry === null) break;
+      if (entriesInspected >= CURSOR_RESOLVER_MAX_WORKSPACE_ENTRIES) {
+        log.warn('workspace_entry_budget_exhausted', {
+          path: workspaceStorageDir,
+          max_entries: CURSOR_RESOLVER_MAX_WORKSPACE_ENTRIES,
+        });
+        break;
+      }
+      entriesInspected += 1;
+      if (!entry.isDirectory()) continue;
+      const workspaceJsonPath = join(workspaceStorageDir, entry.name, 'workspace.json');
+      const raw = readUtf8FileBounded(
+        workspaceJsonPath,
+        CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES,
+      );
+      if (raw === null) {
+        // Missing / unreadable workspace.json is common — many workspaceStorage
+        // entries are scratch dirs without a folder mapping. Quiet skip.
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        log.warn('workspace_json_not_json', {
+          path: workspaceJsonPath,
+          message: (err as Error).message,
+        });
+        continue;
+      }
+      if (typeof parsed !== 'object' || parsed === null) continue;
+      const folder = (parsed as Record<string, unknown>)['folder'];
+      if (typeof folder !== 'string') continue;
+      // Validate the URL shape before fileURLToPath — remote workspaces
+      // (`vscode-remote://`) and multi-root workspaces (no `folder`, often
+      // a `configuration` field instead) reach here too. Skip non-`file:`
+      // shapes silently — they're expected.
+      if (!folder.startsWith('file://')) continue;
+      let decoded: string;
+      try {
+        decoded = fileURLToPath(folder);
+      } catch (err) {
+        log.warn('workspace_folder_url_invalid', {
+          path: workspaceJsonPath,
+          folder,
+          message: (err as Error).message,
+        });
+        continue;
+      }
+      const decodedNormalised = normaliseRepoPath(decoded);
+      if (decodedNormalised !== normalisedRepoPath) continue;
 
-    const workspaceDbPath = join(workspaceStorageDir, entry, 'state.vscdb');
-    let mtimeMs = 0;
-    try {
-      mtimeMs = statSync(workspaceDbPath).mtimeMs;
-    } catch {
-      // No state.vscdb — keep the candidate at mtime=0 so a brand-new
-      // workspace can still be picked when it's the only match. The next
-      // step (allComposers query) handles a missing DB by returning null,
-      // which surfaces as the "no composers" warning at AC4 step 1.
+      const workspaceDbPath = join(workspaceStorageDir, entry.name, 'state.vscdb');
+      let mtimeMs = 0;
+      try {
+        mtimeMs = statSync(workspaceDbPath).mtimeMs;
+      } catch {
+        // No state.vscdb — keep the candidate at mtime=0 so a brand-new
+        // workspace can still be picked when it's the only match. The next
+        // step (allComposers query) handles a missing DB by returning null.
+      }
+      const candidate: WorkspaceMatch = {
+        workspaceHash: entry.name,
+        workspaceDbPath,
+        workspaceDbMtimeMs: mtimeMs,
+      };
+      if (
+        best === null ||
+        candidate.workspaceDbMtimeMs > best.workspaceDbMtimeMs ||
+        (candidate.workspaceDbMtimeMs === best.workspaceDbMtimeMs &&
+          candidate.workspaceHash < best.workspaceHash)
+      ) {
+        best = candidate;
+      }
     }
-    candidates.push({
-      workspaceHash: entry,
-      workspaceDbPath,
-      workspaceDbMtimeMs: mtimeMs,
-    });
+  } finally {
+    dir.closeSync();
   }
-
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => {
-    if (a.workspaceDbMtimeMs !== b.workspaceDbMtimeMs) {
-      return b.workspaceDbMtimeMs - a.workspaceDbMtimeMs;
-    }
-    return a.workspaceHash < b.workspaceHash ? -1 : 1;
-  });
-  return candidates[0]!;
+  return best;
 }
 
 // Read the workspace's state.vscdb and return the list of composerIds the
@@ -164,10 +222,41 @@ function listComposerIdsForWorkspace(workspaceDbPath: string): string[] {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ItemTable'")
       .get();
     if (tableExists === undefined) return [];
+    const descriptor = db
+      .prepare(
+        `SELECT typeof(value) AS value_type,
+                length(CAST(value AS BLOB)) AS value_bytes
+           FROM ItemTable
+          WHERE key = 'composer.composerData'`,
+      )
+      .get() as { value_type: string; value_bytes: number | null } | undefined;
+    if (
+      descriptor === undefined ||
+      descriptor.value_type !== 'text' ||
+      descriptor.value_bytes === null ||
+      descriptor.value_bytes > CURSOR_RESOLVER_REGISTRY_MAX_BYTES
+    ) {
+      if (descriptor !== undefined) {
+        log.warn('workspace_composer_data_rejected', {
+          path: workspaceDbPath,
+          value_bytes: descriptor.value_bytes,
+          max_bytes: CURSOR_RESOLVER_REGISTRY_MAX_BYTES,
+        });
+      }
+      return [];
+    }
     const row = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'composer.composerData'")
-      .get() as { value: string } | undefined;
-    if (row === undefined) return [];
+      .prepare(
+        `SELECT CASE
+                  WHEN typeof(value) = 'text'
+                   AND length(CAST(value AS BLOB)) <= ?
+                  THEN value
+                END AS value
+           FROM ItemTable
+          WHERE key = 'composer.composerData'`,
+      )
+      .get(CURSOR_RESOLVER_REGISTRY_MAX_BYTES) as { value: string | null } | undefined;
+    if (row === undefined || row.value === null) return [];
     let parsed: unknown;
     try {
       parsed = JSON.parse(row.value);
@@ -192,20 +281,33 @@ function listComposerIdsForWorkspace(workspaceDbPath: string): string[] {
     // case) surface via the selected/focused arrays. A workspace exposing both
     // shapes (theoretically possible mid-migration) gets the union.
     const ids = new Set<string>();
+    const admitId = (id: unknown): void => {
+      if (
+        ids.size >= CURSOR_RESOLVER_MAX_COMPOSER_IDS ||
+        typeof id !== 'string' ||
+        id.length === 0 ||
+        Buffer.byteLength(id) > CURSOR_RESOLVER_MAX_COMPOSER_ID_BYTES
+      ) {
+        return;
+      }
+      ids.add(id);
+    };
     const allComposers = (parsed as Record<string, unknown>)['allComposers'];
     if (Array.isArray(allComposers)) {
       for (const c of allComposers) {
+        if (ids.size >= CURSOR_RESOLVER_MAX_COMPOSER_IDS) break;
         if (typeof c === 'object' && c !== null) {
-          const id = (c as Record<string, unknown>)['composerId'];
-          if (typeof id === 'string' && id.length > 0) ids.add(id);
+          admitId((c as Record<string, unknown>)['composerId']);
         }
       }
     }
     for (const key of ['selectedComposerIds', 'lastFocusedComposerIds'] as const) {
+      if (ids.size >= CURSOR_RESOLVER_MAX_COMPOSER_IDS) break;
       const arr = (parsed as Record<string, unknown>)[key];
       if (Array.isArray(arr)) {
         for (const id of arr) {
-          if (typeof id === 'string' && id.length > 0) ids.add(id);
+          if (ids.size >= CURSOR_RESOLVER_MAX_COMPOSER_IDS) break;
+          admitId(id);
         }
       }
     }
@@ -242,39 +344,83 @@ function pickMostRecentlyActiveComposer(
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cursorDiskKV'")
       .get();
     if (tableExists === undefined) return null;
-    const placeholders = composerIds.map(() => '?').join(',');
-    const keys = composerIds.map((id) => `composerData:${id}`);
-    const rows = db
-      .prepare(`SELECT key, value FROM cursorDiskKV WHERE key IN (${placeholders})`)
-      .all(...keys) as Array<{ key: string; value: string }>;
-
     let bestId: string | null = null;
     let bestTs = -Infinity;
-    for (const row of rows) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(row.value);
-      } catch {
-        continue;
-      }
-      if (typeof parsed !== 'object' || parsed === null) continue;
-      const rec = parsed as Record<string, unknown>;
-      const lastUpdatedRaw = rec['lastUpdatedAt'];
-      const createdRaw = rec['createdAt'];
-      let ts: number = -Infinity;
-      if (typeof lastUpdatedRaw === 'number' && Number.isFinite(lastUpdatedRaw)) {
-        ts = lastUpdatedRaw;
-      } else if (typeof createdRaw === 'number' && Number.isFinite(createdRaw)) {
-        ts = createdRaw;
-      } else {
-        continue;
-      }
-      // Recover composerId from the key (`composerData:<id>`) so we don't
-      // trust the JSON body (`rec.composerId`) to round-trip cleanly.
-      const id = row.key.slice('composerData:'.length);
-      if (ts > bestTs) {
-        bestTs = ts;
-        bestId = id;
+    for (
+      let batchStart = 0;
+      batchStart < composerIds.length;
+      batchStart += CURSOR_RESOLVER_COMPOSER_BATCH_SIZE
+    ) {
+      const ids = composerIds.slice(
+        batchStart,
+        batchStart + CURSOR_RESOLVER_COMPOSER_BATCH_SIZE,
+      );
+      const keys = ids.map((id) => `composerData:${id}`);
+      const placeholders = keys.map(() => '?').join(',');
+      // This list query returns descriptors only. Full JSON is fetched one
+      // exact key at a time after byte admission, so `.all()` can never retain
+      // a batch of payloads in JavaScript.
+      const descriptors = db
+        .prepare(
+          `SELECT key,
+                  typeof(value) AS value_type,
+                  length(CAST(value AS BLOB)) AS value_bytes
+             FROM cursorDiskKV
+            WHERE key IN (${placeholders})
+            LIMIT ?`,
+        )
+        .all(...keys, CURSOR_RESOLVER_COMPOSER_BATCH_SIZE) as Array<{
+          key: string;
+          value_type: string;
+          value_bytes: number | null;
+        }>;
+      for (const descriptor of descriptors) {
+        if (
+          descriptor.value_type !== 'text' ||
+          descriptor.value_bytes === null ||
+          descriptor.value_bytes > CURSOR_RESOLVER_COMPOSER_VALUE_MAX_BYTES
+        ) {
+          continue;
+        }
+        const row = db
+          .prepare(
+            `SELECT CASE
+                      WHEN typeof(value) = 'text'
+                       AND length(CAST(value AS BLOB)) <= ?
+                      THEN value
+                    END AS value
+               FROM cursorDiskKV
+              WHERE key = ?`,
+          )
+          .get(CURSOR_RESOLVER_COMPOSER_VALUE_MAX_BYTES, descriptor.key) as
+          | { value: string | null }
+          | undefined;
+        if (row === undefined || row.value === null) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(row.value);
+        } catch {
+          continue;
+        }
+        if (typeof parsed !== 'object' || parsed === null) continue;
+        const rec = parsed as Record<string, unknown>;
+        const lastUpdatedRaw = rec['lastUpdatedAt'];
+        const createdRaw = rec['createdAt'];
+        let ts: number = -Infinity;
+        if (typeof lastUpdatedRaw === 'number' && Number.isFinite(lastUpdatedRaw)) {
+          ts = lastUpdatedRaw;
+        } else if (typeof createdRaw === 'number' && Number.isFinite(createdRaw)) {
+          ts = createdRaw;
+        } else {
+          continue;
+        }
+        // Recover composerId from the key (`composerData:<id>`) so we don't
+        // trust the JSON body (`rec.composerId`) to round-trip cleanly.
+        const id = descriptor.key.slice('composerData:'.length);
+        if (ts > bestTs || (ts === bestTs && (bestId === null || id < bestId))) {
+          bestTs = ts;
+          bestId = id;
+        }
       }
     }
     return bestId;
@@ -341,10 +487,11 @@ export function resolveRepoRootForWorkspaceId(
   workspaceStorageDir: string = DEFAULT_CURSOR_WORKSPACE_STORAGE_DIR,
 ): string | null {
   const workspaceJsonPath = join(workspaceStorageDir, workspace_id, 'workspace.json');
-  let raw: string;
-  try {
-    raw = readFileSync(workspaceJsonPath, 'utf8');
-  } catch {
+  const raw = readUtf8FileBounded(
+    workspaceJsonPath,
+    CURSOR_RESOLVER_WORKSPACE_JSON_MAX_BYTES,
+  );
+  if (raw === null) {
     // Missing / unreadable workspace.json — silent (matches
     // findWorkspaceForRepoPath's quiet-skip discipline; many entries are
     // legitimately scratch dirs without a folder mapping).

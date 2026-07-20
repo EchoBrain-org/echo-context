@@ -2,7 +2,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { createLogger } from '../logging/index.js';
+import {
+  HealthTracker,
+  type HealthSnapshot,
+  type HealthSnapshotProvider,
+} from '../runtime/health.js';
 import type { Storage } from '../storage/interface.js';
+import { ECHO_CONTEXT_VERSION } from '../version.js';
+import { handleServiceApi } from './service-api.js';
 import {
   instrumentMcpServer,
   readRecentMcpCalls,
@@ -28,9 +35,14 @@ export interface McpServerHandle {
 export interface StartMcpServerOptions {
   port?: number;
   host?: string;
+  healthSnapshotProvider?: HealthSnapshotProvider;
 }
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+function urlHost(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
 
 class BodyTooLargeError extends Error {
   constructor() {
@@ -83,7 +95,7 @@ function handleRecentCalls(
   host: string,
   boundPort: number,
 ): boolean {
-  const url = new URL(req.url ?? '/', `http://${host}:${boundPort}`);
+  const url = new URL(req.url ?? '/', `http://${urlHost(host)}:${boundPort}`);
   if (url.pathname !== '/mcp/recent-calls') return false;
   if (req.method !== 'GET') {
     methodNotAllowed(res, req.method, 'GET');
@@ -110,6 +122,48 @@ function handleRecentCalls(
   return true;
 }
 
+async function handleHealthz(
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  host: string,
+  boundPort: number,
+  healthSnapshotProvider: HealthSnapshotProvider,
+): Promise<boolean> {
+  const url = new URL(req.url ?? '/', `http://${urlHost(host)}:${boundPort}`);
+  if (url.pathname !== '/healthz') return false;
+  if (req.method !== 'GET') {
+    methodNotAllowed(res, req.method, 'GET');
+    return true;
+  }
+
+  let snapshot: HealthSnapshot;
+  try {
+    snapshot = await healthSnapshotProvider();
+  } catch (err) {
+    const now = new Date().toISOString();
+    snapshot = {
+      schema_version: 1,
+      status: 'unhealthy',
+      started_at: now,
+      updated_at: now,
+      components: {
+        health_snapshot_provider: {
+          status: 'unhealthy',
+          updated_at: now,
+          message: 'health snapshot unavailable',
+        },
+      },
+    };
+    log.error('health_snapshot_failed', { message: (err as Error).message });
+  }
+
+  res.statusCode = snapshot.status === 'healthy' ? 200 : 503;
+  res.setHeader('cache-control', 'no-store');
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify(snapshot));
+  return true;
+}
+
 function parseNumberParam(raw: string | null, fallback: number): number | null {
   if (raw === null || raw === '') return fallback;
   const parsed = Number(raw);
@@ -130,6 +184,9 @@ export async function startMcpServer(
 ): Promise<McpServerHandle> {
   const host = options.host ?? '127.0.0.1';
   const requestedPort = options.port ?? 38478;
+  const defaultHealthTracker = new HealthTracker({ initialStatus: 'healthy' });
+  const healthSnapshotProvider =
+    options.healthSnapshotProvider ?? (() => defaultHealthTracker.snapshot());
 
   let boundPort = requestedPort;
 
@@ -141,7 +198,7 @@ export async function startMcpServer(
     res: import('node:http').ServerResponse,
     body: unknown,
   ): Promise<void> {
-    const mcp = new McpServer({ name: 'echo-context', version: '0.0.0' });
+    const mcp = new McpServer({ name: 'echo-context', version: ECHO_CONTEXT_VERSION });
     instrumentMcpServer(mcp);
     registerEchoPing(mcp);
     registerSearchMemories(mcp, storage);
@@ -156,7 +213,11 @@ export async function startMcpServer(
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
       enableDnsRebindingProtection: true,
-      allowedHosts: [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`],
+      allowedHosts: [
+        `127.0.0.1:${boundPort}`,
+        `localhost:${boundPort}`,
+        `[::1]:${boundPort}`,
+      ],
     });
 
     try {
@@ -170,6 +231,11 @@ export async function startMcpServer(
 
   const httpServer: HttpServer = createServer((req, res) => {
     void (async () => {
+      if (await handleServiceApi(req, res, storage, host)) return;
+      if (await handleHealthz(req, res, host, boundPort, healthSnapshotProvider)) {
+        return;
+      }
+
       if (handleRecentCalls(req, res, host, boundPort)) {
         return;
       }
@@ -209,6 +275,9 @@ export async function startMcpServer(
       }
     });
   });
+  httpServer.requestTimeout = 5_000;
+  httpServer.headersTimeout = 5_000;
+  httpServer.keepAliveTimeout = 1_000;
 
   await new Promise<void>((resolve, reject) => {
     const onError = (err: Error): void => {
@@ -226,7 +295,7 @@ export async function startMcpServer(
 
   const addr = httpServer.address();
   boundPort = typeof addr === 'object' && addr !== null ? addr.port : requestedPort;
-  const url = `http://${host}:${boundPort}/mcp`;
+  const url = `http://${urlHost(host)}:${boundPort}/mcp`;
 
   log.info('started', { port: boundPort, url, host });
 

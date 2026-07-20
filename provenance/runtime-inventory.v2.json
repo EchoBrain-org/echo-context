@@ -13,6 +13,12 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
+      "blob_oid": "2ae4093b9774f1be5dc8350bbbba71b08b73e463",
+      "content_sha256": "90c89e426ed8bf3d58b2fc83f32f13f07b922b4ddccf37a6a9ae4167a4d4d084",
+      "mode": "100644",
+      "path": "tools/build-package.mjs"
+    },
+    {
       "blob_oid": "ddcae431da8b6e646395c712d2d8ec0a113f5ea7",
       "content_sha256": "ec128d6d540d16b7e5f07d97936f04e68371eb2b4ddad18cb39cb213440fb3e9",
       "mode": "100644",
@@ -103,14 +109,20 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "dca97c76f7ada189a00a3a888c5d8f0ff2ab7c75",
-      "content_sha256": "a0b4053cef27a6355859a84e1189509c2b68ba304f33dae68796c35abc66f203",
+      "blob_oid": "5ddc0e855811eedf5458fe22b34da10b8255b4b9",
+      "content_sha256": "02d375b778b52dd6ddfceee6b80b5d666a1a59c622e5d2441203157e75971aef",
+      "mode": "100644",
+      "path": "tools/smoke-package.mjs"
+    },
+    {
+      "blob_oid": "fc02e1441158fd9fbb64f4ca04eca160f0a25fe8",
+      "content_sha256": "6d49e01418832f99a7526a2f1f2442c462513caf1a51f89a79c0303b9a944e42",
       "mode": "100644",
       "path": "tools/verify-context-tools.mjs"
     },
     {
-      "blob_oid": "1ac8fe7564f5e92a01371961d1deea9a3fc125fa",
-      "content_sha256": "9bfd370f3ec4779916c7b07b34dbd7f600b26d84fd8feed31e5e8e9a3d6c5e79",
+      "blob_oid": "e5c46f72a5a2e899a52ead75980b984007c30626",
+      "content_sha256": "cd28f53cc516699a9bd6dd583a9e3a82fb26365887456a4529c532d233b0ae60",
       "mode": "100644",
       "path": "tools/verify-service-parity.mjs"
     },
@@ -139,7 +151,7 @@
       "path": "vitest.operator.config.ts"
     }
   ],
-  "lock_sha256": "13ead528470d91adfc4456d349ae628f03f768ba51d78aee8d0b2c42dc12784b",
+  "lock_sha256": "e7dc05fff5e9c51b3135f290fab4eb78bf82094350b8a2a767b780c6e410f9e8",
   "npm_closure": [
     {
       "cpu": [
@@ -1342,21 +1354,6 @@
       "optional": false,
       "os": [],
       "version": "5.2.3"
-    },
-    {
-      "cpu": [],
-      "dependencies": [
-        {
-          "kind": "dependency",
-          "lock_path": "node_modules/@types/node",
-          "name": "@types/node"
-        }
-      ],
-      "integrity": "sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==",
-      "lock_path": "node_modules/@types/cross-spawn",
-      "optional": false,
-      "os": [],
-      "version": "6.0.6"
     },
     {
       "cpu": [],
@@ -5374,15 +5371,6 @@
     {
       "cpu": [],
       "dependencies": [],
-      "integrity": "sha512-aqVvWoyO21L23mb+drl4RmMXbf6N7FdHjAhTRA9ZBL7apWBgfWC16KjrASI+1p9GAroljyMHj6fK67i0UiTNvQ==",
-      "lock_path": "node_modules/smol-toml",
-      "optional": false,
-      "os": [],
-      "version": "1.7.0"
-    },
-    {
-      "cpu": [],
-      "dependencies": [],
       "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
       "lock_path": "node_modules/source-map-js",
       "optional": false,
@@ -6075,9 +6063,17 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "4eabf79ce54e6da24537c57d4949859b22203d029fadceb68649b2316f99eadd",
+  "package_json_sha256": "062c759f26a20b216e52d5d5674415f2fb3cc287e8a81f1a5dc5cd821e754503",
   "schema": "runtime-inventory.v2",
   "scripts": [
+    {
+      "argv": [
+        "tools/build-package.mjs"
+      ],
+      "command": "node tools/build-package.mjs",
+      "executable": "node",
+      "name": "build"
+    },
     {
       "argv": [
         "tools/build-source-artifact.mjs"
@@ -6097,10 +6093,27 @@
       "name": "lint"
     },
     {
+      "argv": [
+        "run",
+        "build"
+      ],
+      "command": "npm run build",
+      "executable": "npm",
+      "name": "prepack"
+    },
+    {
       "argv": [],
       "command": "tools/secret-scan.sh",
       "executable": "tools/secret-scan.sh",
       "name": "scan:secrets"
+    },
+    {
+      "argv": [
+        "tools/smoke-package.mjs"
+      ],
+      "command": "node tools/smoke-package.mjs",
+      "executable": "node",
+      "name": "smoke:package"
     },
     {
       "argv": [

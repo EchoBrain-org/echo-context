@@ -1,17 +1,34 @@
-import { homedir } from 'node:os';
-import { basename, dirname } from 'node:path';
-import { isNonEmptyString } from '../../guards.js';
-import { createLogger } from '../../logging/index.js';
-import type { Storage } from '../../storage/interface.js';
-import { probeGitState, readBranch } from '../git-state.js';
-import { processCandidate } from '../pipeline.js';
-import { resolveCanonicalRoot } from '../workspace-root.js';
+import { homedir } from "node:os";
+import { basename, dirname } from "node:path";
+import { isNonEmptyString } from "../../guards.js";
+import { createLogger } from "../../logging/index.js";
+import type { Storage } from "../../storage/interface.js";
+import { probeGitState, readBranch } from "../git-state.js";
 import {
+  captureDedupeKey,
+  createExtractorFilesystemPolicy,
+  processExtractorCandidate,
+} from "../pipeline.js";
+import { resolveCanonicalRoot } from "../workspace-root.js";
+import {
+  assertJsonlReadSnapshotCurrent,
+  assertJsonlSourceSnapshotCurrent,
+  classifyJsonlDiscontinuity,
+  classifyJsonlPageProof,
+  createBoundedResourceCache,
   dedupStrings,
+  inspectJsonlSource,
+  makeJsonlCheckpointSource,
   readJsonlTail,
+  readJsonlCheckpointSource,
+  withJsonlReadSnapshot,
   wireJsonlExtractor,
   type ExtractorHandle,
-} from './_shared.js';
+  type JsonlCheckpointSource,
+  JsonlSourceChangedError,
+  type JsonlReadSnapshot,
+  type JsonlSourceInspection,
+} from "./_shared.js";
 import {
   buildToolCall,
   FILE_INPUT_KEYS,
@@ -19,9 +36,9 @@ import {
   truncateThinking,
   type GitState,
   type ToolCall,
-} from './_turn_meta.js';
+} from "./_turn_meta.js";
 
-const log = createLogger('capture.claude-code');
+const log = createLogger("capture.claude-code");
 
 const HOME = homedir();
 const DEFAULT_PROJECTS_PREFIX = `${HOME}/.claude/projects/`;
@@ -67,12 +84,13 @@ export interface DroppedUserLine {
   /** Byte offset of the start of the dropped line within the JSONL. Used as
    *  the dedup key — re-reads observe the same offset and must not re-warn. */
   byte_offset: number;
-  /** First ~120 chars of the dropped user text, for diagnosis. */
-  preview: string;
+  /** Content-free diagnostics. Raw user prompts must never cross the logger
+   *  boundary, even as a truncated preview. */
+  byte_count: number;
   /** `inject` = system reminder / slash-command marker / local-command echo
    *  (high-volume noise; logged at debug). `prompt` = anything else, treated
    *  as a possibly-real user message that never got an assistant reply. */
-  classification: 'inject' | 'prompt';
+  classification: "inject" | "prompt";
   timestamp?: string;
 }
 
@@ -80,26 +98,27 @@ export interface ExtractClaudeCodeResult {
   turns: ClaudeCodeTurn[];
   newOffset: number;
   droppedUsers: DroppedUserLine[];
+  readSnapshot?: JsonlReadSnapshot;
 }
 
 const INJECT_TAG_PREFIXES = [
-  '<system-reminder>',
-  '<command-name>',
-  '<command-message>',
-  '<command-args>',
-  '<command-stdout>',
-  '<command-stderr>',
-  '<local-command-stdout>',
-  '<local-command-stderr>',
-  '<local-command-caveat>',
+  "<system-reminder>",
+  "<command-name>",
+  "<command-message>",
+  "<command-args>",
+  "<command-stdout>",
+  "<command-stderr>",
+  "<local-command-stdout>",
+  "<local-command-stderr>",
+  "<local-command-caveat>",
 ] as const;
 
-function classifyDroppedUser(text: string): 'inject' | 'prompt' {
+function classifyDroppedUser(text: string): "inject" | "prompt" {
   const head = text.trimStart();
   for (const tag of INJECT_TAG_PREFIXES) {
-    if (head.startsWith(tag)) return 'inject';
+    if (head.startsWith(tag)) return "inject";
   }
-  return 'prompt';
+  return "prompt";
 }
 
 interface ParsedToolUse {
@@ -124,7 +143,7 @@ interface ExtractedContent {
 }
 
 interface ParsedLine {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   text: string;
   hasTool: boolean;
   /** True for assistant messages with `stop_reason: end_turn` — signals the
@@ -147,21 +166,21 @@ interface ParsedLine {
 }
 
 function stringifyToolResultContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
   const parts: string[] = [];
   for (const block of content) {
-    if (typeof block !== 'object' || block === null) continue;
+    if (typeof block !== "object" || block === null) continue;
     const b = block as Record<string, unknown>;
-    if (b['type'] === 'text' && typeof b['text'] === 'string') {
-      parts.push(b['text']);
+    if (b["type"] === "text" && typeof b["text"] === "string") {
+      parts.push(b["text"]);
     }
   }
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 function extractContent(content: unknown): ExtractedContent {
-  if (typeof content === 'string') {
+  if (typeof content === "string") {
     return {
       text: content,
       hasTool: false,
@@ -172,7 +191,14 @@ function extractContent(content: unknown): ExtractedContent {
     };
   }
   if (!Array.isArray(content)) {
-    return { text: '', hasTool: false, files: [], toolUses: [], toolResults: [], thinking: [] };
+    return {
+      text: "",
+      hasTool: false,
+      files: [],
+      toolUses: [],
+      toolResults: [],
+      thinking: [],
+    };
   }
   const parts: string[] = [];
   const files: string[] = [];
@@ -181,82 +207,92 @@ function extractContent(content: unknown): ExtractedContent {
   const thinking: string[] = [];
   let hasTool = false;
   for (const block of content) {
-    if (typeof block !== 'object' || block === null) continue;
+    if (typeof block !== "object" || block === null) continue;
     const b = block as Record<string, unknown>;
-    const blockType = b['type'];
-    if (blockType === 'text' && typeof b['text'] === 'string') {
-      parts.push(b['text']);
+    const blockType = b["type"];
+    if (blockType === "text" && typeof b["text"] === "string") {
+      parts.push(b["text"]);
     } else if (
-      blockType === 'thinking' &&
-      typeof b['thinking'] === 'string' &&
-      b['thinking'].trim().length > 0
+      blockType === "thinking" &&
+      typeof b["thinking"] === "string" &&
+      b["thinking"].trim().length > 0
     ) {
-      thinking.push(b['thinking']);
-    } else if (blockType === 'tool_use') {
+      thinking.push(b["thinking"]);
+    } else if (blockType === "tool_use") {
       hasTool = true;
-      const id = b['id'];
-      const name = b['name'];
-      const input = b['input'];
+      const id = b["id"];
+      const name = b["name"];
+      const input = b["input"];
       if (isNonEmptyString(id) && isNonEmptyString(name)) {
         toolUses.push({ id, name, input });
       }
-      if (typeof input === 'object' && input !== null) {
+      if (typeof input === "object" && input !== null) {
         const i = input as Record<string, unknown>;
         for (const key of FILE_INPUT_KEYS) {
           const v = i[key];
           if (isNonEmptyString(v)) files.push(v);
         }
       }
-    } else if (blockType === 'tool_result') {
+    } else if (blockType === "tool_result") {
       hasTool = true;
-      const tuid = b['tool_use_id'];
+      const tuid = b["tool_use_id"];
       if (isNonEmptyString(tuid)) {
         toolResults.push({
           tool_use_id: tuid,
-          content: stringifyToolResultContent(b['content']),
-          is_error: b['is_error'] === true,
+          content: stringifyToolResultContent(b["content"]),
+          is_error: b["is_error"] === true,
         });
       }
     }
   }
-  return { text: parts.join(''), hasTool, files, toolUses, toolResults, thinking };
+  return {
+    text: parts.join(""),
+    hasTool,
+    files,
+    toolUses,
+    toolResults,
+    thinking,
+  };
 }
 
-function parseLine(line: string): ParsedLine | null {
+function parseLine(line: string, byteOffset: number): ParsedLine | null {
   let raw: unknown;
   try {
     raw = JSON.parse(line);
-  } catch (err) {
-    log.warn('parse_failed', {
-      preview: line.slice(0, 120),
-      message: (err as Error).message,
+  } catch {
+    log.warn("parse_failed", {
+      byte_offset: byteOffset,
+      byte_count: Buffer.byteLength(line),
+      classification: "malformed_json",
     });
     return null;
   }
-  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
-  const message = obj['message'];
-  if (typeof message !== 'object' || message === null) return null;
+  const message = obj["message"];
+  if (typeof message !== "object" || message === null) return null;
   const msg = message as Record<string, unknown>;
-  const role = msg['role'];
-  if (role !== 'user' && role !== 'assistant') return null;
-  const ec = extractContent(msg['content']);
-  const ts = obj['timestamp'];
-  const cwd = obj['cwd'];
-  const gitBranch = obj['gitBranch'];
-  const permissionMode = obj['permissionMode'];
-  const version = obj['version'];
-  const model = msg['model'];
-  const isEndTurn = role === 'assistant' && msg['stop_reason'] === 'end_turn';
+  const role = msg["role"];
+  if (role !== "user" && role !== "assistant") return null;
+  const ec = extractContent(msg["content"]);
+  const ts = obj["timestamp"];
+  const cwd = obj["cwd"];
+  const gitBranch = obj["gitBranch"];
+  const permissionMode = obj["permissionMode"];
+  const version = obj["version"];
+  const model = msg["model"];
+  const isEndTurn = role === "assistant" && msg["stop_reason"] === "end_turn";
   return {
     role,
     text: ec.text,
     hasTool: ec.hasTool,
     isEndTurn,
-    timestamp: typeof ts === 'string' ? ts : undefined,
+    timestamp: typeof ts === "string" ? ts : undefined,
     cwd: isNonEmptyString(cwd) ? cwd : undefined,
     gitBranch: isNonEmptyString(gitBranch) ? gitBranch : undefined,
-    permissionMode: isNonEmptyString(permissionMode) ? permissionMode : undefined,
+    permissionMode: isNonEmptyString(permissionMode)
+      ? permissionMode
+      : undefined,
     version: isNonEmptyString(version) ? version : undefined,
     model: isNonEmptyString(model) ? model : undefined,
     files: ec.files,
@@ -268,7 +304,7 @@ function parseLine(line: string): ParsedLine | null {
 
 function deriveSessionId(jsonlPath: string): string {
   const base = basename(jsonlPath);
-  return base.endsWith('.jsonl') ? base.slice(0, -'.jsonl'.length) : base;
+  return base.endsWith(".jsonl") ? base.slice(0, -".jsonl".length) : base;
 }
 
 function deriveProject(jsonlPath: string): string {
@@ -280,9 +316,17 @@ export async function extractClaudeCodeTurns(
   lastByteOffset: number,
 ): Promise<ExtractClaudeCodeResult> {
   const tail = await readJsonlTail(jsonlPath, lastByteOffset, log);
-  if (tail === null) return { turns: [], newOffset: lastByteOffset, droppedUsers: [] };
-  const { lines, mtimeMs: fileMtime } = tail;
-  if (lines.length === 0) return { turns: [], newOffset: lastByteOffset, droppedUsers: [] };
+  if (tail === null)
+    return { turns: [], newOffset: lastByteOffset, droppedUsers: [] };
+  const {
+    lines,
+    lineEndOffsets,
+    firstLineOffset,
+    mtimeMs: fileMtime,
+    snapshot: readSnapshot,
+  } = tail;
+  if (lines.length === 0)
+    return { turns: [], newOffset: lastByteOffset, droppedUsers: [] };
   const session_id = deriveSessionId(jsonlPath);
   const project = deriveProject(jsonlPath);
 
@@ -314,7 +358,7 @@ export async function extractClaudeCodeTurns(
   let toolUsesBetween: ParsedToolUse[] = [];
   let toolResultsBetween: ParsedToolResult[] = [];
   let thinkingBetween: string[] = [];
-  let lineStartOffset = lastByteOffset;
+  let lineStartOffset = firstLineOffset;
   // Tracks the END of the last line that contributed to an EMITTED turn.
   // Pending-cluster lines (user + assistants without a closing next-user) are
   // intentionally NOT past confirmedThroughOffset, so the next pass re-reads
@@ -331,7 +375,7 @@ export async function extractClaudeCodeTurns(
       session_id,
       turn_index: turns.length,
       user_message: pending.userText,
-      assistant_message: pending.assistantTexts.join('\n\n'),
+      assistant_message: pending.assistantTexts.join("\n\n"),
       mtime: fileMtime,
       timestamp: pending.timestamp,
       had_tool_use: pending.hadTool,
@@ -346,48 +390,57 @@ export async function extractClaudeCodeTurns(
       if (tc.truncated) turn.tool_calls_truncated = true;
     }
     if (pending.thinking.length > 0) {
-      const t = truncateThinking(pending.thinking.join('\n\n'));
+      const t = truncateThinking(pending.thinking.join("\n\n"));
       turn.thinking = t.value;
     }
-    if (pending.gitBranch !== undefined) turn.git_branch_jsonl = pending.gitBranch;
-    if (pending.permissionMode !== undefined) turn.permission_mode = pending.permissionMode;
+    if (pending.gitBranch !== undefined)
+      turn.git_branch_jsonl = pending.gitBranch;
+    if (pending.permissionMode !== undefined)
+      turn.permission_mode = pending.permissionMode;
     if (pending.version !== undefined) turn.cli_version = pending.version;
     if (pending.model !== undefined) turn.model = pending.model;
     turns.push(turn);
     confirmedThroughOffset = pending.assistantLastLineEndOffset;
   }
 
-  for (const line of lines) {
-    const lineEndOffset = lineStartOffset + Buffer.byteLength(line, 'utf8') + 1;
-    const parsed = parseLine(line);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]!;
+    const lineEndOffset = lineEndOffsets[lineIndex]!;
+    const parsed = parseLine(line, lineStartOffset);
     if (parsed === null) {
       lineStartOffset = lineEndOffset;
       continue;
     }
     if (parsed.cwd !== undefined) currentCwd = parsed.cwd;
 
-    if (parsed.text === '') {
+    if (parsed.text === "") {
       // Side-effects (tool_use, tool_result, thinking blocks) accumulate into
       // the open cluster if there is one; otherwise into the "between" buffers
       // so they fold into whatever cluster opens next.
       if (pending !== null) {
         if (parsed.hasTool) pending.hadTool = true;
         if (parsed.files.length > 0) pending.files.push(...parsed.files);
-        if (parsed.toolUses.length > 0) pending.toolUses.push(...parsed.toolUses);
-        if (parsed.toolResults.length > 0) pending.toolResults.push(...parsed.toolResults);
-        if (parsed.thinking.length > 0) pending.thinking.push(...parsed.thinking);
+        if (parsed.toolUses.length > 0)
+          pending.toolUses.push(...parsed.toolUses);
+        if (parsed.toolResults.length > 0)
+          pending.toolResults.push(...parsed.toolResults);
+        if (parsed.thinking.length > 0)
+          pending.thinking.push(...parsed.thinking);
       } else {
         if (parsed.hasTool) hadToolBetween = true;
         if (parsed.files.length > 0) filesBetween.push(...parsed.files);
-        if (parsed.toolUses.length > 0) toolUsesBetween.push(...parsed.toolUses);
-        if (parsed.toolResults.length > 0) toolResultsBetween.push(...parsed.toolResults);
-        if (parsed.thinking.length > 0) thinkingBetween.push(...parsed.thinking);
+        if (parsed.toolUses.length > 0)
+          toolUsesBetween.push(...parsed.toolUses);
+        if (parsed.toolResults.length > 0)
+          toolResultsBetween.push(...parsed.toolResults);
+        if (parsed.thinking.length > 0)
+          thinkingBetween.push(...parsed.thinking);
       }
       lineStartOffset = lineEndOffset;
       continue;
     }
 
-    if (parsed.role === 'user') {
+    if (parsed.role === "user") {
       // A new text-bearing user line closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
@@ -395,10 +448,11 @@ export async function extractClaudeCodeTurns(
         } else {
           const dropped: DroppedUserLine = {
             byte_offset: pending.userByteOffset,
-            preview: pending.userText.slice(0, 120),
+            byte_count: Buffer.byteLength(pending.userText),
             classification: classifyDroppedUser(pending.userText),
           };
-          if (pending.timestamp !== undefined) dropped.timestamp = pending.timestamp;
+          if (pending.timestamp !== undefined)
+            dropped.timestamp = pending.timestamp;
           droppedUsers.push(dropped);
         }
       }
@@ -416,7 +470,8 @@ export async function extractClaudeCodeTurns(
       };
       if (currentCwd !== undefined) pending.repo_root = currentCwd;
       if (parsed.gitBranch !== undefined) pending.gitBranch = parsed.gitBranch;
-      if (parsed.permissionMode !== undefined) pending.permissionMode = parsed.permissionMode;
+      if (parsed.permissionMode !== undefined)
+        pending.permissionMode = parsed.permissionMode;
       if (parsed.version !== undefined) pending.version = parsed.version;
       hadToolBetween = false;
       filesBetween = [];
@@ -426,16 +481,20 @@ export async function extractClaudeCodeTurns(
     } else {
       // text-bearing assistant
       if (pending === null) {
-        log.warn('orphan_assistant', { session_id });
+        log.warn("orphan_assistant", { session_id });
       } else {
         pending.assistantTexts.push(parsed.text);
         pending.assistantLastLineEndOffset = lineEndOffset;
-        if (parsed.timestamp !== undefined) pending.timestamp = parsed.timestamp;
+        if (parsed.timestamp !== undefined)
+          pending.timestamp = parsed.timestamp;
         if (parsed.hasTool) pending.hadTool = true;
         if (parsed.files.length > 0) pending.files.push(...parsed.files);
-        if (parsed.toolUses.length > 0) pending.toolUses.push(...parsed.toolUses);
-        if (parsed.toolResults.length > 0) pending.toolResults.push(...parsed.toolResults);
-        if (parsed.thinking.length > 0) pending.thinking.push(...parsed.thinking);
+        if (parsed.toolUses.length > 0)
+          pending.toolUses.push(...parsed.toolUses);
+        if (parsed.toolResults.length > 0)
+          pending.toolResults.push(...parsed.toolResults);
+        if (parsed.thinking.length > 0)
+          pending.thinking.push(...parsed.thinking);
         if (parsed.model !== undefined) pending.model = parsed.model;
         if (pending.gitBranch === undefined && parsed.gitBranch !== undefined) {
           pending.gitBranch = parsed.gitBranch;
@@ -457,7 +516,12 @@ export async function extractClaudeCodeTurns(
   // when the next user line appears; emitting at EOF risks double-emission
   // when the next pass sees more assistant lines arrive (for active sessions)
   // or losing-then-recapturing content as orphans.
-  return { turns, newOffset: confirmedThroughOffset, droppedUsers };
+  return {
+    turns,
+    newOffset: confirmedThroughOffset,
+    droppedUsers,
+    ...(readSnapshot !== undefined ? { readSnapshot } : {}),
+  };
 }
 
 function matchToolCalls(
@@ -475,7 +539,7 @@ function matchToolCalls(
     const r = resultById.get(u.id);
     let argsRaw: string | undefined;
     if (u.input != null) {
-      argsRaw = typeof u.input === 'string' ? u.input : JSON.stringify(u.input);
+      argsRaw = typeof u.input === "string" ? u.input : JSON.stringify(u.input);
     }
     calls.push(
       buildToolCall({
@@ -490,29 +554,43 @@ function matchToolCalls(
   return { calls, total, truncated };
 }
 
-async function backfillOffsetMap(
-  storage: Storage,
-): Promise<Map<string, { offset: number; turn_index: number }>> {
-  const map = new Map<string, { offset: number; turn_index: number }>();
-  const events = await storage.query({ source_prefix: 'fs:' });
-  for (const evt of events) {
-    if (!evt.source.endsWith('.jsonl')) continue;
-    const md = evt.metadata;
-    if (md === undefined) continue;
-    const offset = md['byte_offset'];
-    const turn_index = md['turn_index'];
-    if (typeof offset !== 'number' || typeof turn_index !== 'number') continue;
-    const path = evt.source.slice('fs:'.length);
-    const cur = map.get(path);
-    if (cur === undefined || offset > cur.offset) {
-      map.set(path, { offset, turn_index });
-    }
-  }
-  return map;
-}
-
 export interface ClaudeCodeExtractorOptions {
   projectsPrefix?: string;
+}
+
+interface ClaudeCodeOffsetEntry {
+  offset: number;
+  turn_index: number;
+  source?: JsonlCheckpointSource;
+  inflight_source?: JsonlCheckpointSource;
+  page_start?: ClaudeCodePageStart;
+}
+
+interface ClaudeCodePageStart {
+  offset: number;
+  turn_index: number;
+}
+
+function readClaudeCodePageStart(
+  state: Record<string, unknown> | undefined,
+): ClaudeCodePageStart | undefined {
+  const raw = state?.["jsonl_page_start"];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new TypeError("capture checkpoint jsonl_page_start state is invalid");
+  }
+  const value = raw as Record<string, unknown>;
+  const offset = value["offset"];
+  const turnIndex = value["turn_index"];
+  if (
+    !Number.isSafeInteger(offset) ||
+    (offset as number) < 0 ||
+    !Number.isSafeInteger(turnIndex) ||
+    (turnIndex as number) < -1
+  ) {
+    throw new TypeError("capture checkpoint jsonl_page_start state is invalid");
+  }
+  return { offset: offset as number, turn_index: turnIndex as number };
 }
 
 export type ClaudeCodeExtractorHandle = ExtractorHandle;
@@ -522,108 +600,433 @@ export async function startClaudeCodeExtractor(
   options: ClaudeCodeExtractorOptions = {},
 ): Promise<ClaudeCodeExtractorHandle> {
   const projectsPrefix = options.projectsPrefix ?? DEFAULT_PROJECTS_PREFIX;
-  const offsetMap = await backfillOffsetMap(storage);
+  const capturePolicy = createExtractorFilesystemPolicy({
+    roots: [projectsPrefix],
+  });
+  const offsetMap = createBoundedResourceCache<ClaudeCodeOffsetEntry>();
+
+  async function loadCheckpoint(path: string): Promise<ClaudeCodeOffsetEntry> {
+    const cached = offsetMap.get(path);
+    if (cached !== undefined) return cached;
+    const persisted = await storage.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    const entry: ClaudeCodeOffsetEntry = {
+      offset: persisted?.position ?? 0,
+      turn_index: persisted?.ordinal ?? -1,
+      source: readJsonlCheckpointSource(persisted?.state),
+    };
+    if (
+      entry.source !== undefined &&
+      entry.source.boundary_offset !== entry.offset
+    ) {
+      throw new TypeError(
+        "capture checkpoint jsonl_source does not match its position",
+      );
+    }
+    const inflightSource = readJsonlCheckpointSource(
+      persisted?.state,
+      "jsonl_inflight_source",
+    );
+    if (inflightSource !== undefined) entry.inflight_source = inflightSource;
+    const pageStart = readClaudeCodePageStart(persisted?.state);
+    if (pageStart !== undefined) {
+      if (
+        entry.source?.page_start_offset !== pageStart.offset ||
+        pageStart.offset > entry.offset ||
+        pageStart.turn_index > entry.turn_index
+      ) {
+        throw new TypeError(
+          "capture checkpoint jsonl_page_start does not match its page proof",
+        );
+      }
+      entry.page_start = pageStart;
+    }
+    if (
+      inflightSource !== undefined &&
+      (entry.source === undefined ||
+        pageStart === undefined ||
+        inflightSource.page_start_offset !== pageStart.offset ||
+        inflightSource.boundary_offset !== pageStart.offset ||
+        inflightSource.page_through_offset === undefined ||
+        inflightSource.page_sha256 === undefined ||
+        inflightSource.identity !== entry.source.identity ||
+        inflightSource.generation !== entry.source.generation ||
+        (entry.source.page_through_offset !== undefined &&
+          inflightSource.page_through_offset <
+            entry.source.page_through_offset))
+    ) {
+      throw new TypeError(
+        "capture checkpoint jsonl_inflight_source state is invalid",
+      );
+    }
+    offsetMap.set(path, entry);
+    return entry;
+  }
+
+  async function saveCheckpoint(
+    path: string,
+    entry: ClaudeCodeOffsetEntry,
+    inspection: JsonlSourceInspection,
+    pageStart?: ClaudeCodePageStart,
+    inflightInspection?: JsonlSourceInspection,
+  ): Promise<void> {
+    if (inspection.boundary_offset !== entry.offset) {
+      throw new RangeError(
+        "JSONL checkpoint proof offset does not match entry",
+      );
+    }
+    const source = makeJsonlCheckpointSource(
+      inspection,
+      entry.source?.generation ?? 0,
+    );
+    const inflightSource =
+      inflightInspection === undefined
+        ? undefined
+        : makeJsonlCheckpointSource(
+            inflightInspection,
+            entry.source?.generation ?? 0,
+          );
+    await storage.upsertCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+      position: entry.offset,
+      ...(entry.turn_index >= 0 ? { ordinal: entry.turn_index } : {}),
+      state: {
+        jsonl_source: source,
+        ...(inflightSource !== undefined
+          ? { jsonl_inflight_source: inflightSource }
+          : {}),
+        ...(pageStart !== undefined ? { jsonl_page_start: pageStart } : {}),
+      },
+      updated_at: new Date().toISOString(),
+    });
+    const cached: ClaudeCodeOffsetEntry = { ...entry, source };
+    if (pageStart !== undefined) cached.page_start = pageStart;
+    else delete cached.page_start;
+    if (inflightSource !== undefined) cached.inflight_source = inflightSource;
+    else delete cached.inflight_source;
+    offsetMap.set(path, cached);
+  }
 
   // Per-file watermark: the highest byte_offset of a dropped-user line we've
   // already logged. Without this, every chokidar `change` event re-walks the
   // unconfirmed tail and re-detects the same drops, spamming warnings.
-  const dropWatermark = new Map<string, number>();
+  const dropWatermark = createBoundedResourceCache<number>();
+
+  async function rewindChangedRead(
+    path: string,
+    pageStart: ClaudeCodeOffsetEntry,
+    sourceAtPageStart: JsonlSourceInspection,
+  ): Promise<void> {
+    let retryOffset = pageStart.offset;
+    let current = await inspectJsonlSource(path, retryOffset);
+    const durablePrefixChanged =
+      current.identity !== sourceAtPageStart.identity ||
+      current.boundary_bytes !== sourceAtPageStart.boundary_bytes ||
+      current.boundary_sha256 !== sourceAtPageStart.boundary_sha256;
+    if (current.size < retryOffset || durablePrefixChanged) {
+      retryOffset = 0;
+      current = await inspectJsonlSource(path, retryOffset);
+    }
+    const generation = (pageStart.source?.generation ?? 0) + 1;
+    if (!Number.isSafeInteger(generation)) {
+      throw new RangeError(
+        "JSONL source generation exceeds safe integer range",
+      );
+    }
+    const retry: ClaudeCodeOffsetEntry = {
+      offset: retryOffset,
+      turn_index: pageStart.turn_index,
+      source: makeJsonlCheckpointSource(current, generation),
+    };
+    await saveCheckpoint(path, retry, current);
+    dropWatermark.delete(path);
+    log.warn("jsonl_read_retry", {
+      path,
+      retry_offset: retryOffset,
+      generation,
+    });
+  }
 
   async function handleJsonlChange(path: string): Promise<void> {
-    const cur = offsetMap.get(path) ?? { offset: 0, turn_index: -1 };
-    const { turns, newOffset, droppedUsers } = await extractClaudeCodeTurns(path, cur.offset);
-    const wm = dropWatermark.get(path) ?? -1;
-    const fresh = droppedUsers.filter((d) => d.byte_offset > wm);
-    if (fresh.length > 0) {
-      const session_id = deriveSessionId(path);
-      const prompts = fresh.filter((d) => d.classification === 'prompt');
-      const injects = fresh.filter((d) => d.classification === 'inject');
-      if (prompts.length > 0) {
-        log.warn('user_prompt_dropped_without_assistant_reply', {
-          session_id,
-          count: prompts.length,
-          previews: prompts.map((d) => d.preview),
-        });
-      }
-      if (injects.length > 0) {
-        log.debug('user_inject_dropped', { session_id, count: injects.length });
-      }
-      let maxOffset = wm;
-      for (const d of fresh) if (d.byte_offset > maxOffset) maxOffset = d.byte_offset;
-      dropWatermark.set(path, maxOffset);
-    }
-    let nextTurnIndex = cur.turn_index + 1;
-    for (const turn of turns) {
-      const metadata: Record<string, unknown> = {
-        project: turn.project,
-        session_id: turn.session_id,
-        turn_index: nextTurnIndex,
-        mtime: turn.mtime,
-        byte_offset: turn.byte_offset,
+    let cur = await loadCheckpoint(path);
+    const previousOffset = cur.offset;
+    const expectedPage = cur.inflight_source ?? cur.source;
+    let sourceAtResume = await inspectJsonlSource(
+      path,
+      cur.offset,
+      expectedPage,
+    );
+    let discontinuity =
+      cur.inflight_source === undefined
+        ? classifyJsonlDiscontinuity(cur.offset, cur.source, sourceAtResume)
+        : classifyJsonlPageProof(cur.inflight_source, sourceAtResume);
+    if (
+      discontinuity === null &&
+      cur.inflight_source !== undefined &&
+      cur.source !== undefined
+    ) {
+      const checkpointCurrent: JsonlSourceInspection = {
+        ...sourceAtResume,
+        ...(cur.source.page_start_offset !== undefined
+          ? {
+              page_start_offset: cur.source.page_start_offset,
+              page_through_offset: cur.source.page_through_offset,
+              page_sha256: cur.source.page_sha256,
+            }
+          : {}),
       };
-      if (turn.had_tool_use) metadata['had_tool_use'] = true;
-      if (turn.repo_root !== undefined) metadata['repo_root'] = turn.repo_root;
-      if (turn.repo_root !== undefined) {
-        metadata['canonical_root'] = await resolveCanonicalRoot(turn.repo_root);
+      discontinuity = classifyJsonlDiscontinuity(
+        cur.offset,
+        cur.source,
+        checkpointCurrent,
+      );
+    }
+    if (discontinuity !== null) {
+      const generation = (cur.source?.generation ?? 0) + 1;
+      const boundedPageStart =
+        discontinuity === "page_rewritten" &&
+        cur.page_start !== undefined &&
+        sourceAtResume.size >= cur.page_start.offset
+          ? cur.page_start
+          : undefined;
+      const resetOffset = boundedPageStart?.offset ?? 0;
+      sourceAtResume = await inspectJsonlSource(path, resetOffset);
+      cur = {
+        offset: resetOffset,
+        turn_index: boundedPageStart?.turn_index ?? cur.turn_index,
+        source: makeJsonlCheckpointSource(sourceAtResume, generation),
+      };
+      // Persist the new generation before emitting anything. If this pass is
+      // interrupted, replay uses the same deterministic generation key.
+      await saveCheckpoint(path, cur, sourceAtResume);
+      dropWatermark.delete(path);
+      log.warn("jsonl_source_reset", {
+        path,
+        classification: discontinuity,
+        previous_offset: previousOffset,
+        current_size: sourceAtResume.size,
+        reset_offset: resetOffset,
+        generation,
+      });
+    }
+    const { turns, newOffset, droppedUsers, readSnapshot } =
+      await extractClaudeCodeTurns(path, cur.offset);
+    try {
+      await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
+      const pageStart: ClaudeCodePageStart | undefined =
+        readSnapshot === undefined
+          ? cur.page_start
+          : { offset: cur.offset, turn_index: cur.turn_index };
+      const inflightInspection =
+        readSnapshot === undefined
+          ? undefined
+          : readSnapshot.sourceAt(cur.offset, readSnapshot.through_offset);
+      if (readSnapshot !== undefined) {
+        await assertJsonlReadSnapshotCurrent(path, readSnapshot);
+        await withJsonlReadSnapshot(path, readSnapshot, () =>
+          saveCheckpoint(
+            path,
+            cur,
+            inflightInspection!,
+            pageStart,
+            inflightInspection,
+          ),
+        );
       }
-      if (turn.files_referenced !== undefined) metadata['files_referenced'] = turn.files_referenced;
-      if (turn.tool_calls !== undefined) metadata['tool_calls'] = turn.tool_calls;
-      if (turn.tool_call_total !== undefined) metadata['tool_call_total'] = turn.tool_call_total;
-      if (turn.tool_calls_truncated === true) metadata['tool_calls_truncated'] = true;
-      if (turn.thinking !== undefined) metadata['thinking'] = turn.thinking;
-      if (turn.permission_mode !== undefined) metadata['permission_mode'] = turn.permission_mode;
-      if (turn.cli_version !== undefined) metadata['cli_version'] = turn.cli_version;
-      if (turn.model !== undefined) metadata['model'] = turn.model;
-      const gitState = await probeGitState(turn.repo_root, turn.timestamp);
-      if (gitState !== undefined) {
-        metadata['git_state'] = gitState;
-      } else if (turn.git_branch_jsonl !== undefined) {
-        // Stale (boot-scanned) turn: probe refused, but JSONL gitBranch is
-        // the branch the CC client recorded at turn time — strictly better
-        // provenance than nothing. Emit a partial GitState with fresh:false
-        // so consumers see a uniform shape with Codex's session_meta
-        // backfill. head_sha + dirty_count remain unrecoverable: CC JSONL
-        // doesn't record commit sha, and dirty status is point-in-time only.
-        metadata['git_state'] = {
-          captured_at: turn.timestamp,
-          fresh: false,
-          branch: turn.git_branch_jsonl,
+      const wm = dropWatermark.get(path) ?? -1;
+      const fresh = droppedUsers.filter((d) => d.byte_offset > wm);
+      if (fresh.length > 0) {
+        const session_id = deriveSessionId(path);
+        const prompts = fresh.filter((d) => d.classification === "prompt");
+        const injects = fresh.filter((d) => d.classification === "inject");
+        if (prompts.length > 0) {
+          log.warn("user_prompt_dropped_without_assistant_reply", {
+            session_id,
+            count: prompts.length,
+            classification: "prompt",
+            total_bytes: prompts.reduce((sum, d) => sum + d.byte_count, 0),
+            first_byte_offset: prompts[0]!.byte_offset,
+            last_byte_offset: prompts[prompts.length - 1]!.byte_offset,
+          });
+        }
+        if (injects.length > 0) {
+          log.debug("user_inject_dropped", {
+            session_id,
+            count: injects.length,
+            classification: "inject",
+            total_bytes: injects.reduce((sum, d) => sum + d.byte_count, 0),
+            first_byte_offset: injects[0]!.byte_offset,
+            last_byte_offset: injects[injects.length - 1]!.byte_offset,
+          });
+        }
+        let maxOffset = wm;
+        for (const d of fresh)
+          if (d.byte_offset > maxOffset) maxOffset = d.byte_offset;
+        dropWatermark.set(path, maxOffset);
+      }
+      let nextTurnIndex = cur.turn_index + 1;
+      for (const turn of turns) {
+        const turnSnapshot = readSnapshot?.rangeAt(
+          readSnapshot.first_offset,
+          turn.byte_offset,
+        );
+        const metadata: Record<string, unknown> = {
+          project: turn.project,
+          session_id: turn.session_id,
+          turn_index: nextTurnIndex,
+          mtime: turn.mtime,
+          byte_offset: turn.byte_offset,
         };
+        if (turn.had_tool_use) metadata["had_tool_use"] = true;
+        if (turn.repo_root !== undefined)
+          metadata["repo_root"] = turn.repo_root;
+        if (turn.repo_root !== undefined) {
+          metadata["canonical_root"] = await resolveCanonicalRoot(
+            turn.repo_root,
+          );
+        }
+        if (turn.files_referenced !== undefined)
+          metadata["files_referenced"] = turn.files_referenced;
+        if (turn.tool_calls !== undefined)
+          metadata["tool_calls"] = turn.tool_calls;
+        if (turn.tool_call_total !== undefined)
+          metadata["tool_call_total"] = turn.tool_call_total;
+        if (turn.tool_calls_truncated === true)
+          metadata["tool_calls_truncated"] = true;
+        if (turn.thinking !== undefined) metadata["thinking"] = turn.thinking;
+        if (turn.permission_mode !== undefined)
+          metadata["permission_mode"] = turn.permission_mode;
+        if (turn.cli_version !== undefined)
+          metadata["cli_version"] = turn.cli_version;
+        if (turn.model !== undefined) metadata["model"] = turn.model;
+        const gitState = await probeGitState(turn.repo_root, turn.timestamp);
+        if (gitState !== undefined) {
+          metadata["git_state"] = gitState;
+        } else if (turn.git_branch_jsonl !== undefined) {
+          // Stale (boot-scanned) turn: probe refused, but JSONL gitBranch is
+          // the branch the CC client recorded at turn time — strictly better
+          // provenance than nothing. Emit a partial GitState with fresh:false
+          // so consumers see a uniform shape with Codex's session_meta
+          // backfill. head_sha + dirty_count remain unrecoverable: CC JSONL
+          // doesn't record commit sha, and dirty status is point-in-time only.
+          metadata["git_state"] = {
+            captured_at: turn.timestamp,
+            fresh: false,
+            branch: turn.git_branch_jsonl,
+          };
+        }
+        const branch =
+          turn.git_branch_jsonl ?? (await readBranch(turn.repo_root));
+        if (branch !== undefined) metadata["branch"] = branch;
+        const dedupeParts: (string | number)[] = [
+          path,
+          turn.session_id,
+          turn.byte_offset,
+        ];
+        if ((cur.source?.generation ?? 0) > 0) {
+          dedupeParts.push(`source-generation:${cur.source!.generation}`);
+        }
+        const candidate = {
+          source: `fs:${path}`,
+          timestamp: turn.timestamp,
+          content: `USER: ${turn.user_message}\n\nASSISTANT: ${turn.assistant_message}`,
+          metadata,
+          dedupe_key: captureDedupeKey("claude-code", dedupeParts),
+        };
+        log.info("candidate", {
+          session_id: turn.session_id,
+          turn_index: nextTurnIndex,
+        });
+        const appendCandidate = () =>
+          processExtractorCandidate(candidate, storage, capturePolicy);
+        const result =
+          turnSnapshot === undefined
+            ? await appendCandidate()
+            : await withJsonlReadSnapshot(path, turnSnapshot, appendCandidate);
+        if (result.accepted) {
+          nextTurnIndex += 1;
+        } else {
+          log.warn("candidate_rejected", { reason: result.reason, path });
+        }
+        // Checkpoint per processed turn (cursor.ts's per-turn lastSeenMap.set is
+        // the in-tree precedent): a mid-batch throw on a later turn then resumes
+        // AFTER this one instead of durably re-appending it on every poll tick.
+        const persistTurn = () =>
+          saveCheckpoint(
+            path,
+            {
+              offset: turn.byte_offset,
+              turn_index: nextTurnIndex - 1,
+              source: cur.source,
+            },
+            readSnapshot?.sourceAt(turn.byte_offset) ?? sourceAtResume,
+            pageStart,
+            inflightInspection,
+          );
+        if (turnSnapshot === undefined) {
+          await persistTurn();
+        } else {
+          await withJsonlReadSnapshot(path, turnSnapshot, persistTurn);
+        }
       }
-      const branch = turn.git_branch_jsonl ?? (await readBranch(turn.repo_root));
-      if (branch !== undefined) metadata['branch'] = branch;
-      const candidate = {
-        source: `fs:${path}`,
-        timestamp: turn.timestamp,
-        content: `USER: ${turn.user_message}\n\nASSISTANT: ${turn.assistant_message}`,
-        metadata,
-      };
-      log.info('candidate', { session_id: turn.session_id, turn_index: nextTurnIndex });
-      const result = await processCandidate(candidate, storage);
-      if (result.accepted) {
-        nextTurnIndex += 1;
+      await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
+      const persistPage = () =>
+        saveCheckpoint(
+          path,
+          {
+            offset: newOffset,
+            turn_index: nextTurnIndex - 1,
+            source: cur.source,
+          },
+          readSnapshot?.sourceAt(newOffset) ?? sourceAtResume,
+          pageStart,
+        );
+      if (readSnapshot === undefined) {
+        await persistPage();
       } else {
-        log.warn('candidate_rejected', { reason: result.reason, path });
+        await withJsonlReadSnapshot(path, readSnapshot, persistPage);
       }
-      // Checkpoint per processed turn (cursor.ts's per-turn lastSeenMap.set is
-      // the in-tree precedent): a mid-batch throw on a later turn then resumes
-      // AFTER this one instead of durably re-appending it on every poll tick.
-      offsetMap.set(path, { offset: turn.byte_offset, turn_index: nextTurnIndex - 1 });
+      await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
+    } catch (err) {
+      if (!(err instanceof JsonlSourceChangedError)) throw err;
+      await rewindChangedRead(path, cur, sourceAtResume);
+      throw err;
     }
-    offsetMap.set(path, { offset: newOffset, turn_index: nextTurnIndex - 1 });
   }
 
   const handle = await wireJsonlExtractor({
     prefix: projectsPrefix,
     offsetMap,
     handle: handleJsonlChange,
+    getPersistedOffset: async (path) => (await loadCheckpoint(path)).offset,
+    isCheckpointCurrent: async (path) => {
+      const checkpoint = await loadCheckpoint(path);
+      if (checkpoint.source === undefined) return false;
+      const current = await inspectJsonlSource(
+        path,
+        checkpoint.offset,
+        checkpoint.source,
+      );
+      return (
+        classifyJsonlDiscontinuity(
+          checkpoint.offset,
+          checkpoint.source,
+          current,
+        ) === null
+      );
+    },
     log,
   });
-  log.info('started', { projectsPrefix });
+  log.info("started", { projectsPrefix });
   return {
+    initialCatchUp: handle.initialCatchUp,
+    getHealth: handle.getHealth,
     stop: async () => {
       await handle.stop();
-      log.info('stopped', {});
+      log.info("stopped", {});
     },
     probeFreshness: handle.probeFreshness,
   };

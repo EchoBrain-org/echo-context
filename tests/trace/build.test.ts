@@ -70,6 +70,26 @@ describe('buildRecentWorkContext', () => {
     });
   });
 
+  it('surfaces dense graph budget exhaustion as structured truncation', () => {
+    const { events, normalize } = asCapture(
+      Array.from({ length: 1_000 }, (_, index) => ({
+        id: `dense-${String(index).padStart(4, '0')}`,
+        app: 'cursor',
+        occurred_at: '2026-05-06T08:00:00.000Z',
+        artifacts: [{ provider: 'local_fs', type: 'file', id: 'shared.ts' }],
+      })),
+    );
+    const response = buildRecentWorkContext(
+      events,
+      { ...QUERY, limit: 1_000 },
+      normalize,
+    );
+    expect(response.truncation.truncated).toBe(true);
+    expect(response.warnings.some((warning) => warning.startsWith('[GRAPH_BUDGET]'))).toBe(
+      true,
+    );
+  });
+
   it('drops atoms with timestamps outside since/until window', () => {
     const { events, normalize } = asCapture([
       {

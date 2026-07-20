@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const NODE = process.execPath;
 const STDERR_LIMIT = 64 * 1024;
+const CHILD_READINESS_TIMEOUT_MS = 10_000;
 
 interface Ready { host: string; port: number; pid: number }
 interface RunningChild {
@@ -174,6 +175,44 @@ function waitForExit(child: ChildProcess, timeoutMs: number): Promise<{ code: nu
   });
 }
 
+function waitForExactOutput(child: ChildProcess, expected: string, timeoutMs: number): Promise<void> {
+  const output = child.stdout;
+  if (!output) return Promise.reject(new Error('child stdout pipe is unavailable'));
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      output.off('data', onData);
+      child.off('error', onError);
+      child.off('exit', onExit);
+    };
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      action();
+    };
+    const onData = (bytes: Buffer) => {
+      buffer += bytes.toString('utf8');
+      if (buffer === expected) finish(resolve);
+      else if (!expected.startsWith(buffer)) {
+        finish(() => reject(new Error(`invalid child readiness bytes: ${JSON.stringify(buffer)}`)));
+      }
+    };
+    const onError = (error: Error) => finish(() => reject(error));
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+      finish(() => reject(new Error(`child exited before readiness: code=${code} signal=${signal}`)));
+    const timer = setTimeout(
+      () => finish(() => reject(new Error(`child readiness timeout after ${timeoutMs}ms`))),
+      timeoutMs,
+    );
+    output.on('data', onData);
+    child.once('error', onError);
+    child.once('exit', onExit);
+  });
+}
+
 function groupExists(pid: number): boolean {
   try {
     process.kill(-pid, 0);
@@ -249,7 +288,7 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(ping.json).toMatchObject({ pong: true });
 
     const capture = await post('/v1/capture', {
-      source: 'claude_code:/svc',
+      source: 'api:granola',
       timestamp: '2026-07-01T00:00:00.000Z',
       content: 'alpha service capture',
       metadata: { repo_root: '/svc' },
@@ -258,7 +297,7 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     const id = capture.json.id as string;
     expect(typeof id).toBe('string');
     const newerCapture = await post('/v1/capture', {
-      source: 'claude_code:/svc',
+      source: 'api:granola',
       timestamp: '2026-07-01T00:00:01.000Z',
       content: 'beta service capture',
       metadata: { repo_root: '/svc' },
@@ -338,6 +377,30 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect((await fetchJson('/v1/search', { method: 'POST', body: '{}' })).status).toBe(415);
   });
 
+  it('keeps configured extractor roots private from the service capture gate', async () => {
+    const configuredExtractorPath = join(
+      running!.home,
+      'sources',
+      'codex',
+      'session.jsonl',
+    );
+    const configuredRootAttempt = await post('/v1/capture', {
+      source: `fs:${configuredExtractorPath}`,
+      timestamp: '2026-07-01T00:00:00.000Z',
+      content: 'must-stay-extractor-private',
+    });
+    expect(configuredRootAttempt.status).toBe(403);
+    expect(configuredRootAttempt.json.error).toContain('unknown_path');
+
+    const unrelated = await post('/v1/capture', {
+      source: 'fs:/tmp/unrelated-echo-context-source.jsonl',
+      timestamp: '2026-07-01T00:00:00.000Z',
+      content: 'must-be-rejected',
+    });
+    expect(unrelated.status).toBe(403);
+    expect(unrelated.json.error).toContain('unknown_path');
+  });
+
   it('bounds request bodies and serialized results', async () => {
     const oversized = await post('/v1/capture', {
       source: 'x',
@@ -352,7 +415,7 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     );
     for (let index = 0; index < 6; index++) {
       const captured = await post('/v1/capture', {
-        source: `fixture:${index}`,
+        source: 'api:granola',
         timestamp: `2026-07-01T00:00:0${index}.000Z`,
         content: `response-cap-marker ${index}`,
         metadata: largeMetadata,
@@ -439,18 +502,14 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
-    await new Promise<void>((resolveReady, reject) => {
-      const timer = setTimeout(() => reject(new Error('uncooperative child did not become ready')), 1_000);
-      child.stdout?.once('data', (bytes) => {
-        clearTimeout(timer);
-        if (bytes.toString('utf8') !== 'ready\n') reject(new Error('invalid uncooperative-child readiness bytes'));
-        else resolveReady();
-      });
-      child.once('error', reject);
-    });
-    await expect(terminateGroup(child, true)).rejects.toThrow('required SIGKILL after graceful-shutdown deadline');
-    expect(groupExists(child.pid!)).toBe(false);
-  }, 7_000);
+    try {
+      await waitForExactOutput(child, 'ready\n', CHILD_READINESS_TIMEOUT_MS);
+      await expect(terminateGroup(child, true)).rejects.toThrow('required SIGKILL after graceful-shutdown deadline');
+      expect(groupExists(child.pid!)).toBe(false);
+    } finally {
+      if (child.pid && groupExists(child.pid)) await terminateGroup(child, false);
+    }
+  }, CHILD_READINESS_TIMEOUT_MS + 15_000);
 
   it('tears down via SIGTERM only; SIGKILL fallback can never resolve success', async () => {
     await terminateGroup(running!.child, true);

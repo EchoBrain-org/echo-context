@@ -14,7 +14,8 @@
 
 import { normalizeEvent } from '../../normalize/index.js';
 import type { NormalizedContextEvent } from '../../normalize/types.js';
-import type { Storage } from '../../storage/interface.js';
+import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
+import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { noUsefulCluster } from '../../trace/auto-expand.js';
 import { buildRecentWorkContext, rankClusters, rankReasonsFor } from '../../trace/index.js';
 import type {
@@ -36,6 +37,7 @@ export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 500;
 export const DEFAULT_WINDOW_HOURS = 4;
 export const STORAGE_OVERFETCH = 10;
+export const CLUSTER_MAX_STORAGE_SCAN_WINDOWS = 4;
 
 // V1.5.7 polish (2026-05-09): no-args resume auto-expand. The 4h default
 // is right for "what just happened" but wrong for "where did I leave off
@@ -90,6 +92,76 @@ function clampLimit(input: number | undefined): number {
   return Math.min(Math.max(1, floored), MAX_LIMIT);
 }
 
+interface ClusterStoragePage {
+  events: CaptureEvent[];
+  scanTruncated: boolean;
+}
+
+async function hydrateClusterMatches(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent[]> {
+  const events: CaptureEvent[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    events.push(...(await storage.getByIds(ids.slice(offset, offset + 100))));
+  }
+  return events;
+}
+
+/** Continue a descending cluster query across a finite number of sparse
+ * descriptor windows. This consumes the storage adapter's lossless
+ * `matched_ids + resume_cursor` contract without exposing the hard scan
+ * boundary as an MCP failure. */
+async function queryClusterEvents(
+  storage: Storage,
+  filter: QueryFilter,
+  requested: number,
+): Promise<ClusterStoragePage> {
+  const events: CaptureEvent[] = [];
+  const seen = new Set<string>();
+  let before = filter.before;
+
+  const appendUnique = (rows: readonly CaptureEvent[]): void => {
+    for (const event of rows) {
+      if (seen.has(event.id)) continue;
+      seen.add(event.id);
+      events.push(event);
+    }
+  };
+
+  for (let window = 0; window < CLUSTER_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
+    const remaining = requested - events.length;
+    if (remaining <= 0) return { events, scanTruncated: false };
+    try {
+      appendUnique(await storage.query({ ...filter, before, limit: remaining }));
+      events.sort((left, right) => {
+        if (left.timestamp < right.timestamp) return 1;
+        if (left.timestamp > right.timestamp) return -1;
+        if (left.id < right.id) return 1;
+        if (left.id > right.id) return -1;
+        return 0;
+      });
+      return { events: events.slice(0, requested), scanTruncated: false };
+    } catch (error) {
+      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
+      appendUnique(await hydrateClusterMatches(storage, error.matched_ids));
+      before = error.resume_cursor;
+    }
+  }
+
+  events.sort((left, right) => {
+    if (left.timestamp < right.timestamp) return 1;
+    if (left.timestamp > right.timestamp) return -1;
+    if (left.id < right.id) return 1;
+    if (left.id > right.id) return -1;
+    return 0;
+  });
+  return {
+    events: events.slice(0, requested),
+    scanTruncated: events.length < requested,
+  };
+}
+
 // Span-driven default for window_hours. When the caller passes an explicit
 // value, that wins. Otherwise: short spans (≤4h) reuse the span exactly so a
 // 1h "what did I just do" query produces a tight 1h cluster cap; longer spans
@@ -123,17 +195,19 @@ async function runRecentWorkContextPass(
   const storageCap = limit * STORAGE_OVERFETCH;
   // Item 038 / AC5: fs-watcher exclusion via the shared `withFsExclusion`
   // helper — single source of truth across retrieval tools.
-  const events = await storage.query(
+  const storagePage = await queryClusterEvents(
+    storage,
     withFsExclusion({
       since,
       until,
-      limit: storageCap,
       // Item 037 / AC4: cross-source repo scoping. Storage matches
       // metadata.repo_root by string equality — git atoms without that
       // metadata are not in the filtered set.
       ...(normalisedRepoPath !== null ? { metadata_match: { repo_root: normalisedRepoPath } } : {}),
     }),
+    storageCap,
   );
+  const events = storagePage.events;
 
   const query: Query = {
     since,
@@ -160,6 +234,11 @@ async function runRecentWorkContextPass(
       'storage cap hit (events.length === limit * STORAGE_OVERFETCH); ' +
         'atoms in window may be silently truncated. ' +
         'Raise limit or narrow (since, until) to retain them.',
+    );
+  }
+  if (storagePage.scanTruncated) {
+    response.warnings.push(
+      `[STORAGE_SCAN_BUDGET] cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
     );
   }
 

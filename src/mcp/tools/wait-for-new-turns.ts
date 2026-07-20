@@ -20,6 +20,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { canonicalizeTimestamp } from '../../util/timestamp.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
@@ -46,6 +47,7 @@ export const WAIT_MAX_RETURNED_TURNS = 20;
 // could still be split — documented limitation, pathological (>20 atoms
 // sharing one millisecond at the boundary).
 export const WAIT_PER_POLL_LIMIT_PER_SOURCE = 2 * WAIT_MAX_RETURNED_TURNS + 1;
+export const WAIT_MAX_STORAGE_SCAN_WINDOWS = 4;
 
 // Recognised source_app names that resolve via PREFIX MATCH (different
 // from echo_resolve_mru's MRU exact-source resolution). Sources NOT in this
@@ -171,6 +173,63 @@ interface PollPage {
    *  ships a possibly-incomplete tie group and the chained strict-`>`
    *  call may skip its unfetched members. Caller warns loudly. */
   tieGroupMayBeIncomplete?: boolean;
+  /** A sparse storage post-filter exhausted every bounded continuation
+   * window. This is advisory, never a public MCP error. */
+  scanTruncated?: boolean;
+}
+
+interface SourcePollPage {
+  rows: CaptureEvent[];
+  scanTruncated: boolean;
+}
+
+async function hydrateScanMatches(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent[]> {
+  const rows: CaptureEvent[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    rows.push(...(await storage.getByIds(ids.slice(offset, offset + 100))));
+  }
+  return rows;
+}
+
+/** Query one wait source through a finite sequence of resumable sparse-scan
+ * windows. Matches admitted before each boundary are hydrated by id and the
+ * next window resumes strictly after the storage cursor. */
+async function queryPollSource(storage: Storage, filter: QueryFilter): Promise<SourcePollPage> {
+  const requested = filter.limit ?? WAIT_PER_POLL_LIMIT_PER_SOURCE;
+  const rows: CaptureEvent[] = [];
+  let after = filter.after;
+
+  for (let window = 0; window < WAIT_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
+    const remaining = requested - rows.length;
+    if (remaining <= 0) return { rows: rows.slice(0, requested), scanTruncated: false };
+    try {
+      rows.push(...(await storage.query({ ...filter, after, limit: remaining })));
+      rows.sort((left, right) => {
+        if (left.timestamp < right.timestamp) return -1;
+        if (left.timestamp > right.timestamp) return 1;
+        if (left.id < right.id) return -1;
+        if (left.id > right.id) return 1;
+        return 0;
+      });
+      return { rows: rows.slice(0, requested), scanTruncated: false };
+    } catch (error) {
+      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
+      rows.push(...(await hydrateScanMatches(storage, error.matched_ids)));
+      after = error.resume_cursor;
+    }
+  }
+
+  rows.sort((left, right) => {
+    if (left.timestamp < right.timestamp) return -1;
+    if (left.timestamp > right.timestamp) return 1;
+    if (left.id < right.id) return -1;
+    if (left.id > right.id) return 1;
+    return 0;
+  });
+  return { rows: rows.slice(0, requested), scanTruncated: rows.length < requested };
 }
 
 /** One poll pass: fan out one storage query per (exact source) and per
@@ -202,22 +261,23 @@ async function pollOnce(
   // contract pages from the OLDEST end. (DESC newest-first silently dropped
   // the oldest of a >cap burst, and chaining skipped them forever.)
   const filterCommonAsc: QueryFilter = { ...filterCommon, order: 'asc' };
-  const queries: Promise<CaptureEvent[]>[] = [];
+  const queries: Promise<SourcePollPage>[] = [];
   for (const exact of resolved.exact) {
-    queries.push(storage.query({ ...filterCommonAsc, source: exact }));
+    queries.push(queryPollSource(storage, { ...filterCommonAsc, source: exact }));
   }
   for (const prefix of resolved.prefixes) {
-    queries.push(storage.query({ ...filterCommonAsc, source_prefix: prefix }));
+    queries.push(queryPollSource(storage, { ...filterCommonAsc, source_prefix: prefix }));
   }
   const results = await Promise.all(queries);
+  const scanTruncated = results.some((result) => result.scanTruncated);
 
   // Strict-after post-filter: storage uses `>=` so a re-fire with
   // since=last_returned_ts would re-deliver the boundary turn on every
   // wake. Drop rows at exactly `since` here so the contract `> since`
   // holds. Spec §3 strict-after-boundary semantic (acceptance #3).
   const merged = new Map<string, CaptureEvent>();
-  for (const rows of results) {
-    for (const r of rows) {
+  for (const result of results) {
+    for (const r of result.rows) {
       if (r.timestamp <= since) continue;
       merged.set(r.id, r);
     }
@@ -238,7 +298,7 @@ async function pollOnce(
   // more rows at its last fetched timestamp beyond the window — any tie
   // group ending the page AT such a horizon cannot be proven complete.
   const fullWindowHorizons = new Set<string>();
-  for (const rows of results) {
+  for (const { rows } of results) {
     if (rows.length === WAIT_PER_POLL_LIMIT_PER_SOURCE) {
       fullWindowHorizons.add(rows[rows.length - 1]!.timestamp);
     }
@@ -273,12 +333,17 @@ async function pollOnce(
       let held = end;
       while (held > 0 && all[held - 1]!.timestamp === pageEndTs) held -= 1;
       if (held > 0) {
-        return { rows: all.slice(0, held), overflow: true };
+        return { rows: all.slice(0, held), overflow: true, scanTruncated };
       }
-      return { rows: all.slice(0, end), overflow: true, tieGroupMayBeIncomplete: true };
+      return {
+        rows: all.slice(0, end),
+        overflow: true,
+        tieGroupMayBeIncomplete: true,
+        scanTruncated,
+      };
     }
   }
-  return { rows: all.slice(0, end), overflow };
+  return { rows: all.slice(0, end), overflow, scanTruncated };
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -373,7 +438,11 @@ export async function waitForNewTurns(
   // there"; the long-poll's whole point is to NOT round-trip the wait
   // when there's nothing newer than `since`.
   let page = await pollOnce(storage, resolved, since, normalisedRepoPath);
-  while (page.rows.length === 0 && now().getTime() < deadlineMs) {
+  while (
+    page.rows.length === 0 &&
+    page.scanTruncated !== true &&
+    now().getTime() < deadlineMs
+  ) {
     // Sleep then re-poll. Cap the sleep at remaining-time so we don't
     // overshoot the deadline by up to one poll interval.
     const remaining = deadlineMs - now().getTime();
@@ -393,7 +462,7 @@ export async function waitForNewTurns(
   //   • timed out empty → next_since = the canonicalized caller `since`,
   //     echoed back — nothing was delivered, so re-delivery is impossible
   //     and nothing can be skipped.
-  const { rows, overflow, tieGroupMayBeIncomplete } = page;
+  const { rows, overflow, tieGroupMayBeIncomplete, scanTruncated } = page;
   const next_since = rows.length > 0 ? rows[rows.length - 1]!.timestamp : since;
   const timed_out = rows.length === 0;
   const warnings: string[] = [];
@@ -405,6 +474,11 @@ export async function waitForNewTurns(
   if (tieGroupMayBeIncomplete === true) {
     warnings.push(
       `wait_for_new_turns: a single same-timestamp group exceeded the per-source fetch window (${WAIT_PER_POLL_LIMIT_PER_SOURCE}); its unfetched members share next_since's timestamp and the chained strict-after call may skip them — recover the full set via search_memories with since just before next_since`,
+    );
+  }
+  if (scanTruncated === true) {
+    warnings.push(
+      `wait_for_new_turns: bounded storage scan exhausted after ${WAIT_MAX_STORAGE_SCAN_WINDOWS} windows; older matches may remain — narrow since/source scope and retry`,
     );
   }
 

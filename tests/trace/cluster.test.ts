@@ -4,6 +4,7 @@ import {
   buildGraph,
   connectedComponents,
   filterRedundantEdges,
+  GRAPH_MAX_EDGES,
 } from '../../src/trace/cluster.js';
 import type { Edge } from '../../src/trace/types.js';
 import { makeAtom, type AtomSpec } from './fixtures/atoms.js';
@@ -230,6 +231,21 @@ describe('buildGraph + connectedComponents', () => {
       'local_fs:file:r::a.ts',
       'local_fs:file:r::b.ts',
     ]);
+  });
+
+  it('hard-bounds a dense shared-artifact graph', () => {
+    const atoms = Array.from({ length: 1_000 }, (_, index) =>
+      makeAtom({
+        id: `dense-${String(index).padStart(4, '0')}`,
+        app: 'cursor',
+        occurred_at: '2026-05-06T08:00:00.000Z',
+        artifacts: [{ provider: 'local_fs', type: 'file', id: 'shared.ts' }],
+      }),
+    );
+    const graph = buildGraph(atoms);
+    expect(graph.truncated).toBe(true);
+    expect(graph.edges).toHaveLength(GRAPH_MAX_EDGES);
+    expect(connectedComponents(graph).length).toBeGreaterThan(0);
   });
 });
 

@@ -111,6 +111,8 @@ export interface RankSignals {
 export interface Graph {
   nodes: string[];
   edges: Edge[];
+  /** True when finite graph work/edge budgets omitted additional relations. */
+  truncated?: boolean;
 }
 
 export interface RawCluster {

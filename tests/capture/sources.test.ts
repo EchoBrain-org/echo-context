@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ECHO_STATE_PATHS, setEchoStateRoot } from '../../src/echo-home/state-paths.js';
 import {
   CAPTURED_SOURCES,
   DEFAULT_GIT_REPOS,
@@ -34,18 +35,17 @@ describe('CAPTURED_SOURCES', () => {
     ]);
   });
 
-  it('falls back to the built-in git repo when capture config is absent', () => {
+  it('has no implicit git repository when capture config is absent', () => {
     const dir = mkdtempSync(join(tmpdir(), 'echo-capture-sources-'));
     try {
-      expect(loadGitReposFromCaptureConfig(join(dir, 'missing.json'))).toEqual([
-        ...DEFAULT_GIT_REPOS,
-      ]);
+      expect(DEFAULT_GIT_REPOS).toEqual([]);
+      expect(loadGitReposFromCaptureConfig(join(dir, 'missing.json'))).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('loads persisted git repos merged with the built-in default', () => {
+  it('loads only explicitly persisted git repositories', () => {
     const dir = mkdtempSync(join(tmpdir(), 'echo-capture-sources-'));
     const configPath = join(dir, 'capture-sources.json');
     try {
@@ -62,11 +62,30 @@ describe('CAPTURED_SOURCES', () => {
         )}\n`,
       );
 
-      expect(loadGitReposFromCaptureConfig(configPath)).toEqual([
-        ...DEFAULT_GIT_REPOS,
-        '/tmp/customer-repo',
-      ]);
+      expect(loadGitReposFromCaptureConfig(configPath)).toEqual(['/tmp/customer-repo']);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the default config from the lean context state root', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'echo-capture-state-root-'));
+    const previousRoot = ECHO_STATE_PATHS.root;
+    try {
+      mkdirSync(join(dir, 'state'), { recursive: true });
+      writeFileSync(
+        join(dir, 'state', 'capture-sources.json'),
+        `${JSON.stringify({
+          schema_version: 1,
+          updated_at: '2026-07-20T00:00:00.000Z',
+          git_repos: ['/tmp/explicit-repo'],
+        })}\n`,
+      );
+      setEchoStateRoot(dir);
+
+      expect(loadGitReposFromCaptureConfig()).toEqual(['/tmp/explicit-repo']);
+    } finally {
+      setEchoStateRoot(previousRoot);
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -1,7 +1,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { searchMemories, type SearchResult } from '../../../src/mcp/tools/search-memories.js';
+import {
+  SEARCH_SCAN_PAGE_ROWS,
+  searchMemories,
+  type SearchResult,
+} from '../../../src/mcp/tools/search-memories.js';
 import { startMcpServer, type McpServerHandle } from '../../../src/mcp/server.js';
 import { MemoryStorage } from '../../../src/storage/memory.js';
 import type { CaptureEvent } from '../../../src/storage/interface.js';
@@ -1210,7 +1214,7 @@ describe('search_memories item 025 (outputSchema + readOnlyHint + source_app + c
     expect(r.query_echo.repo_path).toBe('/Users/x/Project_echo');
   });
 
-  it('substring-query path: storage is NOT called with filter.limit', async () => {
+  it('substring-query path: every storage scan is row-bounded', async () => {
     // Instrument a storage that records every filter passed to query().
     const calls: Array<Record<string, unknown>> = [];
     const inner = new MemoryStorage();
@@ -1235,7 +1239,8 @@ describe('search_memories item 025 (outputSchema + readOnlyHint + source_app + c
       query: 'needle',
       limit: 4,
     });
-    expect(calls.every((c) => c['limit'] === undefined)).toBe(true);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c['limit'] === SEARCH_SCAN_PAGE_ROWS)).toBe(true);
     expect(r.total_returned).toBeGreaterThan(0);
     expect(r.matches.every((m) => m.content.includes('needle'))).toBe(true);
   });

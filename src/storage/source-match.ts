@@ -1,7 +1,8 @@
 // Shared source / source_prefix matching semantics for both storage
 // adapters. Extracted verbatim from MemoryStorage (whose behavior is the
-// contract) so SqliteStorage can apply the SAME predicate as a post-SQL
-// filter instead of raw `source = ?` / ASCII-case-insensitive `LIKE` —
+// contract) so SqliteStorage can apply the SAME predicate over bounded
+// descriptor pages instead of raw `source = ?` / ASCII-case-insensitive
+// `LIKE` —
 // those diverged on backslash-stored Windows sources, component
 // boundaries (`fs:/a/b` vs `fs:/a/bc`), prefix case (`GIT:` vs `git:`),
 // and trailing-slash equality.
@@ -59,7 +60,8 @@ export function sourceHasPrefix(source: string, prefix: string): boolean {
   return source.startsWith(prefix);
 }
 
-/** Coarse SQL prefilter for SqliteStorage: the portion of a source /
+/** Coarse SQL prefilter for SqliteStorage's authoritative scalar predicate:
+ *  the portion of a source /
  *  source_prefix filter value before its first path separator (`/` or
  *  `\`), e.g. `fs:` from `fs:/a/b`, `C:` from `C:/Users/me/`, the whole
  *  string from separator-free values like `coord:`. Matching it with an

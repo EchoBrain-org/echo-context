@@ -21,6 +21,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
+import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
 import {
   resolveCursorComposerForRepoPath,
   type CursorComposerResolution,
@@ -30,6 +31,7 @@ import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js'
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 
 export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
+export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
 
 export const ECHO_RESOLVE_MRU_DESCRIPTION =
   'Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source (NOT bare paths — bare source loses cross-repo scoping for Cursor). IDs-only / source-only; no atom bodies fetched here.\n\n' +
@@ -88,12 +90,46 @@ function isSourceAppName(s: string): s is SourceApp {
   return SOURCE_APP_SET.has(s);
 }
 
-// Fetch the newest single non-fs row matching the supplied filter; returns
-// null when no rows match. Storage already orders DESC (timestamp DESC,
-// id DESC) and we apply limit=1.
-async function newestMatching(storage: Storage, filter: QueryFilter): Promise<CaptureEvent | null> {
-  const rows = await storage.query({ ...filter, limit: 1 });
-  return rows[0] ?? null;
+interface ScanState {
+  truncated: boolean;
+}
+
+async function hydrateFirstMatch(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent | null> {
+  // A limit=1 query normally cannot exhaust after admitting a match, but
+  // preserve the storage continuation contract for injected/alternate
+  // adapters without exceeding getByIds' hard request cap.
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const rows = await storage.getByIds(ids.slice(offset, offset + 100));
+    if (rows.length > 0) return rows[0]!;
+  }
+  return null;
+}
+
+// Fetch the newest single non-fs row matching the supplied filter. Sparse
+// post-filter scans resume through a finite number of storage windows instead
+// of turning an expected hard-budget boundary into a public MCP error.
+async function newestMatching(
+  storage: Storage,
+  filter: QueryFilter,
+  scanState: ScanState,
+): Promise<CaptureEvent | null> {
+  let before = filter.before;
+  for (let window = 0; window < ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS; window += 1) {
+    try {
+      const rows = await storage.query({ ...filter, before, limit: 1 });
+      return rows[0] ?? null;
+    } catch (error) {
+      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
+      const admitted = await hydrateFirstMatch(storage, error.matched_ids);
+      if (admitted !== null) return admitted;
+      before = error.resume_cursor;
+    }
+  }
+  scanState.truncated = true;
+  return null;
 }
 
 async function resolveAppNameEntry(
@@ -102,6 +138,7 @@ async function resolveAppNameEntry(
   normalisedRepoPath: string | null,
   rawRepoPath: string | undefined,
   injections: EchoResolveMruInjections,
+  scanState: ScanState,
 ): Promise<ResolvedSourceDescriptor | null> {
   const prefix = buildSourceAppMap()[app];
 
@@ -115,6 +152,7 @@ async function resolveAppNameEntry(
         source_prefix: prefix,
         metadata_match: { repo_root: normalisedRepoPath },
       }),
+      scanState,
     );
     if (phase1 !== null) {
       return {
@@ -130,7 +168,11 @@ async function resolveAppNameEntry(
     if (resolved === null) return null;
     // Pick the newest cursor source globally (independent of repo_root —
     // legacy atoms by definition lack repo_root metadata).
-    const cursorNewest = await newestMatching(storage, withFsExclusion({ source_prefix: prefix }));
+    const cursorNewest = await newestMatching(
+      storage,
+      withFsExclusion({ source_prefix: prefix }),
+      scanState,
+    );
     if (cursorNewest === null) return null;
     return {
       source: cursorNewest.source,
@@ -149,8 +191,9 @@ async function resolveAppNameEntry(
           source_prefix: prefix,
           metadata_match: { repo_root: normalisedRepoPath },
         }),
+        scanState,
       ),
-      newestMatching(storage, withFsExclusion({ source: exactSource })),
+      newestMatching(storage, withFsExclusion({ source: exactSource }), scanState),
     ]);
     if (rowA === null && rowB === null) return null;
     // Pick the newer of the two; tie-break on Query A (post-AC1 metadata is
@@ -184,7 +227,7 @@ async function resolveAppNameEntry(
   if (normalisedRepoPath !== null) {
     filter.metadata_match = { repo_root: normalisedRepoPath };
   }
-  const row = await newestMatching(storage, filter);
+  const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;
   return {
     source: row.source,
@@ -196,12 +239,13 @@ async function resolveLiteralSourceEntry(
   storage: Storage,
   literal: string,
   normalisedRepoPath: string | null,
+  scanState: ScanState,
 ): Promise<ResolvedSourceDescriptor | null> {
   const filter: QueryFilter = withFsExclusion({ source: literal });
   if (normalisedRepoPath !== null) {
     filter.metadata_match = { repo_root: normalisedRepoPath };
   }
-  const row = await newestMatching(storage, filter);
+  const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;
   return {
     source: literal,
@@ -233,6 +277,7 @@ export async function echoResolveMru(
   }
 
   const result: Record<string, ResolvedSourceDescriptor | null> = {};
+  const scanState: ScanState = { truncated: false };
   // Per-entry parallel resolution — each entry's storage query is independent.
   await Promise.all(
     params.sources.map(async (entry) => {
@@ -243,16 +288,26 @@ export async function echoResolveMru(
           normalisedRepoPath,
           params.repo_path,
           injections,
+          scanState,
         );
       } else {
-        result[entry] = await resolveLiteralSourceEntry(storage, entry, normalisedRepoPath);
+        result[entry] = await resolveLiteralSourceEntry(
+          storage,
+          entry,
+          normalisedRepoPath,
+          scanState,
+        );
       }
     }),
   );
 
   const out: EchoResolveMruResult = {
     sources: result,
-    warnings: [],
+    warnings: scanState.truncated
+      ? [
+          `echo_resolve_mru: bounded storage scan exhausted after ${ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS} windows; unresolved sources may have older matches — narrow repo/source scope and retry`,
+        ]
+      : [],
   };
   if (normalisedRepoPath !== null) {
     out.repo_path = normalisedRepoPath;

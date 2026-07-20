@@ -1,14 +1,25 @@
-import { statSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import {
+  existsSync,
+  statSync,
+  watch as watchFs,
+  type FSWatcher as NativeFSWatcher,
+} from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { opendir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, dirname as pathDirname } from 'node:path';
+import { dirname, isAbsolute, join, dirname as pathDirname } from 'node:path';
 import Database from 'better-sqlite3';
-import chokidar, { type FSWatcher } from 'chokidar';
+import type { ChokidarOptions, FSWatcher } from 'chokidar';
 import { createLogger } from '../../logging/index.js';
 import { resolveRepoRootForWorkspaceId } from '../../mcp/cursor-workspace-resolver.js';
 import type { Storage } from '../../storage/interface.js';
-import { processCandidate } from '../pipeline.js';
-import { dedupStrings } from './_shared.js';
+import {
+  captureDedupeKey,
+  createExtractorFilesystemPolicy,
+  processExtractorCandidate,
+} from '../pipeline.js';
+import { dedupStrings, type ExtractorHealth } from './_shared.js';
+import { BoundedLruMap } from '../../util/bounded-lru-map.js';
 
 const log = createLogger('capture.cursor');
 
@@ -25,21 +36,107 @@ const TYPE_ASSISTANT = 2;
 
 // Periodic re-poll interval for the `state.vscdb` family (chokidar misses
 // some WAL appends during sustained streaming; the poll closes the cadence
-// gap). 15 s bounds capture latency to ≤ interval + DB-scan time while
-// keeping the wakeup-tax low when Cursor is idle (the mtime guard
-// short-circuits the scan in microseconds). Source constant; runtime
+// gap). 15 s bounds capture latency to ≤ interval + DB-scan time. The
+// rotating reconciliation cursor intentionally advances even while Cursor is
+// idle, but each wakeup has a fixed SQL page budget. Source constant; runtime
 // override is `CursorExtractorOptions.repollIntervalMs`; no env var.
 export const CURSOR_REPOLL_INTERVAL_MS = 15_000;
+
+// Every runtime SQL list read is capped. Exact-key `.get()` calls are used
+// for values only after their stored byte lengths have passed the budget.
+export const CURSOR_SCAN_PAGE_ROWS = 128;
+export const CURSOR_SCAN_MAX_PAGES_PER_SLICE = 8;
+export const CURSOR_MAX_PENDING_COMPOSERS = 128;
+export const CURSOR_COMPOSER_PAGE_ROWS = 128;
+export const CURSOR_COMPOSER_MAX_ROWS = 1_024;
+export const CURSOR_COMPOSER_MAX_STORED_BYTES = 4 * 1024 * 1024;
+export const CURSOR_COMPOSER_MAX_PAGES = 16;
+export const CURSOR_RUNTIME_CACHE_ENTRIES = 1024;
+export const CURSOR_WORKSPACE_REGISTRY_MAX_BYTES = 1024 * 1024;
+export const CURSOR_WORKSPACE_REGISTRY_MAX_IDS = 1024;
+export const CURSOR_STARTUP_WORKSPACE_DB_LIMIT = 64;
+// Public/pure extractCursorTurns callers may omit the runtime's per-composer
+// checkpoint options. That compatibility path is still hard-bounded.
+export const CURSOR_DEFAULT_PARSE_PAGE_ROWS = CURSOR_SCAN_PAGE_ROWS;
+export const CURSOR_DEFAULT_PARSE_MAX_ROWS = 4 * CURSOR_COMPOSER_MAX_ROWS;
+export const CURSOR_DEFAULT_PARSE_MAX_PAGES = 2 * CURSOR_COMPOSER_MAX_PAGES;
+export const CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES =
+  CURSOR_COMPOSER_MAX_STORED_BYTES;
+
+const CURSOR_CHECKPOINT_EXTRACTOR = 'cursor';
+const CURSOR_SCAN_PARTITION = '__scan__';
+const CURSOR_MAX_COMPOSER_ID_BYTES = 512;
+const CURSOR_MAX_KV_KEY_BYTES = 4 * 1024;
+// SQLite returns at most this many key bytes for raw discovery pages. The
+// prefix is long enough to recover a bounded composer id without ever
+// materializing an attacker-sized/garbled key in JavaScript.
+const CURSOR_KEY_PREVIEW_BYTES =
+  Math.max(BUBBLE_KEY_PREFIX.length, COMPOSER_KEY_PREFIX.length) +
+  CURSOR_MAX_COMPOSER_ID_BYTES +
+  1;
+
+/** Raw rowid pages are the only list queries used by the production Cursor
+ * reader. Filtering happens after LIMIT, so sparse relevant keys cannot make
+ * SQLite walk an unbounded number of rows to fill one JavaScript page. */
+export const CURSOR_RAW_ROWID_ASC_PAGE_SQL = `SELECT rowid AS row_id,
+       CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT) AS key,
+       length(CAST(key AS BLOB)) AS key_bytes,
+       length(CAST(value AS BLOB)) AS value_bytes
+  FROM cursorDiskKV
+ WHERE rowid > ? AND rowid <= ?
+ ORDER BY rowid ASC
+ LIMIT ?`;
+
+export const CURSOR_RAW_ROWID_DESC_PAGE_SQL = `SELECT rowid AS row_id,
+       CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT) AS key,
+       length(CAST(key AS BLOB)) AS key_bytes,
+       length(CAST(value AS BLOB)) AS value_bytes
+  FROM cursorDiskKV
+ WHERE rowid < ?
+ ORDER BY rowid DESC
+ LIMIT ?`;
+
+function nativeCursorWatcher(
+  globalDbDir: string,
+  workspacePrefix: string,
+): FSWatcher {
+  const emitter = new EventEmitter();
+  const nativeWatchers: NativeFSWatcher[] = [];
+  const add = (root: string, recursive: boolean): void => {
+    if (!existsSync(root)) return;
+    try {
+      const watcher = watchFs(
+        root,
+        { persistent: true, recursive },
+        (_eventType, filename) => {
+          if (filename === null) {
+            emitter.emit('raw', 'unknown', undefined, undefined);
+          } else {
+            emitter.emit('change', join(root, filename.toString()));
+          }
+        },
+      );
+      watcher.on('error', (err) => emitter.emit('error', err));
+      nativeWatchers.push(watcher);
+    } catch (err) {
+      setImmediate(() => emitter.emit('error', err));
+    }
+  };
+  add(globalDbDir, false);
+  add(workspacePrefix, true);
+  setImmediate(() => emitter.emit('ready'));
+  const watcher = emitter as unknown as FSWatcher;
+  watcher.close = async () => {
+    for (const native of nativeWatchers) native.close();
+  };
+  return watcher;
+}
 
 // Per-bubble text source recorded into `metadata.bubble_text_sources[]`
 // when any assistant bubble in the cluster used a fallback parser. Omitted
 // from metadata entirely when every assistant bubble used primary `'text'`.
 export type BubbleTextSource =
-  | 'text'
-  | 'toolFormerData'
-  | 'fileDiff'
-  | 'codeBlocks'
-  | 'thinkingContent';
+  'text' | 'toolFormerData' | 'fileDiff' | 'codeBlocks' | 'thinkingContent';
 
 export interface ReferencedFile {
   path: string;
@@ -125,6 +222,10 @@ interface ComposerInfo {
   composer_id: string;
   createdAt: number;
   bubbleOrder: Map<string, number>; // bubble_id → position in fullConversationHeadersOnly
+  // Older ECHO checkpoints predate persisted `user_bubble_id`. Cursor's
+  // bounded composer header contains enough role/order data to reconstruct
+  // that continuation context without a sparse backwards database scan.
+  userAtOrBeforeBubble: Map<string, string>;
 }
 
 interface BubbleContext {
@@ -159,14 +260,83 @@ interface CursorDiskKVRow {
   value: string | null;
 }
 
-const missingComposerHeaderWarnedKeys = new Set<string>();
+interface CursorDiskKVRowMeta {
+  row_id: number;
+  key: string;
+  key_bytes: number;
+  value_bytes: number | null;
+}
+
+interface CursorBoundedReadStats {
+  rowsRead: number;
+  storedBytesRead: number;
+  pagesRead: number;
+  truncated: boolean;
+  blocked: boolean;
+  lastScannedRowId: number;
+  carryRowId?: number;
+}
+
+interface CursorBoundedReadOptions {
+  composerId: string;
+  pageRows: number;
+  maxRows: number;
+  maxStoredBytes: number;
+  maxPages: number;
+  resumeRowId: number;
+  carryRowId?: number;
+  checkpointUserBubbleId?: string;
+  stats: CursorBoundedReadStats;
+}
+
+interface CursorComposerProgress {
+  cursor?: string;
+  position: number;
+  carryRowId?: number;
+  userBubbleId?: string;
+}
+
+const missingComposerHeaderWarnedKeys = new BoundedLruMap<string, true>(
+  CURSOR_RUNTIME_CACHE_ENTRIES,
+);
 
 // Item 037 / AC1: dedup the `cursor_repo_root_resolution_failed` warn one
 // per composer_id, so a composer that legitimately can't be repo-attributed
 // (binding present + folder URI missing + zero files) does not flood the
 // log on every poll tick. Same shape as `missingComposerHeaderWarnedKeys`
 // above (per 9d00369).
-const repoRootResolutionFailedWarnedComposers = new Set<string>();
+const repoRootResolutionFailedWarnedComposers = new BoundedLruMap<string, true>(
+  CURSOR_RUNTIME_CACHE_ENTRIES,
+);
+
+/** Return true only when `key` was not already in the bounded warning
+ *  window. A cache hit refreshes recency, so frequently recurring warnings
+ *  retain warn-once semantics while inactive keys are eventually evicted. */
+function rememberWarningKey(
+  cache: BoundedLruMap<string, true>,
+  key: string,
+): boolean {
+  if (cache.get(key) === true) return false;
+  cache.set(key, true);
+  return true;
+}
+
+/** Explicitly test-only visibility for the two process-lifetime warning
+ *  dedupers. The production package entrypoint does not re-export this
+ *  module; these hooks keep tests deterministic and make the hard cap
+ *  directly assertable. */
+export const __cursorWarningCacheTestHooks = {
+  reset(): void {
+    missingComposerHeaderWarnedKeys.clear();
+    repoRootResolutionFailedWarnedComposers.clear();
+  },
+  sizes(): { missingComposerHeader: number; repoRootResolutionFailed: number } {
+    return {
+      missingComposerHeader: missingComposerHeaderWarnedKeys.size,
+      repoRootResolutionFailed: repoRootResolutionFailedWarnedComposers.size,
+    };
+  },
+};
 
 // Item 037 / AC1 Stage 2: walk upward from `filePath` looking for the
 // nearest `.git` ancestor directory or file (git worktrees use a `.git`
@@ -243,7 +413,10 @@ function resolveCursorRepoRootForTurn(
   filesReferenced: readonly string[],
   workspaceStorageDir: string,
   cache: Map<string, string>,
-  resolveStage1: (workspace_id: string, workspaceStorageDir: string) => string | null,
+  resolveStage1: (
+    workspace_id: string,
+    workspaceStorageDir: string,
+  ) => string | null,
   resolveStage2: (files: readonly string[]) => string | null,
 ): string | undefined {
   let stage1Failed = false;
@@ -270,8 +443,12 @@ function resolveCursorRepoRootForTurn(
   // (the surprising case) — pre-binding turns hitting the file-walk fallback
   // are routine and not worth a warn.
   if (stage1Failed) {
-    if (!repoRootResolutionFailedWarnedComposers.has(composer_id)) {
-      repoRootResolutionFailedWarnedComposers.add(composer_id);
+    if (
+      rememberWarningKey(
+        repoRootResolutionFailedWarnedComposers,
+        composer_id,
+      )
+    ) {
       log.warn('cursor_repo_root_resolution_failed', {
         composer_id,
         reason: 'workspace_binding_unresolvable_and_no_unambiguous_files',
@@ -281,7 +458,9 @@ function resolveCursorRepoRootForTurn(
   return undefined;
 }
 
-function parseBubbleKey(key: string): { composer_id: string; bubble_id: string } | null {
+function parseBubbleKey(
+  key: string,
+): { composer_id: string; bubble_id: string } | null {
   if (!key.startsWith(BUBBLE_KEY_PREFIX)) return null;
   const rest = key.slice(BUBBLE_KEY_PREFIX.length);
   const colon = rest.indexOf(':');
@@ -290,6 +469,16 @@ function parseBubbleKey(key: string): { composer_id: string; bubble_id: string }
     composer_id: rest.slice(0, colon),
     bubble_id: rest.slice(colon + 1),
   };
+}
+
+// Raw discovery pages intentionally return only a bounded key prefix. That
+// prefix can end immediately after the composer separator, so discovery must
+// not require the bubble id that the full parser above validates.
+function parseBubbleComposerKeyPreview(key: string): string | null {
+  if (!key.startsWith(BUBBLE_KEY_PREFIX)) return null;
+  const rest = key.slice(BUBBLE_KEY_PREFIX.length);
+  const colon = rest.indexOf(':');
+  return colon > 0 ? rest.slice(0, colon) : null;
 }
 
 function parseComposerKey(key: string): string | null {
@@ -314,16 +503,23 @@ function parseComposerRow(row: CursorDiskKVRow): ComposerInfo | null {
   const headers = v['fullConversationHeadersOnly'];
   if (typeof createdAt !== 'number' || !Array.isArray(headers)) return null;
   const bubbleOrder = new Map<string, number>();
+  const userAtOrBeforeBubble = new Map<string, string>();
+  let lastUserBubbleId: string | undefined;
   for (let i = 0; i < headers.length; i += 1) {
     const h = headers[i];
     if (typeof h === 'object' && h !== null) {
-      const bid = (h as Record<string, unknown>)['bubbleId'];
+      const header = h as Record<string, unknown>;
+      const bid = header['bubbleId'];
       if (typeof bid === 'string') {
         bubbleOrder.set(bid, i);
+        if (header['type'] === TYPE_USER) lastUserBubbleId = bid;
+        if (lastUserBubbleId !== undefined) {
+          userAtOrBeforeBubble.set(bid, lastUserBubbleId);
+        }
       }
     }
   }
-  return { composer_id, createdAt, bubbleOrder };
+  return { composer_id, createdAt, bubbleOrder, userAtOrBeforeBubble };
 }
 
 function asString(v: unknown): string | undefined {
@@ -382,7 +578,9 @@ function extractDeletedFiles(v: Record<string, unknown>): string[] {
 // Every parser treats shape mismatch as `return null`; none ever throws
 // (the parser is a boundary — a throw here would crash an extractor tick).
 
-export function tryExtractToolFormerText(v: Record<string, unknown>): string | null {
+export function tryExtractToolFormerText(
+  v: Record<string, unknown>,
+): string | null {
   const tfd = v['toolFormerData'];
   if (typeof tfd !== 'object' || tfd === null) return null;
   const o = tfd as Record<string, unknown>;
@@ -411,7 +609,9 @@ export function tryExtractToolFormerText(v: Record<string, unknown>): string | n
   return null;
 }
 
-export function tryExtractFileDiffText(v: Record<string, unknown>): string | null {
+export function tryExtractFileDiffText(
+  v: Record<string, unknown>,
+): string | null {
   const ahc = v['attachedHumanChanges'];
   if (typeof ahc !== 'object' || ahc === null) return null;
   const fd = (ahc as Record<string, unknown>)['fileDiff'];
@@ -441,7 +641,9 @@ export function tryExtractFileDiffText(v: Record<string, unknown>): string | nul
 // naively would synthesize fake text from a list of referenced-file paths.
 // This parser requires at least one entry to carry a non-empty `content`
 // or `code` body — entries with only `uri.path` are rejected.
-export function tryExtractCodeBlocksText(v: Record<string, unknown>): string | null {
+export function tryExtractCodeBlocksText(
+  v: Record<string, unknown>,
+): string | null {
   const arr = v['codeBlocks'];
   if (!Array.isArray(arr) || arr.length === 0) return null;
   const parts: string[] = [];
@@ -454,14 +656,17 @@ export function tryExtractCodeBlocksText(v: Record<string, unknown>): string | n
     if (typeof content === 'string' && content.length > 0) body = content;
     else if (typeof code === 'string' && code.length > 0) body = code;
     if (body === null) continue;
-    const lang = typeof e['languageId'] === 'string' ? (e['languageId'] as string) : '';
+    const lang =
+      typeof e['languageId'] === 'string' ? (e['languageId'] as string) : '';
     parts.push(`\`\`\`${lang}\n${body}\n\`\`\``);
   }
   if (parts.length === 0) return null;
   return parts.join('\n\n');
 }
 
-export function tryExtractThinkingText(v: Record<string, unknown>): string | null {
+export function tryExtractThinkingText(
+  v: Record<string, unknown>,
+): string | null {
   const t = v['thinkingContent'];
   if (typeof t === 'string' && t.length > 0) return t;
   if (typeof t === 'object' && t !== null) {
@@ -523,7 +728,8 @@ function hasNonEmptyRichText(value: unknown): boolean {
   for (const child of children) {
     if (typeof child !== 'object' || child === null) continue;
     const c = child as Record<string, unknown>;
-    if (typeof c['text'] === 'string' && (c['text'] as string).length > 0) return true;
+    if (typeof c['text'] === 'string' && (c['text'] as string).length > 0)
+      return true;
     const inner = c['children'];
     if (Array.isArray(inner) && inner.length > 0) return true;
   }
@@ -545,18 +751,27 @@ function parseBubbleRow(
   const parsedKey = parseBubbleKey(row.key);
   if (parsedKey === null) return null;
   if (row.value === null) {
-    log.debug('empty_bubble_skipped', { key: row.key, reason: 'sql_null_value' });
+    log.debug('empty_bubble_skipped', {
+      key: row.key,
+      reason: 'sql_null_value',
+    });
     return null;
   }
   let value: unknown;
   try {
     value = JSON.parse(row.value);
   } catch {
-    log.warn('unrecognized_bubble_shape', { key: row.key, reason: 'json_parse' });
+    log.warn('unrecognized_bubble_shape', {
+      key: row.key,
+      reason: 'json_parse',
+    });
     return null;
   }
   if (typeof value !== 'object' || value === null) {
-    log.warn('unrecognized_bubble_shape', { key: row.key, reason: 'not_object' });
+    log.warn('unrecognized_bubble_shape', {
+      key: row.key,
+      reason: 'not_object',
+    });
     return null;
   }
   const v = value as Record<string, unknown>;
@@ -624,7 +839,9 @@ function parseBubbleRow(
       hasNonEmptyRichText(v['richText']) ||
       hasNonEmptyCodeBlocks(v['codeBlocks']);
     const reason =
-      options.disableFallbacks === true ? 'missing_text' : 'missing_text_and_fallbacks';
+      options.disableFallbacks === true
+        ? 'missing_text'
+        : 'missing_text_and_fallbacks';
     if (hasAnyContentField) {
       log.warn('unrecognized_bubble_shape', { key: row.key, reason });
     } else {
@@ -635,13 +852,15 @@ function parseBubbleRow(
 
   const composer = composers.get(parsedKey.composer_id);
   if (composer === undefined) {
-    log.warn('unrecognized_bubble_shape', { key: row.key, reason: 'no_composer_row' });
+    log.warn('unrecognized_bubble_shape', {
+      key: row.key,
+      reason: 'no_composer_row',
+    });
     return null;
   }
   const order = composer.bubbleOrder.get(parsedKey.bubble_id);
   if (order === undefined) {
-    if (!missingComposerHeaderWarnedKeys.has(row.key)) {
-      missingComposerHeaderWarnedKeys.add(row.key);
+    if (rememberWarningKey(missingComposerHeaderWarnedKeys, row.key)) {
       log.warn('unrecognized_bubble_shape', {
         key: row.key,
         reason: 'not_in_composer_headers',
@@ -681,13 +900,16 @@ function parseBubbleRow(
 // preference list per slot and stringify object payloads as JSON. Returns
 // null only if both args AND output came up empty — i.e. nothing useful to
 // surface.
-function toolFormerToToolCall(tfd: Record<string, unknown>): CursorToolCall | null {
+function toolFormerToToolCall(
+  tfd: Record<string, unknown>,
+): CursorToolCall | null {
   const nameField =
     tfd['name'] ??
     tfd['toolName'] ??
     tfd['tool'] ??
     (typeof tfd['type'] === 'string' ? tfd['type'] : undefined);
-  const name = typeof nameField === 'string' && nameField.length > 0 ? nameField : 'tool';
+  const name =
+    typeof nameField === 'string' && nameField.length > 0 ? nameField : 'tool';
 
   let args: string | undefined;
   const rawArgs = tfd['rawArgs'];
@@ -726,11 +948,15 @@ function toolFormerToToolCall(tfd: Record<string, unknown>): CursorToolCall | nu
   const err = tfd['isError'] ?? tfd['is_error'] ?? tfd['error'];
   if (typeof err === 'boolean') {
     is_error = err;
-  } else if (typeof err === 'string' || (typeof err === 'object' && err !== null)) {
+  } else if (
+    typeof err === 'string' ||
+    (typeof err === 'object' && err !== null)
+  ) {
     is_error = true;
   }
 
-  if (args === undefined && output === undefined && is_error === undefined) return null;
+  if (args === undefined && output === undefined && is_error === undefined)
+    return null;
 
   const call: CursorToolCall = { name };
   if (args !== undefined) call.args = args;
@@ -769,7 +995,11 @@ function buildTurnContext(
     ...user.context.deletedFiles,
     ...assistantCluster.flatMap((b) => b.context.deletedFiles),
   ]);
-  if (attached.length === 0 && referenced.length === 0 && deleted.length === 0) {
+  if (
+    attached.length === 0 &&
+    referenced.length === 0 &&
+    deleted.length === 0
+  ) {
     return undefined;
   }
   const out: CursorTurnContext = {};
@@ -807,10 +1037,12 @@ async function safeMtimeMs(path: string): Promise<number> {
 // -shm). SQLite WAL mode advances the -wal file's mtime on each commit
 // while the main DB's mtime stays stale until the next checkpoint (which
 // can be minutes away under sustained writes). Reading only the main DB's
-// mtime would make the periodic-poll mtime guard miss the exact writes
-// it's meant to recover. Missing files are skipped (no WAL yet → no
+// mtime would make the periodic-poll diagnostic checkpoint miss those writes.
+// Reconciliation itself advances independently. Missing files are skipped (no WAL yet → no
 // mtime); the returned value is 0 only if none of the three exist.
-export async function maxGlobalDbFamilyMtime(globalDbPath: string): Promise<number> {
+export async function maxGlobalDbFamilyMtime(
+  globalDbPath: string,
+): Promise<number> {
   const paths = [globalDbPath, `${globalDbPath}-wal`, `${globalDbPath}-shm`];
   let max = 0;
   for (const p of paths) {
@@ -828,6 +1060,341 @@ export interface ExtractCursorTurnsOptions {
   // Test-only: when true, skip parseBubbleRow's fallback chain so the AC3
   // parse-gap revert test can prove the chain is what closes the parse gap.
   disableFallbacks?: boolean;
+  /** Internal runtime seam. Public parsing calls may omit this; the fallback
+   * path uses fixed raw-row/page/byte budgets rather than an all-row query. */
+  boundedRead?: CursorBoundedReadOptions;
+}
+
+function positiveBound(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback;
+}
+
+function cursorRowIsUser(row: CursorDiskKVRow): boolean {
+  if (row.value === null) return false;
+  try {
+    const value = JSON.parse(row.value) as Record<string, unknown>;
+    return value['type'] === TYPE_USER;
+  } catch {
+    return false;
+  }
+}
+
+function boundedComposerRows(
+  db: Database.Database,
+  lastSeenBubbleIdPerComposer: Map<string, string>,
+  options: CursorBoundedReadOptions,
+): { composerRows: CursorDiskKVRow[]; bubbleRows: CursorDiskKVRow[] } {
+  const { composerId, stats } = options;
+  const composerKey = `${COMPOSER_KEY_PREFIX}${composerId}`;
+  const composerMeta = db
+    .prepare(
+      `SELECT rowid AS row_id,
+              key,
+              length(CAST(key AS BLOB)) AS key_bytes,
+              length(CAST(value AS BLOB)) AS value_bytes
+         FROM cursorDiskKV
+        WHERE key = ?`,
+    )
+    .get(composerKey) as CursorDiskKVRowMeta | undefined;
+  if (composerMeta === undefined) return { composerRows: [], bubbleRows: [] };
+
+  const composerBytes = composerMeta.key_bytes + (composerMeta.value_bytes ?? 0);
+  if (
+    composerMeta.key_bytes > CURSOR_MAX_KV_KEY_BYTES ||
+    composerBytes > options.maxStoredBytes
+  ) {
+    stats.truncated = true;
+    stats.blocked = true;
+    return { composerRows: [], bubbleRows: [] };
+  }
+  const composerRow = db
+    .prepare('SELECT key, value FROM cursorDiskKV WHERE rowid = ?')
+    .get(composerMeta.row_id) as CursorDiskKVRow | undefined;
+  if (composerRow === undefined) return { composerRows: [], bubbleRows: [] };
+  stats.storedBytesRead += composerBytes;
+
+  const prefix = `${BUBBLE_KEY_PREFIX}${composerId}:`;
+  const checkpoint = lastSeenBubbleIdPerComposer.get(composerId);
+  let checkpointRowId = 0;
+  let checkpointMeta: CursorDiskKVRowMeta | undefined;
+  if (checkpoint !== undefined) {
+    const checkpointKey = `${prefix}${checkpoint}`;
+    checkpointMeta = db
+      .prepare(
+        `SELECT rowid AS row_id,
+                key,
+                length(CAST(key AS BLOB)) AS key_bytes,
+                length(CAST(value AS BLOB)) AS value_bytes
+           FROM cursorDiskKV
+          WHERE key = ?`,
+      )
+      .get(checkpointKey) as CursorDiskKVRowMeta | undefined;
+    checkpointRowId = checkpointMeta?.row_id ?? 0;
+  }
+
+  const bubbleRows: CursorDiskKVRow[] = [];
+  const fetchMetaRows = (
+    metadata: readonly CursorDiskKVRowMeta[],
+    destination: CursorDiskKVRow[],
+    trackProgress: boolean,
+  ): boolean => {
+    for (const meta of metadata) {
+      const storedBytes = meta.key_bytes + (meta.value_bytes ?? 0);
+      if (
+        meta.key_bytes > CURSOR_MAX_KV_KEY_BYTES ||
+        stats.storedBytesRead + storedBytes > options.maxStoredBytes
+      ) {
+        stats.truncated = true;
+        stats.blocked = true;
+        return false;
+      }
+      const row = db
+        .prepare('SELECT key, value FROM cursorDiskKV WHERE rowid = ?')
+        .get(meta.row_id) as CursorDiskKVRow | undefined;
+      if (row === undefined) continue;
+      destination.push(row);
+      stats.storedBytesRead += storedBytes;
+      if (trackProgress && cursorRowIsUser(row)) stats.carryRowId = meta.row_id;
+    }
+    return true;
+  };
+
+  // Continuations need the nearest user bubble preceding the checkpoint.
+  // Walk raw rowid pages backwards, then filter in JS. This avoids the old
+  // key-prefix + ORDER BY rowid plan, which could scan/sort every matching
+  // row before LIMIT. One forward page is always reserved.
+  if (checkpointRowId > 0) {
+    const contextRowsDesc: CursorDiskKVRow[] = [];
+    let beforeRowId = checkpointRowId;
+    let foundUser = false;
+    let reachedBeginning = false;
+    const checkpointUserBubbleId =
+      options.checkpointUserBubbleId ??
+      parseComposerRow(composerRow)?.userAtOrBeforeBubble.get(checkpoint!);
+    if (
+      checkpointUserBubbleId !== undefined &&
+      Buffer.byteLength(`${prefix}${checkpointUserBubbleId}`) <=
+        CURSOR_MAX_KV_KEY_BYTES
+    ) {
+      const userKey = `${prefix}${checkpointUserBubbleId}`;
+      const userMeta = db
+        .prepare(
+          `SELECT rowid AS row_id,
+                  key,
+                  length(CAST(key AS BLOB)) AS key_bytes,
+                  length(CAST(value AS BLOB)) AS value_bytes
+             FROM cursorDiskKV
+            WHERE key = ?`,
+        )
+        .get(userKey) as CursorDiskKVRowMeta | undefined;
+      if (userMeta !== undefined) {
+        const exactUserRows: CursorDiskKVRow[] = [];
+        if (!fetchMetaRows([userMeta], exactUserRows, false)) {
+          return { composerRows: [composerRow], bubbleRows };
+        }
+        const exactUser = exactUserRows[0];
+        if (exactUser !== undefined && cursorRowIsUser(exactUser)) {
+          contextRowsDesc.push(exactUser);
+          foundUser = true;
+        }
+      }
+    }
+    while (
+      !foundUser &&
+      stats.pagesRead < Math.max(0, options.maxPages - 1) &&
+      stats.rowsRead < Math.max(0, options.maxRows - 1)
+    ) {
+      const limit = Math.min(
+        options.pageRows,
+        options.maxRows - stats.rowsRead - 1,
+      );
+      if (limit <= 0) break;
+      const page = db
+        .prepare(CURSOR_RAW_ROWID_DESC_PAGE_SQL)
+        .all(beforeRowId, limit) as CursorDiskKVRowMeta[];
+      stats.pagesRead += 1;
+      stats.rowsRead += page.length;
+      if (page.length === 0) {
+        reachedBeginning = true;
+        break;
+      }
+      beforeRowId = page[page.length - 1]!.row_id;
+      const relevant: CursorDiskKVRowMeta[] = [];
+      for (const meta of page) {
+        if (!meta.key.startsWith(prefix)) continue;
+        relevant.push(meta);
+      }
+      const materialized: CursorDiskKVRow[] = [];
+      if (!fetchMetaRows(relevant, materialized, false)) {
+        return { composerRows: [composerRow], bubbleRows };
+      }
+      for (const row of materialized) {
+        contextRowsDesc.push(row);
+        if (cursorRowIsUser(row)) {
+          foundUser = true;
+          break;
+        }
+      }
+      if (page.length < limit) reachedBeginning = true;
+    }
+    if (!foundUser && !reachedBeginning) {
+      stats.truncated = true;
+      stats.blocked = true;
+      return { composerRows: [composerRow], bubbleRows };
+    }
+    contextRowsDesc.reverse();
+    bubbleRows.push(...contextRowsDesc);
+  }
+
+  let afterRowId = checkpointRowId > 0 ? checkpointRowId - 1 : 0;
+  if (options.resumeRowId > checkpointRowId) {
+    if (
+      checkpointMeta !== undefined &&
+      !fetchMetaRows([checkpointMeta], bubbleRows, false)
+    ) {
+      return { composerRows: [composerRow], bubbleRows };
+    }
+    if (options.carryRowId !== undefined) {
+      const carryMeta = db
+        .prepare(
+          `SELECT rowid AS row_id,
+                  key,
+                  length(CAST(key AS BLOB)) AS key_bytes,
+                  length(CAST(value AS BLOB)) AS value_bytes
+             FROM cursorDiskKV
+            WHERE rowid = ?`,
+        )
+        .get(options.carryRowId) as CursorDiskKVRowMeta | undefined;
+      if (
+        carryMeta !== undefined &&
+        !fetchMetaRows([carryMeta], bubbleRows, true)
+      ) {
+        return { composerRows: [composerRow], bubbleRows };
+      }
+    }
+    afterRowId = options.resumeRowId;
+    stats.lastScannedRowId = options.resumeRowId;
+  }
+  const throughRowId = maxCursorRowIdInDb(db);
+  while (
+    stats.pagesRead < options.maxPages &&
+    stats.rowsRead < options.maxRows &&
+    !stats.blocked
+  ) {
+    const limit = Math.min(options.pageRows, options.maxRows - stats.rowsRead);
+    const page = db
+      .prepare(CURSOR_RAW_ROWID_ASC_PAGE_SQL)
+      .all(afterRowId, throughRowId, limit) as CursorDiskKVRowMeta[];
+    stats.pagesRead += 1;
+    stats.rowsRead += page.length;
+    if (page.length === 0) {
+      stats.truncated = false;
+      break;
+    }
+    const relevant = page.filter((meta) => meta.key.startsWith(prefix));
+    if (!fetchMetaRows(relevant, bubbleRows, true)) break;
+    afterRowId = page[page.length - 1]!.row_id;
+    stats.lastScannedRowId = afterRowId;
+    stats.truncated = afterRowId < throughRowId;
+    if (!stats.truncated) break;
+  }
+
+  return { composerRows: [composerRow], bubbleRows };
+}
+
+interface CursorDefaultBoundedRows {
+  composerRows: CursorDiskKVRow[];
+  bubbleRows: CursorDiskKVRow[];
+  rowsRead: number;
+  pagesRead: number;
+  storedBytesRead: number;
+  truncated: boolean;
+}
+
+/**
+ * Compatibility reader for callers that do not supply a per-composer
+ * checkpoint. It walks raw rowid pages, admits only short relevant keys, and
+ * fetches each value by exact rowid only after its stored byte length fits the
+ * remaining aggregate budget. No list query returns payload values.
+ */
+function boundedDefaultRows(db: Database.Database): CursorDefaultBoundedRows {
+  const composerRows: CursorDiskKVRow[] = [];
+  const bubbleRows: CursorDiskKVRow[] = [];
+  const throughRowId = maxCursorRowIdInDb(db);
+  let afterRowId = 0;
+  let rowsRead = 0;
+  let pagesRead = 0;
+  let storedBytesRead = 0;
+  let rejectedForBytes = false;
+
+  while (
+    afterRowId < throughRowId &&
+    rowsRead < CURSOR_DEFAULT_PARSE_MAX_ROWS &&
+    pagesRead < CURSOR_DEFAULT_PARSE_MAX_PAGES
+  ) {
+    const limit = Math.min(
+      CURSOR_DEFAULT_PARSE_PAGE_ROWS,
+      CURSOR_DEFAULT_PARSE_MAX_ROWS - rowsRead,
+    );
+    const page = db
+      .prepare(CURSOR_RAW_ROWID_ASC_PAGE_SQL)
+      .all(afterRowId, throughRowId, limit) as CursorDiskKVRowMeta[];
+    pagesRead += 1;
+    rowsRead += page.length;
+    if (page.length === 0) break;
+    for (const meta of page) {
+      const relevant =
+        meta.key.startsWith(COMPOSER_KEY_PREFIX) ||
+        meta.key.startsWith(BUBBLE_KEY_PREFIX);
+      if (!relevant || meta.key_bytes > CURSOR_MAX_KV_KEY_BYTES) continue;
+      const storedBytes = meta.key_bytes + (meta.value_bytes ?? 0);
+      const remainingBytes =
+        CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES - storedBytesRead;
+      if (storedBytes > remainingBytes) {
+        rejectedForBytes = true;
+        continue;
+      }
+      // Repeat byte predicates on the value fetch so a writer racing between
+      // descriptor and payload statements cannot smuggle an oversized value
+      // across the JavaScript boundary.
+      const row = db
+        .prepare(
+          `SELECT key, value
+             FROM cursorDiskKV
+            WHERE rowid = ?
+              AND length(CAST(key AS BLOB)) <= ?
+              AND (value IS NULL OR (
+                    typeof(value) = 'text'
+                AND length(CAST(value AS BLOB)) <= ?
+              ))`,
+        )
+        .get(
+          meta.row_id,
+          CURSOR_MAX_KV_KEY_BYTES,
+          remainingBytes - meta.key_bytes,
+        ) as CursorDiskKVRow | undefined;
+      if (row === undefined) {
+        rejectedForBytes = true;
+        continue;
+      }
+      storedBytesRead += storedBytes;
+      if (row.key.startsWith(COMPOSER_KEY_PREFIX)) composerRows.push(row);
+      else if (row.key.startsWith(BUBBLE_KEY_PREFIX)) bubbleRows.push(row);
+    }
+    afterRowId = page[page.length - 1]!.row_id;
+    if (page.length < limit) break;
+  }
+
+  return {
+    composerRows,
+    bubbleRows,
+    rowsRead,
+    pagesRead,
+    storedBytesRead,
+    truncated: rejectedForBytes || afterRowId < throughRowId,
+  };
 }
 
 export async function extractCursorTurns(
@@ -835,37 +1402,72 @@ export async function extractCursorTurns(
   lastSeenBubbleIdPerComposer: Map<string, string>,
   options: ExtractCursorTurnsOptions = {},
 ): Promise<CursorTurn[]> {
+  const failClosed = options.boundedRead !== undefined;
   let db: Database.Database;
   try {
     db = new Database(globalDbPath, { readonly: true, fileMustExist: true });
   } catch (err) {
-    log.warn('open_failed', { path: globalDbPath, message: (err as Error).message });
+    if (failClosed) {
+      throw new Error(`Cursor database open failed: ${(err as Error).message}`);
+    }
+    log.warn('open_failed', {
+      path: globalDbPath,
+      message: (err as Error).message,
+    });
     return [];
   }
 
   let bubbleRows: CursorDiskKVRow[];
   let composerRows: CursorDiskKVRow[];
+  let defaultRead: CursorDefaultBoundedRows | undefined;
   try {
-    const tableExists = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cursorDiskKV'")
-      .get();
-    if (tableExists === undefined) {
-      log.warn('schema_unrecognized', { path: globalDbPath, reason: 'no_cursorDiskKV_table' });
+    try {
+      db.prepare('SELECT key, value FROM cursorDiskKV LIMIT 0').all();
+    } catch (err) {
+      if (failClosed) {
+        throw new Error(`Cursor database schema is incompatible: ${(err as Error).message}`);
+      }
+      log.warn('schema_unrecognized', {
+        path: globalDbPath,
+        reason: 'no_cursorDiskKV_table',
+      });
       db.close();
       return [];
     }
-    composerRows = db
-      .prepare("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'composerData:%'")
-      .all() as CursorDiskKVRow[];
-    bubbleRows = db
-      .prepare("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'bubbleId:%'")
-      .all() as CursorDiskKVRow[];
+    if (options.boundedRead !== undefined) {
+      ({ composerRows, bubbleRows } = boundedComposerRows(
+        db,
+        lastSeenBubbleIdPerComposer,
+        options.boundedRead,
+      ));
+    } else {
+      defaultRead = boundedDefaultRows(db);
+      ({ composerRows, bubbleRows } = defaultRead);
+    }
   } catch (err) {
-    log.warn('query_failed', { path: globalDbPath, message: (err as Error).message });
+    if (failClosed) {
+      db.close();
+      throw err;
+    }
+    log.warn('query_failed', {
+      path: globalDbPath,
+      message: (err as Error).message,
+    });
     db.close();
     return [];
   }
   db.close();
+  if (defaultRead?.truncated === true) {
+    log.warn('default_read_budget_exhausted', {
+      path: globalDbPath,
+      rows_read: defaultRead.rowsRead,
+      pages_read: defaultRead.pagesRead,
+      stored_bytes_read: defaultRead.storedBytesRead,
+      max_rows: CURSOR_DEFAULT_PARSE_MAX_ROWS,
+      max_pages: CURSOR_DEFAULT_PARSE_MAX_PAGES,
+      max_stored_bytes: CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES,
+    });
+  }
 
   const composers = new Map<string, ComposerInfo>();
   for (const row of composerRows) {
@@ -874,7 +1476,11 @@ export async function extractCursorTurns(
   }
 
   if (bubbleRows.length === 0) {
-    log.warn('no_bubble_keys', { path: globalDbPath });
+    // A bounded raw page can legitimately contain no rows for this composer.
+    // Its rowid checkpoint advances and the next page continues the scan.
+    if (!failClosed || options.boundedRead?.stats.truncated !== true) {
+      log.warn('no_bubble_keys', { path: globalDbPath });
+    }
     return [];
   }
 
@@ -927,7 +1533,11 @@ export async function extractCursorTurns(
     // raw/internal/decisions/2026-05-09-cursor-capture-diagnosis-correction.md);
     // chat turns remain in `bubbleId:` / `composerData:`.
     let i = startIdx;
-    if (checkpoint !== undefined && i < bubbles.length && bubbles[i]!.role === 'assistant') {
+    if (
+      checkpoint !== undefined &&
+      i < bubbles.length &&
+      bubbles[i]!.role === 'assistant'
+    ) {
       const continuationStart = i;
       const continuationCluster: ParsedBubble[] = [];
       while (i < bubbles.length && bubbles[i]!.role === 'assistant') {
@@ -962,7 +1572,9 @@ export async function extractCursorTurns(
           assistant_bubble_id: last.bubble_id,
           assistant_bubble_ids: continuationCluster.map((b) => b.bubble_id),
           user_message: userBubble.text,
-          assistant_message: continuationCluster.map((b) => b.text).join('\n\n'),
+          assistant_message: continuationCluster
+            .map((b) => b.text)
+            .join('\n\n'),
           assistant_created_at: last.createdAt,
           mtime,
           is_continuation: true,
@@ -976,7 +1588,10 @@ export async function extractCursorTurns(
         const toolCalls: CursorToolCall[] = [];
         const thinkingParts: string[] = [];
         for (const b of continuationCluster) {
-          if (b.text_source === 'toolFormerData' && b.toolFormerData !== undefined) {
+          if (
+            b.text_source === 'toolFormerData' &&
+            b.toolFormerData !== undefined
+          ) {
             const call = toolFormerToToolCall(b.toolFormerData);
             if (call !== null) toolCalls.push(call);
           } else if (b.text_source === 'thinkingContent' && b.text.length > 0) {
@@ -1006,7 +1621,10 @@ export async function extractCursorTurns(
         // explain the assistant as a streaming continuation. Cursor
         // sometimes writes these for system / synthesized bubbles. Drop
         // with a warn rather than pairing into a malformed turn.
-        log.warn('orphan_assistant_bubble', { composer_id, bubble_id: cur.bubble_id });
+        log.warn('orphan_assistant_bubble', {
+          composer_id,
+          bubble_id: cur.bubble_id,
+        });
         i += 1;
         continue;
       }
@@ -1045,7 +1663,10 @@ export async function extractCursorTurns(
       const toolCalls: CursorToolCall[] = [];
       const thinkingParts: string[] = [];
       for (const b of assistantCluster) {
-        if (b.text_source === 'toolFormerData' && b.toolFormerData !== undefined) {
+        if (
+          b.text_source === 'toolFormerData' &&
+          b.toolFormerData !== undefined
+        ) {
           const call = toolFormerToToolCall(b.toolFormerData);
           if (call !== null) toolCalls.push(call);
         } else if (b.text_source === 'thinkingContent' && b.text.length > 0) {
@@ -1072,26 +1693,97 @@ export async function extractCursorTurns(
   return turns;
 }
 
-async function backfillLastSeenMap(
-  storage: Storage,
-  globalDbPath: string,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  const events = await storage.query({ source: `fs:${globalDbPath}` });
-  events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  for (const evt of events) {
-    const md = evt.metadata;
-    if (md === undefined) continue;
-    const composer_id = md['composer_id'];
-    const assistant_bubble_id = md['assistant_bubble_id'];
-    if (typeof composer_id === 'string' && typeof assistant_bubble_id === 'string') {
-      map.set(composer_id, assistant_bubble_id);
-    }
-  }
-  return map;
+interface CursorScanRow {
+  row_id: number;
+  key: string;
+  key_bytes: number;
+  value_bytes: number | null;
 }
 
-function workspaceHashFromPath(dbPath: string, prefix: string): string | undefined {
+function withCursorDb<T>(
+  globalDbPath: string,
+  read: (db: Database.Database) => T,
+): T {
+  const db = new Database(globalDbPath, { readonly: true, fileMustExist: true });
+  try {
+    return read(db);
+  } finally {
+    db.close();
+  }
+}
+
+function maxCursorRowIdInDb(db: Database.Database): number {
+  const row = db
+    .prepare('SELECT max(rowid) AS max_row_id FROM cursorDiskKV')
+    .get() as { max_row_id: number | null };
+  return row.max_row_id ?? 0;
+}
+
+function maxCursorRowId(globalDbPath: string): number {
+  return withCursorDb(globalDbPath, maxCursorRowIdInDb);
+}
+
+function readCursorRowIdPage(
+  globalDbPath: string,
+  afterRowId: number,
+  throughRowId: number,
+  limit: number,
+): CursorScanRow[] {
+  return withCursorDb(
+    globalDbPath,
+    (db) =>
+      db
+        .prepare(CURSOR_RAW_ROWID_ASC_PAGE_SQL)
+        .all(afterRowId, throughRowId, limit) as CursorScanRow[],
+  );
+}
+
+type CursorSourceInspection =
+  | { status: 'absent' }
+  | { status: 'active' }
+  | { status: 'unhealthy'; message: string };
+
+function inspectCursorSource(globalDbPath: string): CursorSourceInspection {
+  if (!existsSync(globalDbPath)) return { status: 'absent' };
+  let db: Database.Database;
+  try {
+    db = new Database(globalDbPath, { readonly: true, fileMustExist: true });
+  } catch (err) {
+    return {
+      status: 'unhealthy',
+      message: `Cursor database cannot be opened: ${(err as Error).message}`,
+    };
+  }
+  try {
+    // Preparing this zero-row statement validates the required table/columns
+    // without scanning cursorDiskKV.
+    db.prepare('SELECT key, value FROM cursorDiskKV LIMIT 0').all();
+    const keyPlan = db
+      .prepare(
+        'EXPLAIN QUERY PLAN SELECT rowid FROM cursorDiskKV WHERE key = ? LIMIT 1',
+      )
+      .all('') as Array<{ detail: string }>;
+    if (!keyPlan.some((row) => /SEARCH .* USING .*INDEX/i.test(row.detail))) {
+      return {
+        status: 'unhealthy',
+        message: 'Cursor database key column is not indexed',
+      };
+    }
+    return { status: 'active' };
+  } catch (err) {
+    return {
+      status: 'unhealthy',
+      message: `Cursor database schema is incompatible: ${(err as Error).message}`,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function workspaceHashFromPath(
+  dbPath: string,
+  prefix: string,
+): string | undefined {
   if (!dbPath.startsWith(prefix)) return undefined;
   const rest = dbPath.slice(prefix.length);
   const slash = rest.indexOf('/');
@@ -1119,11 +1811,31 @@ function refreshComposerWorkspaceMap(
   }
   try {
     const tableExists = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ItemTable'")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ItemTable'",
+      )
       .get();
     if (tableExists === undefined) return;
+    const descriptor = db
+      .prepare(
+        `SELECT length(CAST(value AS BLOB)) AS value_bytes
+           FROM ItemTable
+          WHERE key = 'composer.composerData'`,
+      )
+      .get() as { value_bytes: number } | undefined;
+    if (descriptor === undefined) return;
+    if (descriptor.value_bytes > CURSOR_WORKSPACE_REGISTRY_MAX_BYTES) {
+      log.warn('workspace_registry_budget_exceeded', {
+        path: workspaceDbPath,
+        stored_bytes: descriptor.value_bytes,
+        budget_bytes: CURSOR_WORKSPACE_REGISTRY_MAX_BYTES,
+      });
+      return;
+    }
     const row = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'composer.composerData'")
+      .prepare(
+        "SELECT value FROM ItemTable WHERE key = 'composer.composerData'",
+      )
       .get() as { value: string } | undefined;
     if (row === undefined) return;
     let parsed: unknown;
@@ -1144,24 +1856,36 @@ function refreshComposerWorkspaceMap(
     // — which is the deeper cause of the R1 reliability concern that drove
     // item 035 to derive composer_id from Cursor's storage directly rather
     // than from captured-atom metadata.
+    let idsAccepted = 0;
+    const acceptId = (id: unknown): void => {
+      if (
+        typeof id !== 'string' ||
+        id.length === 0 ||
+        Buffer.byteLength(id) > CURSOR_MAX_COMPOSER_ID_BYTES ||
+        idsAccepted >= CURSOR_WORKSPACE_REGISTRY_MAX_IDS
+      ) {
+        return;
+      }
+      map.set(id, workspaceId);
+      idsAccepted += 1;
+    };
     const allComposers = (parsed as Record<string, unknown>)['allComposers'];
     if (Array.isArray(allComposers)) {
       for (const c of allComposers) {
         if (typeof c === 'object' && c !== null) {
           const id = (c as Record<string, unknown>)['composerId'];
-          if (typeof id === 'string') {
-            map.set(id, workspaceId);
-          }
+          acceptId(id);
         }
       }
     }
-    for (const key of ['selectedComposerIds', 'lastFocusedComposerIds'] as const) {
+    for (const key of [
+      'selectedComposerIds',
+      'lastFocusedComposerIds',
+    ] as const) {
       const arr = (parsed as Record<string, unknown>)[key];
       if (Array.isArray(arr)) {
         for (const id of arr) {
-          if (typeof id === 'string') {
-            map.set(id, workspaceId);
-          }
+          acceptId(id);
         }
       }
     }
@@ -1182,15 +1906,13 @@ export interface CursorExtractorOptions {
   // `CURSOR_REPOLL_INTERVAL_MS`). No environment variable is read — the
   // source constant and this option are the only knobs.
   repollIntervalMs?: number;
-  // Run one full scan synchronously at startup, before resolving the
-  // handle. Without this, the extractor sets `lastSeenScanMtime` to the
-  // current DB mtime and waits for chokidar/repoll to detect a change —
-  // which means an empty-storage caller (like `serve-trace`) sees zero
-  // Cursor turns until the user types into Cursor again. Mirrors the
-  // CC/Codex JSONL extractors' boot-scan semantics. Production daemons
-  // can stay default-off (they keep checkpoint state in storage) but
-  // dev-time live viewers should set this true.
+  // Retained for API compatibility. Startup now always performs bounded
+  // incremental catch-up from the durable rowid checkpoint; it never runs a
+  // whole-database materializing scan.
   scanOnStart?: boolean;
+  // Test-only bound overrides. Production callers use the exported hard
+  // defaults above; every override is still normalized to a positive integer.
+  __bounds?: Partial<CursorRuntimeBounds>;
   // Test-only: populate `CursorExtractorHandle.__testHooks`. Production
   // callers leave this unset; the hooks field stays `undefined`.
   exposeTestHooks?: true;
@@ -1205,6 +1927,17 @@ export interface CursorExtractorOptions {
     workspaceStorageDir: string,
   ) => string | null;
   __resolveRepoRootFromFiles?: (files: readonly string[]) => string | null;
+  __watcherFactory?: (paths: string[], options: ChokidarOptions) => FSWatcher;
+}
+
+export interface CursorRuntimeBounds {
+  scanPageRows: number;
+  maxScanPagesPerSlice: number;
+  maxPendingComposers: number;
+  composerPageRows: number;
+  composerMaxRows: number;
+  composerMaxStoredBytes: number;
+  composerMaxPages: number;
 }
 
 export interface CursorExtractorTestHooks {
@@ -1223,9 +1956,24 @@ export interface CursorExtractorTestHooks {
   // miss a utimes touch within the test's 200-300ms wait budget on a
   // busy machine). Production callers never invoke this hook.
   refreshWorkspaceMap(workspaceDbPath: string): Promise<void>;
+  getBoundedReadMetrics(): CursorBoundedReadMetrics;
+}
+
+export interface CursorBoundedReadMetrics {
+  scanPages: number;
+  deltaPages: number;
+  reconciliationPages: number;
+  maxScanPageRows: number;
+  composerReads: number;
+  maxComposerRows: number;
+  maxComposerStoredBytes: number;
+  maxComposerPages: number;
+  maxPendingComposers: number;
 }
 
 export interface CursorExtractorHandle {
+  initialCatchUp: Promise<void>;
+  getHealth: () => ExtractorHealth;
   stop: () => Promise<void>;
   // Populated only when `CursorExtractorOptions.exposeTestHooks: true`.
   // The double-underscore prefix marks the field as test-only.
@@ -1238,11 +1986,119 @@ export async function startCursorExtractor(
 ): Promise<CursorExtractorHandle> {
   const globalDbPath = options.globalDbPath ?? DEFAULT_GLOBAL_DB;
   const workspacePrefix = options.workspacePrefix ?? DEFAULT_WORKSPACE_PREFIX;
-  const repollIntervalMs = options.repollIntervalMs ?? CURSOR_REPOLL_INTERVAL_MS;
+  const capturePolicy = createExtractorFilesystemPolicy({
+    files: [globalDbPath],
+    roots: [workspacePrefix],
+  });
+  const repollIntervalMs =
+    options.repollIntervalMs ?? CURSOR_REPOLL_INTERVAL_MS;
   const disableFallbacks = options.__disableToolCallFallbacks === true;
+  const bounds: CursorRuntimeBounds = {
+    scanPageRows: positiveBound(
+      options.__bounds?.scanPageRows,
+      CURSOR_SCAN_PAGE_ROWS,
+    ),
+    maxScanPagesPerSlice: positiveBound(
+      options.__bounds?.maxScanPagesPerSlice,
+      CURSOR_SCAN_MAX_PAGES_PER_SLICE,
+    ),
+    maxPendingComposers: positiveBound(
+      options.__bounds?.maxPendingComposers,
+      CURSOR_MAX_PENDING_COMPOSERS,
+    ),
+    composerPageRows: positiveBound(
+      options.__bounds?.composerPageRows,
+      CURSOR_COMPOSER_PAGE_ROWS,
+    ),
+    composerMaxRows: positiveBound(
+      options.__bounds?.composerMaxRows,
+      CURSOR_COMPOSER_MAX_ROWS,
+    ),
+    composerMaxStoredBytes: positiveBound(
+      options.__bounds?.composerMaxStoredBytes,
+      CURSOR_COMPOSER_MAX_STORED_BYTES,
+    ),
+    composerMaxPages: positiveBound(
+      options.__bounds?.composerMaxPages,
+      CURSOR_COMPOSER_MAX_PAGES,
+    ),
+  };
 
-  const lastSeenMap = await backfillLastSeenMap(storage, globalDbPath);
-  const composerToWorkspace = new Map<string, string>();
+  const persistedScan = await storage.getCaptureCheckpoint({
+    extractor: CURSOR_CHECKPOINT_EXTRACTOR,
+    resource: globalDbPath,
+    partition: CURSOR_SCAN_PARTITION,
+  });
+  let scanRowId =
+    typeof persistedScan?.position === 'number' &&
+    Number.isSafeInteger(persistedScan.position) &&
+    persistedScan.position >= 0
+      ? persistedScan.position
+      : 0;
+  const persistedReconciliationRowId =
+    persistedScan?.state['reconciliation_row_id'];
+  const persistedReconciliationTarget =
+    persistedScan?.state['reconciliation_target_row_id'];
+  const persistedRecoveryRowId = persistedScan?.state['recovery_row_id'];
+  const persistedRecoveryTarget = persistedScan?.state['recovery_target_row_id'];
+  // `recovery_*` is the additive migration path from the first bounded
+  // implementation. Resume its raw rowid/target as the rotating
+  // reconciliation cursor; never restart it merely because the process did.
+  const candidateReconciliationRowId =
+    typeof persistedReconciliationRowId === 'number'
+      ? persistedReconciliationRowId
+      : persistedScan?.state['recovery_active'] === true
+        ? persistedRecoveryRowId
+        : 0;
+  let reconciliationRowId =
+    typeof candidateReconciliationRowId === 'number' &&
+    Number.isSafeInteger(candidateReconciliationRowId) &&
+    candidateReconciliationRowId >= 0
+      ? candidateReconciliationRowId
+      : 0;
+  const candidateReconciliationTarget =
+    typeof persistedReconciliationTarget === 'number'
+      ? persistedReconciliationTarget
+      : persistedScan?.state['recovery_active'] === true
+        ? persistedRecoveryTarget
+        : 0;
+  let reconciliationTargetRowId =
+    typeof candidateReconciliationTarget === 'number' &&
+    Number.isSafeInteger(candidateReconciliationTarget) &&
+    candidateReconciliationTarget >= reconciliationRowId
+      ? candidateReconciliationTarget
+      : 0;
+  let lastRowScanComposerId =
+    typeof persistedScan?.state['last_row_composer_id'] === 'string'
+      ? persistedScan.state['last_row_composer_id']
+      : '';
+  let lastReconciliationComposerId =
+    typeof persistedScan?.state['last_reconciliation_composer_id'] === 'string'
+      ? persistedScan.state['last_reconciliation_composer_id']
+      : typeof persistedScan?.state['last_recovery_composer_id'] === 'string'
+        ? persistedScan.state['last_recovery_composer_id']
+      : '';
+  const pendingComposers = new Set<string>();
+  const persistedPending = persistedScan?.state['pending_composer_ids'];
+  if (Array.isArray(persistedPending)) {
+    for (const value of persistedPending) {
+      if (pendingComposers.size >= bounds.maxPendingComposers) break;
+      if (
+        typeof value === 'string' &&
+        value.length > 0 &&
+        Buffer.byteLength(value) <= CURSOR_MAX_COMPOSER_ID_BYTES
+      ) {
+        pendingComposers.add(value);
+      }
+    }
+  }
+
+  const composerCheckpointCache = new BoundedLruMap<string, CursorComposerProgress>(
+    CURSOR_RUNTIME_CACHE_ENTRIES,
+  );
+  const composerToWorkspace = new BoundedLruMap<string, string>(
+    CURSOR_RUNTIME_CACHE_ENTRIES,
+  );
   // Item 037 / AC1: positive-only repo_root cache keyed by composer_id.
   // Cache discipline (R3 decision tree, AC1 #4):
   //   - registry binding present → ALWAYS run Stage 1 (writes overwrite the
@@ -1256,7 +2112,9 @@ export async function startCursorExtractor(
   // don't leak state across vitest workers. Production behavior is
   // identical to a module-level cache: a single long-running extractor
   // instance owns capture for the lifetime of the daemon process.
-  const repoRootCache = new Map<string, string>();
+  const repoRootCache = new BoundedLruMap<string, string>(
+    CURSOR_RUNTIME_CACHE_ENTRIES,
+  );
   const resolveRepoRootForWs =
     options.__resolveRepoRootForWorkspaceId ?? resolveRepoRootForWorkspaceId;
   const resolveRepoRootFromFilesInj =
@@ -1265,6 +2123,25 @@ export async function startCursorExtractor(
   let processing: Promise<void> = Promise.resolve();
   let stopped = false;
   let debounceTimer: NodeJS.Timeout | null = null;
+  let stopPromise: Promise<void> | null = null;
+  let healthState: ExtractorHealth['state'] = 'starting';
+  let overflowCount = 0;
+  let errorCount = 0;
+  let lastError: string | null = null;
+  let sourceStatus: NonNullable<ExtractorHealth['sourceStatus']> = 'absent';
+  let scanInProgress = false;
+  let deltaPending = false;
+  const readMetrics: CursorBoundedReadMetrics = {
+    scanPages: 0,
+    deltaPages: 0,
+    reconciliationPages: 0,
+    maxScanPageRows: 0,
+    composerReads: 0,
+    maxComposerRows: 0,
+    maxComposerStoredBytes: 0,
+    maxComposerPages: 0,
+    maxPendingComposers: pendingComposers.size,
+  };
   const DEBOUNCE_MS = 300;
 
   // mtime checkpoint for the periodic re-poll path. Initialized to the
@@ -1273,18 +2150,196 @@ export async function startCursorExtractor(
   let lastSeenScanMtime = await maxGlobalDbFamilyMtime(globalDbPath);
 
   function isGlobalDbFamily(p: string): boolean {
-    return p === globalDbPath || p === `${globalDbPath}-wal` || p === `${globalDbPath}-shm`;
+    return (
+      p === globalDbPath ||
+      p === `${globalDbPath}-wal` ||
+      p === `${globalDbPath}-shm`
+    );
   }
 
   function isWorkspaceDb(p: string): boolean {
     return p.startsWith(workspacePrefix) && p.endsWith('state.vscdb');
   }
 
-  async function handleGlobalChange(reason: 'repoll' | 'chokidar'): Promise<void> {
-    log.debug('tick', { reason });
+  function recordError(
+    message: string,
+    payload: Record<string, unknown> = {},
+  ): void {
+    errorCount += 1;
+    lastError = message;
+    if (healthState !== 'stopped') healthState = 'unhealthy';
+    log.error('handler_error', { message, ...payload });
+  }
+
+  async function persistScanCheckpoint(): Promise<void> {
+    await storage.upsertCaptureCheckpoint({
+      extractor: CURSOR_CHECKPOINT_EXTRACTOR,
+      resource: globalDbPath,
+      partition: CURSOR_SCAN_PARTITION,
+      position: scanRowId,
+      state: {
+        pending_composer_ids: Array.from(pendingComposers),
+        reconciliation_row_id: reconciliationRowId,
+        reconciliation_target_row_id: reconciliationTargetRowId,
+        ...(lastRowScanComposerId.length > 0
+          ? { last_row_composer_id: lastRowScanComposerId }
+          : {}),
+        ...(reconciliationTargetRowId > 0 &&
+        lastReconciliationComposerId.length > 0
+          ? {
+              last_reconciliation_composer_id:
+                lastReconciliationComposerId,
+            }
+          : {}),
+      },
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  function enqueueComposer(composerId: string): boolean {
+    if (
+      composerId.length === 0 ||
+      Buffer.byteLength(composerId) > CURSOR_MAX_COMPOSER_ID_BYTES
+    ) {
+      overflowCount += 1;
+      return true;
+    }
+    if (pendingComposers.has(composerId)) return true;
+    if (pendingComposers.size >= bounds.maxPendingComposers) {
+      overflowCount += 1;
+      return false;
+    }
+    pendingComposers.add(composerId);
+    readMetrics.maxPendingComposers = Math.max(
+      readMetrics.maxPendingComposers,
+      pendingComposers.size,
+    );
+    return true;
+  }
+
+  async function getComposerProgress(
+    composerId: string,
+  ): Promise<CursorComposerProgress> {
+    const cached = composerCheckpointCache.get(composerId);
+    if (cached !== undefined) return cached;
+    const checkpoint = await storage.getCaptureCheckpoint({
+      extractor: CURSOR_CHECKPOINT_EXTRACTOR,
+      resource: globalDbPath,
+      partition: composerId,
+    });
+    const carry = checkpoint?.state['carry_row_id'];
+    const userBubbleId = checkpoint?.state['user_bubble_id'];
+    const progress: CursorComposerProgress = {
+      position: checkpoint?.position ?? 0,
+      ...(checkpoint?.cursor !== undefined
+        ? { cursor: checkpoint.cursor }
+        : {}),
+      ...(typeof carry === 'number' && Number.isSafeInteger(carry) && carry > 0
+        ? { carryRowId: carry }
+        : {}),
+      ...(typeof userBubbleId === 'string' &&
+      userBubbleId.length > 0 &&
+      Buffer.byteLength(userBubbleId) <= CURSOR_MAX_KV_KEY_BYTES
+        ? { userBubbleId }
+        : {}),
+    };
+    composerCheckpointCache.set(composerId, progress);
+    return progress;
+  }
+
+  async function saveComposerCheckpoint(
+    composerId: string,
+    bubbleId: string,
+    userBubbleId: string,
+  ): Promise<void> {
+    await storage.upsertCaptureCheckpoint({
+      extractor: CURSOR_CHECKPOINT_EXTRACTOR,
+      resource: globalDbPath,
+      partition: composerId,
+      cursor: bubbleId,
+      position: 0,
+      state: { user_bubble_id: userBubbleId },
+      updated_at: new Date().toISOString(),
+    });
+    composerCheckpointCache.set(composerId, {
+      cursor: bubbleId,
+      position: 0,
+      userBubbleId,
+    });
+  }
+
+  async function saveComposerRawProgress(
+    composerId: string,
+    progress: CursorComposerProgress,
+  ): Promise<void> {
+    await storage.upsertCaptureCheckpoint({
+      extractor: CURSOR_CHECKPOINT_EXTRACTOR,
+      resource: globalDbPath,
+      partition: composerId,
+      ...(progress.cursor !== undefined ? { cursor: progress.cursor } : {}),
+      position: progress.position,
+      state: {
+        ...(progress.carryRowId !== undefined
+          ? { carry_row_id: progress.carryRowId }
+          : {}),
+        ...(progress.userBubbleId !== undefined
+          ? { user_bubble_id: progress.userBubbleId }
+          : {}),
+      },
+      updated_at: new Date().toISOString(),
+    });
+    composerCheckpointCache.set(composerId, progress);
+  }
+
+  async function processComposer(
+    composerId: string,
+  ): Promise<CursorBoundedReadStats> {
+    const progress = await getComposerProgress(composerId);
+    const lastSeenMap = new Map<string, string>();
+    if (progress.cursor !== undefined)
+      lastSeenMap.set(composerId, progress.cursor);
+    const stats: CursorBoundedReadStats = {
+      rowsRead: 0,
+      storedBytesRead: 0,
+      pagesRead: 0,
+      truncated: false,
+      blocked: false,
+      lastScannedRowId: progress.position,
+      ...(progress.carryRowId !== undefined
+        ? { carryRowId: progress.carryRowId }
+        : {}),
+    };
     const turns = await extractCursorTurns(globalDbPath, lastSeenMap, {
       disableFallbacks,
+      boundedRead: {
+        composerId,
+        pageRows: bounds.composerPageRows,
+        maxRows: bounds.composerMaxRows,
+        maxStoredBytes: bounds.composerMaxStoredBytes,
+        maxPages: bounds.composerMaxPages,
+        resumeRowId: progress.position,
+        ...(progress.carryRowId !== undefined
+          ? { carryRowId: progress.carryRowId }
+          : {}),
+        ...(progress.userBubbleId !== undefined
+          ? { checkpointUserBubbleId: progress.userBubbleId }
+          : {}),
+        stats,
+      },
     });
+    readMetrics.composerReads += 1;
+    readMetrics.maxComposerRows = Math.max(
+      readMetrics.maxComposerRows,
+      stats.rowsRead,
+    );
+    readMetrics.maxComposerStoredBytes = Math.max(
+      readMetrics.maxComposerStoredBytes,
+      stats.storedBytesRead,
+    );
+    readMetrics.maxComposerPages = Math.max(
+      readMetrics.maxComposerPages,
+      stats.pagesRead,
+    );
     for (const turn of turns) {
       const ws = composerToWorkspace.get(turn.composer_id);
       const metadata: Record<string, unknown> = {
@@ -1304,7 +2359,8 @@ export async function startCursorExtractor(
       if (turn.context !== undefined) {
         metadata['context'] = turn.context;
         filesReferenced = flattenContextFiles(turn.context);
-        if (filesReferenced.length > 0) metadata['files_referenced'] = filesReferenced;
+        if (filesReferenced.length > 0)
+          metadata['files_referenced'] = filesReferenced;
       }
       // Item 037 / AC1: two-stage repo_root resolution.
       //   Stage 1 (preferred): registry binding via composerToWorkspace +
@@ -1329,7 +2385,8 @@ export async function startCursorExtractor(
         metadata['bubble_text_sources'] = turn.bubble_text_sources;
       }
       if (turn.had_tool_use === true) metadata['had_tool_use'] = true;
-      if (turn.tool_calls !== undefined) metadata['tool_calls'] = turn.tool_calls;
+      if (turn.tool_calls !== undefined)
+        metadata['tool_calls'] = turn.tool_calls;
       if (turn.thinking !== undefined) metadata['thinking'] = turn.thinking;
       if (turn.is_continuation === true) {
         metadata['is_continuation'] = true;
@@ -1343,11 +2400,20 @@ export async function startCursorExtractor(
         timestamp: new Date(turn.assistant_created_at).toISOString(),
         content: `USER: ${turn.user_message}\n\nASSISTANT: ${turn.assistant_message}`,
         metadata,
+        dedupe_key: captureDedupeKey('cursor', [
+          globalDbPath,
+          turn.composer_id,
+          turn.assistant_bubble_id,
+        ]),
       };
       log.info('candidate', { composer_id: turn.composer_id });
-      const result = await processCandidate(candidate, storage);
+      const result = await processExtractorCandidate(candidate, storage, capturePolicy);
       if (result.accepted) {
-        lastSeenMap.set(turn.composer_id, turn.assistant_bubble_id);
+        await saveComposerCheckpoint(
+          turn.composer_id,
+          turn.assistant_bubble_id,
+          turn.user_bubble_id,
+        );
       } else {
         log.warn('candidate_rejected', {
           reason: result.reason,
@@ -1355,10 +2421,321 @@ export async function startCursorExtractor(
         });
       }
     }
+    return stats;
+  }
+
+  async function processPendingRound(): Promise<void> {
+    const roundSize = pendingComposers.size;
+    for (let i = 0; i < roundSize && !stopped; i += 1) {
+      const next = pendingComposers.values().next();
+      if (next.done === true) break;
+      const composerId = next.value;
+      pendingComposers.delete(composerId);
+      const before = await getComposerProgress(composerId);
+      const stats = await processComposer(composerId);
+      const after = await getComposerProgress(composerId);
+      if (stats.blocked) {
+        overflowCount += 1;
+        recordError('cursor composer exceeded bounded read budget', {
+          composer_id: composerId,
+        });
+      } else if (stats.truncated) {
+        if (after.cursor !== before.cursor) {
+          enqueueComposer(composerId);
+        } else if (stats.lastScannedRowId > before.position) {
+          await saveComposerRawProgress(composerId, {
+            ...(before.cursor !== undefined ? { cursor: before.cursor } : {}),
+            position: stats.lastScannedRowId,
+            ...(stats.carryRowId !== undefined
+              ? { carryRowId: stats.carryRowId }
+              : {}),
+            ...(before.userBubbleId !== undefined
+              ? { userBubbleId: before.userBubbleId }
+              : {}),
+          });
+          enqueueComposer(composerId);
+        } else {
+          overflowCount += 1;
+          recordError(
+            'cursor composer made no progress within bounded read budget',
+            {
+              composer_id: composerId,
+            },
+          );
+        }
+      } else if (
+        after.cursor === before.cursor &&
+        stats.lastScannedRowId > before.position
+      ) {
+        await saveComposerRawProgress(composerId, {
+          ...(before.cursor !== undefined ? { cursor: before.cursor } : {}),
+          position: stats.lastScannedRowId,
+          ...(stats.carryRowId !== undefined
+            ? { carryRowId: stats.carryRowId }
+            : {}),
+          ...(before.userBubbleId !== undefined
+            ? { userBubbleId: before.userBubbleId }
+            : {}),
+        });
+      }
+      await persistScanCheckpoint();
+      if (!pendingComposers.has(composerId))
+        composerCheckpointCache.delete(composerId);
+    }
+  }
+
+  async function scanRowIdSlice(
+    mode: 'delta' | 'reconciliation',
+    targetRowId: number,
+    pageBudget: { remaining: number },
+  ): Promise<void> {
+    let cursor = mode === 'delta' ? scanRowId : reconciliationRowId;
+    // Reconciliation intentionally re-enqueues at least once per live tick.
+    // Persisting the previous page's composer as a dedupe boundary would let
+    // a same-composer bubble on the next page evade an in-place update that
+    // happened between ticks/restarts.
+    let lastComposerId = mode === 'delta' ? lastRowScanComposerId : '';
+    while (cursor < targetRowId && pageBudget.remaining > 0 && !stopped) {
+      const page = readCursorRowIdPage(
+        globalDbPath,
+        cursor,
+        targetRowId,
+        bounds.scanPageRows,
+      );
+      readMetrics.scanPages += 1;
+      if (mode === 'delta') readMetrics.deltaPages += 1;
+      else readMetrics.reconciliationPages += 1;
+      readMetrics.maxScanPageRows = Math.max(
+        readMetrics.maxScanPageRows,
+        page.length,
+      );
+      pageBudget.remaining -= 1;
+      if (page.length === 0) {
+        cursor = targetRowId;
+        if (mode === 'delta') scanRowId = cursor;
+        else reconciliationRowId = cursor;
+        await persistScanCheckpoint();
+        break;
+      }
+      let consumedRowId = cursor;
+      for (const row of page) {
+        // Delta pages discover newly inserted bubble rows immediately;
+        // reconciliation pages revisit both headers and bubbles so an
+        // in-place update is eventually observed even if Cursor did not
+        // rewrite the composer header in the same transaction.
+        const relevantPrefix =
+          row.key.startsWith(COMPOSER_KEY_PREFIX) ||
+          row.key.startsWith(BUBBLE_KEY_PREFIX);
+        const composerId =
+          parseComposerKey(row.key) ?? parseBubbleComposerKeyPreview(row.key);
+        if (relevantPrefix && composerId === null) {
+          overflowCount += 1;
+          consumedRowId = row.row_id;
+          continue;
+        }
+        if (
+          mode === 'reconciliation' &&
+          composerId !== null &&
+          composerId !== lastComposerId
+        ) {
+          const progress = await getComposerProgress(composerId);
+          if (progress.position !== 0 || progress.carryRowId !== undefined) {
+            await saveComposerRawProgress(composerId, {
+              ...(progress.cursor !== undefined
+                ? { cursor: progress.cursor }
+                : {}),
+              position: 0,
+              ...(progress.userBubbleId !== undefined
+                ? { userBubbleId: progress.userBubbleId }
+                : {}),
+            });
+          }
+        }
+        if (
+          composerId !== null &&
+          composerId !== lastComposerId &&
+          !enqueueComposer(composerId)
+        ) {
+          break;
+        }
+        if (composerId !== null) lastComposerId = composerId;
+        consumedRowId = row.row_id;
+      }
+      cursor = consumedRowId;
+      if (mode === 'delta') {
+        scanRowId = cursor;
+        lastRowScanComposerId = lastComposerId;
+      } else {
+        reconciliationRowId = cursor;
+        lastReconciliationComposerId = lastComposerId;
+      }
+      await persistScanCheckpoint();
+      await processPendingRound();
+      if (consumedRowId < page[page.length - 1]!.row_id) break;
+    }
+  }
+
+  function inspectAndActivateSource(): number | null {
+    const inspection = inspectCursorSource(globalDbPath);
+    if (inspection.status === 'absent') {
+      sourceStatus = 'absent';
+      scanInProgress = false;
+      deltaPending = false;
+      return null;
+    }
+    sourceStatus = 'active';
+    if (inspection.status === 'unhealthy') throw new Error(inspection.message);
+    return maxCursorRowId(globalDbPath);
+  }
+
+  function normalizeCursorsForTarget(targetRowId: number): void {
+    if (targetRowId < scanRowId) {
+      scanRowId = 0;
+      lastRowScanComposerId = '';
+    }
+    if (
+      reconciliationRowId > targetRowId ||
+      reconciliationTargetRowId > targetRowId ||
+      reconciliationTargetRowId < reconciliationRowId
+    ) {
+      // The DB was replaced/truncated. Its old rowids no longer describe the
+      // current file, so this is the one non-completion path that resets the
+      // rotating cursor.
+      reconciliationRowId = 0;
+      reconciliationTargetRowId = 0;
+      lastReconciliationComposerId = '';
+    }
+  }
+
+  async function advanceOneReconciliationBudget(
+    currentMaxRowId: number,
+  ): Promise<void> {
+    if (currentMaxRowId <= 0) {
+      reconciliationRowId = 0;
+      reconciliationTargetRowId = 0;
+      lastReconciliationComposerId = '';
+      return;
+    }
+    // A target is fixed for one cycle. Rows inserted during that cycle are
+    // handled by the independent delta cursor and enter reconciliation on the
+    // next cycle; they never make a single tick's SQL work grow without bound.
+    if (
+      reconciliationTargetRowId === 0 ||
+      reconciliationRowId >= reconciliationTargetRowId
+    ) {
+      reconciliationRowId = 0;
+      reconciliationTargetRowId = currentMaxRowId;
+      lastReconciliationComposerId = '';
+    }
+    const budget = { remaining: bounds.maxScanPagesPerSlice };
+    await scanRowIdSlice(
+      'reconciliation',
+      reconciliationTargetRowId,
+      budget,
+    );
+    if (reconciliationRowId >= reconciliationTargetRowId) {
+      reconciliationRowId = 0;
+      reconciliationTargetRowId = 0;
+      lastReconciliationComposerId = '';
+    }
+  }
+
+  // Startup resumes the durable delta rowid. Only a first-ever installation
+  // (position 0) performs the one-time raw bootstrap, page by page. Ordinary
+  // restarts do no full recovery sweep: after delta catch-up they advance the
+  // independently persisted reconciliation cursor by one fixed page budget.
+  async function runInitialBoundedCatchUp(): Promise<void> {
+    const inspectedTarget = inspectAndActivateSource();
+    if (inspectedTarget === null) return;
+    scanInProgress = true;
+    let targetRowId = inspectedTarget;
+    normalizeCursorsForTarget(targetRowId);
+    deltaPending = scanRowId < targetRowId;
+    await persistScanCheckpoint();
+
+    return new Promise<void>((resolve, reject) => {
+      const runSlice = async (): Promise<void> => {
+        try {
+          if (stopped) {
+            scanInProgress = false;
+            resolve();
+            return;
+          }
+          await processPendingRound();
+          const pageBudget = { remaining: bounds.maxScanPagesPerSlice };
+          if (pageBudget.remaining > 0) {
+            await scanRowIdSlice('delta', targetRowId, pageBudget);
+          }
+          targetRowId = Math.max(targetRowId, maxCursorRowId(globalDbPath));
+          deltaPending = scanRowId < targetRowId;
+          const complete =
+            pendingComposers.size === 0 && !deltaPending;
+          if (complete) {
+            await advanceOneReconciliationBudget(targetRowId);
+            await persistScanCheckpoint();
+            scanInProgress = false;
+            resolve();
+            return;
+          }
+          // A fresh macrotask owns the next bounded page budget. This keeps a
+          // large restart catch-up from monopolising the event loop.
+          setImmediate(() => {
+            void runSlice();
+          });
+        } catch (err) {
+          scanInProgress = false;
+          reject(err as Error);
+        }
+      };
+      void runSlice();
+    });
+  }
+
+  // A live DB/WAL event gets two independent hard budgets: delta first for
+  // newly inserted rows, then reconciliation for in-place updates. The call
+  // returns after those fixed slices; it never drains raw history in one tick.
+  async function runBoundedLiveTick(): Promise<void> {
+    const targetRowId = inspectAndActivateSource();
+    if (targetRowId === null) return;
+    scanInProgress = true;
+    try {
+      normalizeCursorsForTarget(targetRowId);
+      await processPendingRound();
+      const deltaBudget = { remaining: bounds.maxScanPagesPerSlice };
+      await scanRowIdSlice('delta', targetRowId, deltaBudget);
+      deltaPending = scanRowId < targetRowId;
+      await advanceOneReconciliationBudget(targetRowId);
+      await persistScanCheckpoint();
+    } finally {
+      scanInProgress = false;
+    }
+  }
+
+  async function handleGlobalChange(
+    reason: 'repoll' | 'chokidar',
+  ): Promise<void> {
+    log.debug('tick', { reason });
+    await runBoundedLiveTick();
   }
 
   function handleWorkspaceChange(path: string): void {
     refreshComposerWorkspaceMap(path, workspacePrefix, composerToWorkspace);
+  }
+
+  async function loadInitialWorkspaceBindings(): Promise<void> {
+    try {
+      const dir = await opendir(workspacePrefix);
+      let inspected = 0;
+      for await (const entry of dir) {
+        if (stopped) break;
+        if (!entry.isDirectory()) continue;
+        if (inspected >= CURSOR_STARTUP_WORKSPACE_DB_LIMIT) break;
+        inspected += 1;
+        handleWorkspaceChange(join(workspacePrefix, entry.name, 'state.vscdb'));
+      }
+    } catch {
+      // Cursor may not have created workspaceStorage yet.
+    }
   }
 
   function schedule(work: () => Promise<void> | void): void {
@@ -1368,7 +2745,7 @@ export async function startCursorExtractor(
       try {
         await work();
       } catch (err) {
-        log.error('handler_error', { message: (err as Error).message });
+        recordError((err as Error).message);
       }
     });
   }
@@ -1381,20 +2758,16 @@ export async function startCursorExtractor(
     }, DEBOUNCE_MS);
   }
 
-  // Periodic re-poll entry path (NEW, separate from chokidar). Reads the
-  // family-max mtime; short-circuits if it has not advanced beyond the
-  // checkpoint; otherwise schedules a NEW extraction tick directly via
-  // `schedule()` — bypassing `scheduleGlobalChange`'s debounce guard
-  // (which is correct for coalescing chokidar bursts but would silently
-  // drop poll ticks that race with a pending debounce). Updates the
-  // checkpoint AFTER `schedule()` enqueues (not after extraction
-  // completes — the `processing` chain guarantees serialization).
+  // Periodic re-poll is also the bounded reconciliation clock. A stable mtime
+  // still advances one rotating page budget so an old in-place update found
+  // near the end of a large DB is eventually revisited without a full sweep.
+  // The mtime remains a diagnostic checkpoint; serialization is owned by the
+  // `processing` chain.
   async function triggerRepollExtraction(): Promise<void> {
     if (stopped) return;
     const current = await maxGlobalDbFamilyMtime(globalDbPath);
-    if (current <= lastSeenScanMtime) return;
     schedule(() => handleGlobalChange('repoll'));
-    lastSeenScanMtime = current;
+    if (current > lastSeenScanMtime) lastSeenScanMtime = current;
     await processing;
   }
 
@@ -1407,10 +2780,20 @@ export async function startCursorExtractor(
   if (typeof repollTimer.unref === 'function') repollTimer.unref();
 
   const globalDbDir = dirname(globalDbPath);
-  const watcher: FSWatcher = chokidar.watch([globalDbDir, workspacePrefix], {
-    ignoreInitial: true,
-    persistent: true,
-    awaitWriteFinish: false,
+  const watcher: FSWatcher =
+    options.__watcherFactory?.([globalDbDir, workspacePrefix], {
+      ignoreInitial: true,
+      persistent: true,
+      awaitWriteFinish: false,
+    }) ?? nativeCursorWatcher(globalDbDir, workspacePrefix);
+  let watcherReadySettled = false;
+  let resolveWatcherReady: () => void = () => undefined;
+  const watcherReady = new Promise<void>((resolve) => {
+    resolveWatcherReady = () => {
+      if (watcherReadySettled) return;
+      watcherReadySettled = true;
+      resolve();
+    };
   });
 
   function dispatch(p: string): void {
@@ -1423,32 +2806,63 @@ export async function startCursorExtractor(
 
   watcher.on('add', dispatch);
   watcher.on('change', dispatch);
+  watcher.once('ready', resolveWatcherReady);
   watcher.on('error', (err: unknown) => {
-    log.error('watcher_error', { message: (err as Error).message });
+    errorCount += 1;
+    lastError = (err as Error).message;
+    healthState = 'unhealthy';
+    log.error('watcher_error', { message: lastError });
+    resolveWatcherReady();
   });
+  watcher.on('raw', scheduleGlobalChange);
 
-  await new Promise<void>((resolve) => {
-    watcher.once('ready', () => resolve());
+  await watcherReady;
+
+  if (errorCount === 0) healthState = 'catching_up';
+  const initialCatchUp = processing.then(async () => {
+    try {
+      await loadInitialWorkspaceBindings();
+      await runInitialBoundedCatchUp();
+      if (!stopped && errorCount === 0) healthState = 'healthy';
+    } catch (err) {
+      recordError((err as Error).message, { phase: 'initial_catch_up' });
+    }
   });
-
-  if (options.scanOnStart === true) {
-    schedule(() => handleGlobalChange('repoll'));
-    await processing;
-  }
+  processing = initialCatchUp;
 
   log.info('started', { globalDbPath, workspacePrefix, repollIntervalMs });
 
   const handle: CursorExtractorHandle = {
+    initialCatchUp,
+    getHealth: () => ({
+      state: healthState,
+      queueDepth: pendingComposers.size,
+      overflowCount,
+      reconciliationPending:
+        scanInProgress ||
+        deltaPending ||
+        reconciliationTargetRowId > 0 ||
+        pendingComposers.size > 0,
+      errorCount,
+      lastError,
+      sourceStatus,
+    }),
     stop: async () => {
-      stopped = true;
-      clearInterval(repollTimer);
-      if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      await watcher.close();
-      await processing;
-      log.info('stopped', {});
+      if (stopPromise !== null) return stopPromise;
+      stopPromise = (async () => {
+        stopped = true;
+        healthState = 'stopped';
+        clearInterval(repollTimer);
+        if (debounceTimer !== null) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        resolveWatcherReady();
+        await watcher.close();
+        await processing;
+        log.info('stopped', {});
+      })();
+      return stopPromise;
     },
   };
   if (options.exposeTestHooks === true) {
@@ -1462,6 +2876,7 @@ export async function startCursorExtractor(
         schedule(() => handleWorkspaceChange(workspaceDbPath));
         await processing;
       },
+      getBoundedReadMetrics: () => ({ ...readMetrics }),
     };
   }
   return handle;
