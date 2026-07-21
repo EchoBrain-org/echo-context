@@ -115,8 +115,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "e29b871b83e4ae5a60c8c2bd2eb8d6701aa43393",
-      "content_sha256": "cdc8a5d805d9b2ac6c7503de8faceec4bacf2dc202f2d930b54e3fec2a18a814",
+      "blob_oid": "d6a94db8b6759340a9a547e8f6aff090a0005ee6",
+      "content_sha256": "c929d78c99405e7c4f3fc34bbcdd51cc5757cb2cbdcfba64aece77a7394b0046",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
     },
@@ -127,8 +127,8 @@
       "path": "tools/verify-context-tools.mjs"
     },
     {
-      "blob_oid": "e5c46f72a5a2e899a52ead75980b984007c30626",
-      "content_sha256": "cd28f53cc516699a9bd6dd583a9e3a82fb26365887456a4529c532d233b0ae60",
+      "blob_oid": "65693f7c6d098ec68ebf10c6098ec83b23182f04",
+      "content_sha256": "6184b1cb9a7b378c477a6854e76f5a383ef3d820e625c8e157c6ec56e9663525",
       "mode": "100644",
       "path": "tools/verify-service-parity.mjs"
     },
