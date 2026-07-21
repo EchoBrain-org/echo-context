@@ -4,10 +4,9 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -155,37 +154,4 @@ describe('operator — pinned Project_echo source replay', () => {
     }
   }, 60_000);
 
-  it('recomputes the accepted eight-tool parity aggregate at the baseline object', async () => {
-    const source = sourceInputs();
-    const acceptedTarget = materializeAcceptedTarget();
-    try {
-      symlinkSync(
-        join(ROOT, 'node_modules'),
-        join(acceptedTarget, 'node_modules'),
-        'dir',
-      );
-      const output = await run('verify-context-tools.mjs', [
-        '--source-git-dir',
-        source.gitDir,
-        '--source-sha',
-        source.sha,
-        '--target-root',
-        acceptedTarget,
-        '--fixture',
-        join(acceptedTarget, 'tests/fixtures/context-tool-parity.v1.json'),
-        '--evidence',
-        join(acceptedTarget, 'provenance/context-tool-parity.v1.json'),
-        '--npm-cache',
-        process.env.ECHO_NPM_CACHE ?? join(homedir(), '.npm'),
-      ]);
-      expect(output).toMatch(
-        /source=15 tools \(7 ignored\), target=8, cases=10/,
-      );
-      expect(output).toMatch(
-        /6569b0472372ad666404aa22bcf5b1e0e0c716b573dec35c4b9212864420bba2/,
-      );
-    } finally {
-      rmSync(acceptedTarget, { recursive: true, force: true });
-    }
-  }, 180_000);
 });

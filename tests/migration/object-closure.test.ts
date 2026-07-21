@@ -8,6 +8,10 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASELINE = '0cf7b006eba665c0bf55e82ff04da70f19f01ebb';
 const TREE = '70c5cf8352652b3c4c1dce68cd1a5e40d44e4b05';
+const SUCCESSOR_IMMUTABLE_PROVENANCE = [
+  ['provenance/extraction-baseline.v1.json', '3b04317e82735e5546b5ae4645084b0c1a548a5fd26ee99fb1540771fa6e4311'],
+  ['provenance/repository-authority.v1.json', 'c7ce412136c54ee997534b43d1e9e6215d6e096514fa028b87233a4e1da0f48b'],
+] as const;
 const gitText = (args: string[]) => execFileSync('git', ['-C', ROOT, ...args], {
   encoding: 'utf8',
   maxBuffer: 128 * 1024 * 1024,
@@ -63,13 +67,16 @@ describe('AC2 — frozen extraction object closure', () => {
     expect(tracked.size).toBe(190);
   });
 
-  it('keeps every item-135 provenance file byte-identical to the accepted baseline', () => {
+  it('keeps baseline and successor item-135 provenance bytes immutable', () => {
     const provenancePaths = gitText([
       'ls-tree', '-r', '--name-only', BASELINE, '--', 'provenance',
     ]).trim().split('\n');
     expect(provenancePaths).toHaveLength(18);
     for (const path of provenancePaths) {
       expect(readFileSync(join(ROOT, path)).equals(gitBytes(['show', `${BASELINE}:${path}`]))).toBe(true);
+    }
+    for (const [path, expectedSha] of SUCCESSOR_IMMUTABLE_PROVENANCE) {
+      expect(createHash('sha256').update(readFileSync(join(ROOT, path))).digest('hex')).toBe(expectedSha);
     }
   });
 });
