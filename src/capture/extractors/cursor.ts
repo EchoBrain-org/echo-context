@@ -47,6 +47,7 @@ export const CURSOR_REPOLL_INTERVAL_MS = 15_000;
 export const CURSOR_SCAN_PAGE_ROWS = 128;
 export const CURSOR_SCAN_MAX_PAGES_PER_SLICE = 8;
 export const CURSOR_MAX_PENDING_COMPOSERS = 128;
+export const CURSOR_MAX_COMPOSERS_PER_SLICE = 4;
 export const CURSOR_COMPOSER_PAGE_ROWS = 128;
 export const CURSOR_COMPOSER_MAX_ROWS = 1_024;
 export const CURSOR_COMPOSER_MAX_STORED_BYTES = 4 * 1024 * 1024;
@@ -1934,6 +1935,7 @@ export interface CursorRuntimeBounds {
   scanPageRows: number;
   maxScanPagesPerSlice: number;
   maxPendingComposers: number;
+  maxComposersPerSlice: number;
   composerPageRows: number;
   composerMaxRows: number;
   composerMaxStoredBytes: number;
@@ -1956,6 +1958,9 @@ export interface CursorExtractorTestHooks {
   // miss a utimes touch within the test's 200-300ms wait budget on a
   // busy machine). Production callers never invoke this hook.
   refreshWorkspaceMap(workspaceDbPath: string): Promise<void>;
+  // Queue the global DB path directly, without the repoll mtime preflight.
+  // Sequential calls in one turn deterministically exercise coalescing.
+  queueGlobalChange(): Promise<void>;
   getBoundedReadMetrics(): CursorBoundedReadMetrics;
 }
 
@@ -1969,6 +1974,9 @@ export interface CursorBoundedReadMetrics {
   maxComposerStoredBytes: number;
   maxComposerPages: number;
   maxPendingComposers: number;
+  maxComposerBatchSize: number;
+  globalTicks: number;
+  coalescedGlobalSignals: number;
 }
 
 export interface CursorExtractorHandle {
@@ -2005,6 +2013,10 @@ export async function startCursorExtractor(
     maxPendingComposers: positiveBound(
       options.__bounds?.maxPendingComposers,
       CURSOR_MAX_PENDING_COMPOSERS,
+    ),
+    maxComposersPerSlice: positiveBound(
+      options.__bounds?.maxComposersPerSlice,
+      CURSOR_MAX_COMPOSERS_PER_SLICE,
     ),
     composerPageRows: positiveBound(
       options.__bounds?.composerPageRows,
@@ -2131,6 +2143,9 @@ export async function startCursorExtractor(
   let sourceStatus: NonNullable<ExtractorHealth['sourceStatus']> = 'absent';
   let scanInProgress = false;
   let deltaPending = false;
+  let globalTickQueued = false;
+  let globalTickDirty = false;
+  let globalTickPromise = Promise.resolve();
   const readMetrics: CursorBoundedReadMetrics = {
     scanPages: 0,
     deltaPages: 0,
@@ -2141,6 +2156,9 @@ export async function startCursorExtractor(
     maxComposerStoredBytes: 0,
     maxComposerPages: 0,
     maxPendingComposers: pendingComposers.size,
+    maxComposerBatchSize: 0,
+    globalTicks: 0,
+    coalescedGlobalSignals: 0,
   };
   const DEBOUNCE_MS = 300;
 
@@ -2425,7 +2443,11 @@ export async function startCursorExtractor(
   }
 
   async function processPendingRound(): Promise<void> {
-    const roundSize = pendingComposers.size;
+    const roundSize = Math.min(
+      pendingComposers.size,
+      bounds.maxComposersPerSlice,
+    );
+    let processed = 0;
     for (let i = 0; i < roundSize && !stopped; i += 1) {
       const next = pendingComposers.values().next();
       if (next.done === true) break;
@@ -2481,6 +2503,16 @@ export async function startCursorExtractor(
       await persistScanCheckpoint();
       if (!pendingComposers.has(composerId))
         composerCheckpointCache.delete(composerId);
+      processed += 1;
+    }
+    readMetrics.maxComposerBatchSize = Math.max(
+      readMetrics.maxComposerBatchSize,
+      processed,
+    );
+    if (processed > 0 && !stopped) {
+      // Composer reads use synchronous SQLite. Yield after a small fixed batch
+      // so health checks and launchd control remain responsive during catch-up.
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 
@@ -2519,15 +2551,13 @@ export async function startCursorExtractor(
       }
       let consumedRowId = cursor;
       for (const row of page) {
-        // Delta pages discover newly inserted bubble rows immediately;
-        // reconciliation pages revisit both headers and bubbles so an
-        // in-place update is eventually observed even if Cursor did not
-        // rewrite the composer header in the same transaction.
-        const relevantPrefix =
-          row.key.startsWith(COMPOSER_KEY_PREFIX) ||
-          row.key.startsWith(BUBBLE_KEY_PREFIX);
-        const composerId =
-          parseComposerKey(row.key) ?? parseBubbleComposerKeyPreview(row.key);
+        // Bubble rows are the only raw rows that can produce a turn. Enqueueing
+        // header-only composers multiplies startup work by the entire shared
+        // database even though processComposer() finds no bubble payloads.
+        // A bubble-triggered read still exact-fetches its composer header, and
+        // rotating reconciliation revisits in-place bubble updates.
+        const relevantPrefix = row.key.startsWith(BUBBLE_KEY_PREFIX);
+        const composerId = parseBubbleComposerKeyPreview(row.key);
         if (relevantPrefix && composerId === null) {
           overflowCount += 1;
           consumedRowId = row.row_id;
@@ -2666,7 +2696,8 @@ export async function startCursorExtractor(
           if (pageBudget.remaining > 0) {
             await scanRowIdSlice('delta', targetRowId, pageBudget);
           }
-          targetRowId = Math.max(targetRowId, maxCursorRowId(globalDbPath));
+          // Keep one fixed startup watermark. Watcher/repoll work that lands
+          // beyond it is coalesced into the serialized live-tick follow-up.
           deltaPending = scanRowId < targetRowId;
           const complete =
             pendingComposers.size === 0 && !deltaPending;
@@ -2712,8 +2743,9 @@ export async function startCursorExtractor(
   }
 
   async function handleGlobalChange(
-    reason: 'repoll' | 'chokidar',
+    reason: 'repoll' | 'chokidar' | 'coalesced',
   ): Promise<void> {
+    readMetrics.globalTicks += 1;
     log.debug('tick', { reason });
     await runBoundedLiveTick();
   }
@@ -2738,8 +2770,8 @@ export async function startCursorExtractor(
     }
   }
 
-  function schedule(work: () => Promise<void> | void): void {
-    if (stopped) return;
+  function schedule(work: () => Promise<void> | void): Promise<void> {
+    if (stopped) return processing;
     processing = processing.then(async () => {
       if (stopped) return;
       try {
@@ -2748,13 +2780,51 @@ export async function startCursorExtractor(
         recordError((err as Error).message);
       }
     });
+    return processing;
+  }
+
+  function enqueueGlobalChange(
+    reason: 'repoll' | 'chokidar' | 'coalesced',
+  ): Promise<void> {
+    if (stopped) return processing;
+    if (globalTickQueued) {
+      globalTickDirty = true;
+      readMetrics.coalescedGlobalSignals += 1;
+      return waitForGlobalChangeDrain();
+    }
+    globalTickQueued = true;
+    const scheduled = schedule(async () => {
+      try {
+        await handleGlobalChange(reason);
+      } finally {
+        globalTickQueued = false;
+        if (globalTickDirty && !stopped) {
+          globalTickDirty = false;
+          void enqueueGlobalChange('coalesced');
+        }
+      }
+    });
+    globalTickPromise = scheduled;
+    return waitForGlobalChangeDrain();
+  }
+
+  async function waitForGlobalChangeDrain(): Promise<void> {
+    let observed = globalTickPromise;
+    await observed;
+    while (
+      !stopped &&
+      (globalTickQueued || observed !== globalTickPromise)
+    ) {
+      observed = globalTickPromise;
+      await observed;
+    }
   }
 
   function scheduleGlobalChange(): void {
     if (debounceTimer !== null) return;
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      schedule(() => handleGlobalChange('chokidar'));
+      void enqueueGlobalChange('chokidar');
     }, DEBOUNCE_MS);
   }
 
@@ -2766,9 +2836,9 @@ export async function startCursorExtractor(
   async function triggerRepollExtraction(): Promise<void> {
     if (stopped) return;
     const current = await maxGlobalDbFamilyMtime(globalDbPath);
-    schedule(() => handleGlobalChange('repoll'));
+    const tick = enqueueGlobalChange('repoll');
     if (current > lastSeenScanMtime) lastSeenScanMtime = current;
-    await processing;
+    await tick;
   }
 
   const repollTimer: NodeJS.Timeout = setInterval(() => {
@@ -2876,6 +2946,7 @@ export async function startCursorExtractor(
         schedule(() => handleWorkspaceChange(workspaceDbPath));
         await processing;
       },
+      queueGlobalChange: () => enqueueGlobalChange('repoll'),
       getBoundedReadMetrics: () => ({ ...readMetrics }),
     };
   }

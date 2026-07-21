@@ -19,6 +19,7 @@ import {
 import {
   CURSOR_DEFAULT_PARSE_MAX_ROWS,
   CURSOR_DEFAULT_PARSE_MAX_STORED_BYTES,
+  CURSOR_MAX_COMPOSERS_PER_SLICE,
   CURSOR_RUNTIME_CACHE_ENTRIES,
   CURSOR_RAW_ROWID_ASC_PAGE_SQL,
   CURSOR_RAW_ROWID_DESC_PAGE_SQL,
@@ -1128,6 +1129,205 @@ describe('startCursorExtractor bounded checkpoint startup', () => {
 
     expect(handle.getHealth().state).toBe('healthy');
     expect(await storage.count()).toBe(1);
+  });
+
+  it('does not enqueue header-only composers during bounded discovery', async () => {
+    const storage = new MemoryStorage();
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'real', bubble_id: 'u1', type: 1, text: 'question' },
+      { composer_id: 'real', bubble_id: 'a1', type: 2, text: 'answer' },
+    ]);
+    const db = new Database(dbPath);
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    db.transaction(() => {
+      for (let i = 0; i < 300; i += 1) {
+        const composerId = `header-only-${String(i).padStart(3, '0')}`;
+        insert.run(
+          `composerData:${composerId}`,
+          JSON.stringify({
+            composerId,
+            createdAt: 0,
+            fullConversationHeadersOnly: [],
+          }),
+        );
+      }
+    })();
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 32,
+        maxScanPagesPerSlice: 2,
+        maxPendingComposers: 8,
+        maxComposersPerSlice: 2,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(1);
+    const metrics = handle.__testHooks!.getBoundedReadMetrics();
+    expect(metrics.composerReads).toBe(2);
+    expect(metrics.maxComposerBatchSize).toBeLessThanOrEqual(2);
+    expect(handle.getHealth().overflowCount).toBe(0);
+  });
+
+  it('captures rows beyond the fixed startup watermark on the queued live tick', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    db.transaction(() => {
+      for (let i = 0; i < 100; i += 1) {
+        const composerId = `header-only-${String(i).padStart(3, '0')}`;
+        insert.run(
+          `composerData:${composerId}`,
+          JSON.stringify({
+            composerId,
+            createdAt: 0,
+            fullConversationHeadersOnly: [],
+          }),
+        );
+      }
+    })();
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 1,
+        maxScanPagesPerSlice: 1,
+        maxComposersPerSlice: 1,
+      },
+    });
+    await waitFor(
+      () => handle!.__testHooks!.getBoundedReadMetrics().scanPages > 0,
+    );
+
+    appendBubble(dbPath, {
+      composer_id: 'arrived-during-startup',
+      bubble_id: 'u1',
+      type: 1,
+      text: 'question',
+    });
+    appendBubble(dbPath, {
+      composer_id: 'arrived-during-startup',
+      bubble_id: 'a1',
+      type: 2,
+      text: 'answer',
+    });
+    const queuedLiveTick = handle.__testHooks!.queueGlobalChange();
+
+    await handle.initialCatchUp;
+    await queuedLiveTick;
+
+    expect(await storage.count()).toBe(1);
+    expect((await storage.query({}))[0]?.metadata?.['composer_id']).toBe(
+      'arrived-during-startup',
+    );
+  });
+
+  it('caps saturated composer work per macrotask and retries the overflow boundary', async () => {
+    const storage = new MemoryStorage();
+    const db = new Database(dbPath);
+    db.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)');
+    const insert = db.prepare(
+      'INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)',
+    );
+    const composerIds = Array.from(
+      { length: 129 },
+      (_, index) => `c-${String(index).padStart(3, '0')}`,
+    );
+    db.transaction(() => {
+      for (const composerId of composerIds) {
+        insert.run(
+          `bubbleId:${composerId}:u1`,
+          JSON.stringify({ _v: 3, type: 1, bubbleId: 'u1', text: 'q' }),
+        );
+      }
+      for (const composerId of composerIds) {
+        insert.run(
+          `composerData:${composerId}`,
+          JSON.stringify({
+            composerId,
+            createdAt: 0,
+            fullConversationHeadersOnly: [
+              { bubbleId: 'u1', type: 1 },
+              { bubbleId: 'a1', type: 2 },
+            ],
+          }),
+        );
+      }
+      for (const composerId of composerIds) {
+        insert.run(
+          `bubbleId:${composerId}:a1`,
+          JSON.stringify({ _v: 3, type: 2, bubbleId: 'a1', text: 'a' }),
+        );
+      }
+    })();
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: {
+        scanPageRows: 129,
+        maxScanPagesPerSlice: 1,
+        maxPendingComposers: 128,
+        maxComposersPerSlice: CURSOR_MAX_COMPOSERS_PER_SLICE,
+        composerPageRows: 512,
+        composerMaxRows: 512,
+        composerMaxPages: 1,
+      },
+    });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(129);
+    const metrics = handle.__testHooks!.getBoundedReadMetrics();
+    expect(metrics.maxPendingComposers).toBe(128);
+    expect(metrics.maxComposerBatchSize).toBeLessThanOrEqual(
+      CURSOR_MAX_COMPOSERS_PER_SLICE,
+    );
+    expect(handle.getHealth().overflowCount).toBeGreaterThan(0);
+  });
+
+  it('coalesces repeated global DB notifications into one dirty follow-up', async () => {
+    const storage = new MemoryStorage();
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'question' },
+      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'answer' },
+    ]);
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+    });
+    await handle.initialCatchUp;
+    const before = handle.__testHooks!.getBoundedReadMetrics();
+
+    const signals = Array.from({ length: 20 }, () =>
+      handle!.__testHooks!.queueGlobalChange(),
+    );
+    await Promise.all(signals);
+
+    const after = handle.__testHooks!.getBoundedReadMetrics();
+    expect(
+      after.coalescedGlobalSignals - before.coalescedGlobalSignals,
+    ).toBe(19);
+    expect(after.globalTicks - before.globalTicks).toBe(2);
   });
 
   it('uses exact checkpoints only and keeps every SQL page/queue/read below configured caps', async () => {
