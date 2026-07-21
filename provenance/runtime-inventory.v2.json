@@ -85,6 +85,12 @@
       "path": "tools/install-gitleaks.sh"
     },
     {
+      "blob_oid": "41cf4af800376da56345a9b9afbae1faeb08dc9d",
+      "content_sha256": "3743bc1e5525e58e72369cd85aab45694ab3029cad1e16ef625732b4d259dc57",
+      "mode": "100644",
+      "path": "tools/package-smoke-fixture.mjs"
+    },
+    {
       "blob_oid": "1fcc483b4aede885c88fcaef692e840877295783",
       "content_sha256": "311f9a7955ff690f6d3095f4639ddb08ca52f0045341b68c940207f25c7547f2",
       "mode": "100755",
@@ -109,8 +115,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "5ed0411c9d3f336d5cfe86c111db7bf99e9e1039",
-      "content_sha256": "0c4abbaba94c5f69d3a92205bb124905c0cc2704829cfe8cf55a3d20e8ed47d5",
+      "blob_oid": "c6365238834196bf2638179fb5c33bb0a29f3d3a",
+      "content_sha256": "98de8354ff69279fd3f8ca904cb2b89e7578f6850d6664a702793fe285211322",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
     },

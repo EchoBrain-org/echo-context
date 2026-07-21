@@ -3,8 +3,17 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { gate } from '../../src/capture/gate.js';
+import { PACKAGE_SMOKE_CAPTURE } from '../../tools/package-smoke-fixture.mjs';
 
 describe('package smoke failure reporting', () => {
+  it('uses a service capture fixture accepted by the production gate', () => {
+    expect(gate(PACKAGE_SMOKE_CAPTURE)).toEqual({
+      accepted: true,
+      reason: 'allowlisted',
+    });
+  });
+
   it('preserves the original pre-install error instead of masking it in teardown', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'echo-context-smoke-failure-'));
     const artifact = join(scratch, 'invalid.tgz');

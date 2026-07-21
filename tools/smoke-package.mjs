@@ -16,6 +16,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { PACKAGE_SMOKE_CAPTURE } from './package-smoke-fixture.mjs';
 
 const artifactArg = process.argv[2];
 if (artifactArg === undefined || artifactArg.startsWith('--')) {
@@ -270,11 +271,7 @@ try {
   const captureResponse = await fetch(`${url}/v1/capture`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      source: 'codex:/package-smoke',
-      timestamp: '2026-07-20T00:00:01.000Z',
-      content: 'service-to-mcp exact artifact marker',
-    }),
+    body: JSON.stringify(PACKAGE_SMOKE_CAPTURE),
     signal: AbortSignal.timeout(5_000),
   });
   const captured = await captureResponse.json();
@@ -284,7 +281,7 @@ try {
   const searchResponse = await fetch(`${url}/v1/search`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: 'service-to-mcp exact artifact marker', limit: 10 }),
+    body: JSON.stringify({ query: PACKAGE_SMOKE_CAPTURE.content, limit: 10 }),
     signal: AbortSignal.timeout(5_000),
   });
   const serviceSearch = await searchResponse.json();
