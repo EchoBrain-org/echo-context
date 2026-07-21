@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -51,5 +52,30 @@ describe('lean package TypeScript closure', () => {
     });
 
     expect(forbidden).toEqual([]);
+  });
+
+  it('orders artifact-manifest paths with the runtime verifier ordinal contract', () => {
+    const builder = readFileSync(join(ROOT, 'tools', 'build-package.mjs'), 'utf8');
+    expect(builder).toContain(
+      '.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))',
+    );
+    expect(builder).not.toContain('a.path.localeCompare(b.path)');
+
+    const mixedCasePaths = [
+      'context-tools.v1.json',
+      'dist/version.js.map',
+      'LICENSE',
+      'package.json',
+      'README.md',
+    ];
+    expect(
+      mixedCasePaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    ).toEqual([
+      'LICENSE',
+      'README.md',
+      'context-tools.v1.json',
+      'dist/version.js.map',
+      'package.json',
+    ]);
   });
 });

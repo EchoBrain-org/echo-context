@@ -35,6 +35,7 @@ if (existsSync(prefix)) {
 }
 let daemon;
 let promotionReceiptPath;
+let stderr = '';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', ...options });
@@ -217,7 +218,6 @@ try {
     );
   }
   const port = await freePort();
-  let stderr = '';
   const smokeEnvironment = { ...process.env };
   delete smokeEnvironment.ECHO_CONTEXT_INSTANCE_NONCE;
   delete smokeEnvironment.ECHO_CONTEXT_ARTIFACT_DIGEST;

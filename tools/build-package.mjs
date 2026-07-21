@@ -85,7 +85,9 @@ const files = packageFiles
       sha256: createHash('sha256').update(content).digest('hex'),
     };
   })
-  .sort((a, b) => a.path.localeCompare(b.path));
+  // The runtime verifier enforces ordinal string order. localeCompare() is
+  // locale-sensitive and can place uppercase package files after dist/.
+  .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 const body = {
   schemaVersion: 1,
   packageVersion: packageJson.version,
