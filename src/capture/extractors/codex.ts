@@ -14,9 +14,9 @@ import {
   assertJsonlReadSnapshotCurrent,
   assertJsonlSourceSnapshotCurrent,
   classifyJsonlDiscontinuity,
-  classifyJsonlPageProof,
   createBoundedResourceCache,
   dedupStrings,
+  inspectJsonlCheckpointProof,
   inspectJsonlSource,
   makeJsonlCheckpointSource,
   readJsonlCheckpointSource,
@@ -952,20 +952,35 @@ export async function startCodexExtractor(
 
   async function rewindChangedRead(
     path: string,
-    pageStart: OffsetEntry,
-    sourceAtPageStart: JsonlSourceInspection,
+    durableEntry: OffsetEntry,
+    sourceAtDurableEntry: JsonlSourceInspection,
+    discontinuity: Exclude<
+      ReturnType<typeof classifyJsonlDiscontinuity>,
+      null
+    >,
+    changedInspection: JsonlSourceInspection,
+    retryAtDurableBoundary: boolean,
   ): Promise<void> {
-    let retryOffset = pageStart.offset;
-    let current = await inspectJsonlSource(path, retryOffset);
-    const durablePrefixChanged =
-      current.identity !== sourceAtPageStart.identity ||
-      current.boundary_bytes !== sourceAtPageStart.boundary_bytes ||
-      current.boundary_sha256 !== sourceAtPageStart.boundary_sha256;
-    if (current.size < retryOffset || durablePrefixChanged) {
-      retryOffset = 0;
-      current = await inspectJsonlSource(path, retryOffset);
+    if (sourceAtDurableEntry.boundary_offset !== durableEntry.offset) {
+      throw new Error("latest durable JSONL proof does not match its entry");
     }
-    const generation = (pageStart.source?.generation ?? 0) + 1;
+    const boundedPageStart =
+      !retryAtDurableBoundary &&
+      discontinuity === "page_rewritten" &&
+      durableEntry.page_start !== undefined &&
+      changedInspection.size >= durableEntry.page_start.offset
+        ? durableEntry.page_start
+        : undefined;
+    const retryOffset = retryAtDurableBoundary
+      ? durableEntry.offset
+      : (boundedPageStart?.offset ?? 0);
+    const current = retryAtDurableBoundary
+      ? changedInspection
+      : await inspectJsonlSource(path, retryOffset);
+    if (current.boundary_offset !== retryOffset) {
+      throw new Error("JSONL recovery proof does not match its retry offset");
+    }
+    const generation = (durableEntry.source?.generation ?? 0) + 1;
     if (!Number.isSafeInteger(generation)) {
       throw new RangeError(
         "JSONL source generation exceeds safe integer range",
@@ -973,75 +988,70 @@ export async function startCodexExtractor(
     }
     const retry: OffsetEntry = {
       offset: retryOffset,
-      turn_index: pageStart.turn_index,
+      turn_index: retryAtDurableBoundary
+        ? durableEntry.turn_index
+        : (boundedPageStart?.turn_index ?? durableEntry.turn_index),
       source: makeJsonlCheckpointSource(current, generation),
     };
-    if (retryOffset === pageStart.offset) {
-      if (pageStart.cwd !== undefined) retry.cwd = pageStart.cwd;
-      if (pageStart.git !== undefined) retry.git = pageStart.git;
-      if (pageStart.codex !== undefined) retry.codex = pageStart.codex;
+    const retryMetadata = retryAtDurableBoundary
+      ? durableEntry
+      : boundedPageStart;
+    if (retryMetadata?.cwd !== undefined) retry.cwd = retryMetadata.cwd;
+    if (retryMetadata?.git !== undefined) retry.git = retryMetadata.git;
+    if (retryMetadata?.codex !== undefined) {
+      retry.codex = retryMetadata.codex;
     }
     await saveCheckpoint(path, retry, current);
     log.warn("jsonl_read_retry", {
       path,
       retry_offset: retryOffset,
       generation,
+      classification: discontinuity,
+      durable_boundary: retryAtDurableBoundary,
     });
   }
 
   async function handleJsonlChange(path: string): Promise<void> {
     let cur = await loadCheckpoint(path);
     const previousOffset = cur.offset;
-    const expectedPage = cur.inflight_source ?? cur.source;
-    let sourceAtResume = await inspectJsonlSource(
+    const resumeProof = await inspectJsonlCheckpointProof(
       path,
       cur.offset,
-      expectedPage,
+      cur.source,
+      cur.inflight_source,
     );
-    let discontinuity =
-      cur.inflight_source === undefined
-        ? classifyJsonlDiscontinuity(cur.offset, cur.source, sourceAtResume)
-        : classifyJsonlPageProof(cur.inflight_source, sourceAtResume);
-    if (
-      discontinuity === null &&
-      cur.inflight_source !== undefined &&
-      cur.source !== undefined
-    ) {
-      const checkpointCurrent: JsonlSourceInspection = {
-        ...sourceAtResume,
-        ...(cur.source.page_start_offset !== undefined
-          ? {
-              page_start_offset: cur.source.page_start_offset,
-              page_through_offset: cur.source.page_through_offset,
-              page_sha256: cur.source.page_sha256,
-            }
-          : {}),
-      };
-      discontinuity = classifyJsonlDiscontinuity(
-        cur.offset,
-        cur.source,
-        checkpointCurrent,
-      );
+    if (resumeProof.status === "unstable") {
+      throw new JsonlSourceChangedError(path);
     }
-    if (discontinuity !== null) {
+    let sourceAtResume = resumeProof.inspection;
+    if (resumeProof.status === "changed") {
+      const { discontinuity, retry_at_durable_boundary: retryAtDurable } =
+        resumeProof;
       const generation = (cur.source?.generation ?? 0) + 1;
       const boundedPageStart =
+        !retryAtDurable &&
         discontinuity === "page_rewritten" &&
         cur.page_start !== undefined &&
         sourceAtResume.size >= cur.page_start.offset
           ? cur.page_start
           : undefined;
-      const resetOffset = boundedPageStart?.offset ?? 0;
-      sourceAtResume = await inspectJsonlSource(path, resetOffset);
+      const resetOffset = retryAtDurable
+        ? cur.offset
+        : (boundedPageStart?.offset ?? 0);
+      sourceAtResume = retryAtDurable
+        ? resumeProof.inspection
+        : await inspectJsonlSource(path, resetOffset);
       const reset: OffsetEntry = {
         offset: resetOffset,
-        turn_index: boundedPageStart?.turn_index ?? cur.turn_index,
+        turn_index: retryAtDurable
+          ? cur.turn_index
+          : (boundedPageStart?.turn_index ?? cur.turn_index),
         source: makeJsonlCheckpointSource(sourceAtResume, generation),
       };
-      if (boundedPageStart?.cwd !== undefined) reset.cwd = boundedPageStart.cwd;
-      if (boundedPageStart?.git !== undefined) reset.git = boundedPageStart.git;
-      if (boundedPageStart?.codex !== undefined)
-        reset.codex = boundedPageStart.codex;
+      const resetMetadata = retryAtDurable ? cur : boundedPageStart;
+      if (resetMetadata?.cwd !== undefined) reset.cwd = resetMetadata.cwd;
+      if (resetMetadata?.git !== undefined) reset.git = resetMetadata.git;
+      if (resetMetadata?.codex !== undefined) reset.codex = resetMetadata.codex;
       cur = reset;
       // A replaced/truncated source rewinds to zero. A mismatch confined to
       // the persisted bounded page rewinds only to that page's durable start.
@@ -1053,8 +1063,15 @@ export async function startCodexExtractor(
         current_size: sourceAtResume.size,
         reset_offset: resetOffset,
         generation,
+        durable_boundary: retryAtDurable,
       });
     }
+    // Keep the catch path aligned with the checkpoint that actually reached
+    // storage. A snapshot wrapper can reject during its post-operation check
+    // after saveCheckpoint has already committed, so `cur` is not necessarily
+    // the latest durable boundary by the time control reaches the catch.
+    let latestDurableEntry = cur;
+    let latestDurableInspection = sourceAtResume;
     const extractInput: ExtractCodexInput = {};
     if (cur.cwd !== undefined) extractInput.lastKnownCwd = cur.cwd;
     if (cur.git !== undefined) extractInput.lastKnownGit = cur.git;
@@ -1075,17 +1092,23 @@ export async function startCodexExtractor(
         readSnapshot === undefined
           ? undefined
           : readSnapshot.sourceAt(cur.offset, readSnapshot.through_offset);
+      const durableStartInspection =
+        readSnapshot === undefined
+          ? undefined
+          : readSnapshot.sourceAt(cur.offset);
       if (readSnapshot !== undefined) {
         await assertJsonlReadSnapshotCurrent(path, readSnapshot);
-        await withJsonlReadSnapshot(path, readSnapshot, () =>
-          saveCheckpoint(
+        await withJsonlReadSnapshot(path, readSnapshot, async () => {
+          await saveCheckpoint(
             path,
             cur,
-            inflightInspection!,
+            durableStartInspection!,
             pageStart,
             inflightInspection,
-          ),
-        );
+          );
+          latestDurableEntry = offsetMap.get(path) ?? cur;
+          latestDurableInspection = durableStartInspection!;
+        });
       }
       let nextTurnIndex = cur.turn_index + 1;
       for (const turn of turns) {
@@ -1164,14 +1187,19 @@ export async function startCodexExtractor(
         if (cpCwd !== undefined) checkpoint.cwd = cpCwd;
         if (cpGit !== undefined) checkpoint.git = cpGit;
         if (cpCodex !== undefined) checkpoint.codex = cpCodex;
-        const persistTurn = () =>
-          saveCheckpoint(
+        const turnInspection =
+          readSnapshot?.sourceAt(turn.byte_offset) ?? sourceAtResume;
+        const persistTurn = async () => {
+          await saveCheckpoint(
             path,
             checkpoint,
-            readSnapshot?.sourceAt(turn.byte_offset) ?? sourceAtResume,
+            turnInspection,
             pageStart,
             inflightInspection,
           );
+          latestDurableEntry = offsetMap.get(path) ?? checkpoint;
+          latestDurableInspection = turnInspection;
+        };
         if (turnSnapshot === undefined) {
           await persistTurn();
         } else {
@@ -1190,13 +1218,18 @@ export async function startCodexExtractor(
       if (nextGit !== undefined) next.git = nextGit;
       if (nextCodex !== undefined) next.codex = nextCodex;
       await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
-      const persistPage = () =>
-        saveCheckpoint(
+      const pageInspection =
+        readSnapshot?.sourceAt(newOffset) ?? sourceAtResume;
+      const persistPage = async () => {
+        await saveCheckpoint(
           path,
           next,
-          readSnapshot?.sourceAt(newOffset) ?? sourceAtResume,
+          pageInspection,
           pageStart,
         );
+        latestDurableEntry = offsetMap.get(path) ?? next;
+        latestDurableInspection = pageInspection;
+      };
       if (readSnapshot === undefined) {
         await persistPage();
       } else {
@@ -1205,7 +1238,24 @@ export async function startCodexExtractor(
       await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
     } catch (err) {
       if (!(err instanceof JsonlSourceChangedError)) throw err;
-      await rewindChangedRead(path, cur, sourceAtResume);
+      const recoveryProof = await inspectJsonlCheckpointProof(
+        path,
+        latestDurableEntry.offset,
+        latestDurableEntry.source,
+        latestDurableEntry.inflight_source,
+      );
+      // A settled append beyond the page is current, while a proof that raced
+      // a writer is unstable. Neither may mutate the generation/checkpoint;
+      // the serialized queue will retry under the existing deterministic key.
+      if (recoveryProof.status !== "changed") throw err;
+      await rewindChangedRead(
+        path,
+        latestDurableEntry,
+        latestDurableInspection,
+        recoveryProof.discontinuity,
+        recoveryProof.inspection,
+        recoveryProof.retry_at_durable_boundary,
+      );
       throw err;
     }
   }
@@ -1218,18 +1268,13 @@ export async function startCodexExtractor(
     isCheckpointCurrent: async (path) => {
       const checkpoint = await loadCheckpoint(path);
       if (checkpoint.source === undefined) return false;
-      const current = await inspectJsonlSource(
+      const proof = await inspectJsonlCheckpointProof(
         path,
         checkpoint.offset,
         checkpoint.source,
+        checkpoint.inflight_source,
       );
-      return (
-        classifyJsonlDiscontinuity(
-          checkpoint.offset,
-          checkpoint.source,
-          current,
-        ) === null
-      );
+      return proof.status === "current";
     },
     log,
   });

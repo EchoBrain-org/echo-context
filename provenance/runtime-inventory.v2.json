@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "2ae4093b9774f1be5dc8350bbbba71b08b73e463",
-      "content_sha256": "90c89e426ed8bf3d58b2fc83f32f13f07b922b4ddccf37a6a9ae4167a4d4d084",
+      "blob_oid": "e676a0930069daff356870998a465033a37be024",
+      "content_sha256": "724c35a811994c79bd1f5f09458e6d0dcdbe1bdb3e1d579b729aab764dfb326a",
       "mode": "100644",
       "path": "tools/build-package.mjs"
     },
@@ -109,8 +109,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "5ddc0e855811eedf5458fe22b34da10b8255b4b9",
-      "content_sha256": "02d375b778b52dd6ddfceee6b80b5d666a1a59c622e5d2441203157e75971aef",
+      "blob_oid": "5ed0411c9d3f336d5cfe86c111db7bf99e9e1039",
+      "content_sha256": "0c4abbaba94c5f69d3a92205bb124905c0cc2704829cfe8cf55a3d20e8ed47d5",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
     },

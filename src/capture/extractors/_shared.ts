@@ -504,6 +504,141 @@ export function classifyJsonlDiscontinuity(
   return null;
 }
 
+export type JsonlCheckpointProofResult =
+  | {
+      status: "current";
+      inspection: JsonlSourceInspection;
+    }
+  | {
+      status: "changed";
+      inspection: JsonlSourceInspection;
+      discontinuity: JsonlDiscontinuity;
+      /** The full inflight page changed, but the separately hashed cumulative
+       * durable prefix did not. Recovery can therefore resume at the durable
+       * offset without replaying already-accepted turns. */
+      retry_at_durable_boundary: boolean;
+    }
+  | { status: "unstable" };
+
+/** Inspect the full write-ahead page and the cumulative durable prefix as two
+ * independent bounded proofs. A racing writer is reported as `unstable` and
+ * must not mutate generation/checkpoint state. A full-page mismatch may resume
+ * at the durable boundary only when the accepted-prefix proof independently
+ * remains current; otherwise recovery must use the bounded page start. */
+export async function inspectJsonlCheckpointProof(
+  jsonlPath: string,
+  checkpointOffset: number,
+  source: JsonlCheckpointSource | undefined,
+  inflightSource: JsonlCheckpointSource | undefined,
+): Promise<JsonlCheckpointProofResult> {
+  let current: JsonlSourceInspection;
+  try {
+    current = await inspectJsonlSource(
+      jsonlPath,
+      checkpointOffset,
+      inflightSource ?? source,
+    );
+  } catch (err) {
+    if (err instanceof JsonlSourceChangedError) return { status: "unstable" };
+    throw err;
+  }
+
+  if (inflightSource === undefined) {
+    const discontinuity = classifyJsonlDiscontinuity(
+      checkpointOffset,
+      source,
+      current,
+    );
+    return discontinuity === null
+      ? { status: "current", inspection: current }
+      : {
+          status: "changed",
+          inspection: current,
+          discontinuity,
+          retry_at_durable_boundary: false,
+        };
+  }
+
+  const inflightDiscontinuity = classifyJsonlPageProof(
+    inflightSource,
+    current,
+  );
+  if (inflightDiscontinuity === null) {
+    if (source === undefined) return { status: "current", inspection: current };
+    // A matching full-page hash proves every byte of its accepted prefix. Use
+    // the persisted prefix coordinates with the current identity/boundary
+    // fields rather than issuing a redundant second read.
+    const durableCurrent: JsonlSourceInspection = {
+      ...current,
+      ...(source.page_start_offset !== undefined
+        ? {
+            page_start_offset: source.page_start_offset,
+            page_through_offset: source.page_through_offset,
+            page_sha256: source.page_sha256,
+          }
+        : {}),
+    };
+    const durableDiscontinuity = classifyJsonlDiscontinuity(
+      checkpointOffset,
+      source,
+      durableCurrent,
+    );
+    return durableDiscontinuity === null
+      ? { status: "current", inspection: durableCurrent }
+      : {
+          status: "changed",
+          inspection: durableCurrent,
+          discontinuity: durableDiscontinuity,
+          retry_at_durable_boundary: false,
+        };
+  }
+
+  if (
+    inflightDiscontinuity === "page_rewritten" &&
+    source?.page_start_offset !== undefined
+  ) {
+    let durableCurrent: JsonlSourceInspection;
+    try {
+      durableCurrent = await inspectJsonlSource(
+        jsonlPath,
+        checkpointOffset,
+        source,
+      );
+    } catch (err) {
+      if (err instanceof JsonlSourceChangedError) {
+        return { status: "unstable" };
+      }
+      throw err;
+    }
+    const durableDiscontinuity = classifyJsonlDiscontinuity(
+      checkpointOffset,
+      source,
+      durableCurrent,
+    );
+    if (durableDiscontinuity === null) {
+      return {
+        status: "changed",
+        inspection: durableCurrent,
+        discontinuity: inflightDiscontinuity,
+        retry_at_durable_boundary: true,
+      };
+    }
+    return {
+      status: "changed",
+      inspection: durableCurrent,
+      discontinuity: durableDiscontinuity,
+      retry_at_durable_boundary: false,
+    };
+  }
+
+  return {
+    status: "changed",
+    inspection: current,
+    discontinuity: inflightDiscontinuity,
+    retry_at_durable_boundary: false,
+  };
+}
+
 export function makeJsonlCheckpointSource(
   inspection: JsonlSourceInspection,
   generation: number,

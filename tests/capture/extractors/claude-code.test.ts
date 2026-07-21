@@ -14,6 +14,7 @@ import {
   startClaudeCodeExtractor,
   type ClaudeCodeExtractorHandle,
 } from "../../../src/capture/extractors/claude-code.js";
+import { JsonlSourceChangedError } from "../../../src/capture/extractors/_shared.js";
 import type { CaptureEvent, EventId } from "../../../src/storage/interface.js";
 import { MemoryStorage } from "../../../src/storage/memory.js";
 import {
@@ -77,12 +78,71 @@ class AppendThenFailStorage extends MemoryStorage {
     this.failing = false;
   }
 
-  override async append(event: Omit<CaptureEvent, "id">): Promise<EventId> {
-    const id = await super.append(event);
+  override async append(
+    event: Omit<CaptureEvent, "id">,
+    options?: Parameters<MemoryStorage["append"]>[1],
+  ): Promise<EventId> {
+    const id = await super.append(event, options);
     if (this.failing && event.content.includes(this.marker)) {
       throw new Error("synthetic crash after append before checkpoint");
     }
     return id;
+  }
+}
+
+/** Accepts one event, appends only beyond the parsed page, then reports the
+ * transient source-change signal a snapshot check would produce if it raced
+ * that append between its two stats. */
+class BenignAppendThenSignalStorage extends MemoryStorage {
+  private signaled = false;
+
+  constructor(
+    private readonly sourcePath: string,
+    private readonly appended: JsonlLine[],
+  ) {
+    super();
+  }
+
+  override async append(
+    event: Omit<CaptureEvent, "id">,
+    options?: Parameters<MemoryStorage["append"]>[1],
+  ): Promise<EventId> {
+    const id = await super.append(event, options);
+    if (!this.signaled) {
+      this.signaled = true;
+      appendJsonl(this.sourcePath, this.appended);
+      throw new JsonlSourceChangedError(this.sourcePath);
+    }
+    return id;
+  }
+}
+
+/** Rewrites only the unread suffix immediately after turn zero's checkpoint
+ * reaches storage. The wrapper's post-save prefix check succeeds; the next
+ * turn's wider proof then forces recovery from the latest durable boundary. */
+class RewriteAfterFirstTurnCheckpointStorage extends MemoryStorage {
+  private rewritten = false;
+
+  constructor(
+    private readonly sourcePath: string,
+    private readonly replacement: JsonlLine[],
+  ) {
+    super();
+  }
+
+  override async upsertCaptureCheckpoint(
+    input: Parameters<MemoryStorage["upsertCaptureCheckpoint"]>[0],
+  ) {
+    const checkpoint = await super.upsertCaptureCheckpoint(input);
+    if (
+      !this.rewritten &&
+      input.ordinal === 0 &&
+      input.state?.["jsonl_inflight_source"] !== undefined
+    ) {
+      this.rewritten = true;
+      writeJsonlFresh(this.sourcePath, this.replacement);
+    }
+    return checkpoint;
   }
 }
 
@@ -1009,6 +1069,121 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
     ).toBe(2);
   });
 
+  it("keeps the generation stable when benign growth races an accepted append before its checkpoint", async () => {
+    const path = join(projDir, "benign-append-race.jsonl");
+    writeJsonlFresh(path, [
+      userText("s1", "u1", "Q1"),
+      assistantEndTurn("s1", "a1", "A1"),
+    ]);
+    storage = new BenignAppendThenSignalStorage(path, [
+      userText("s1", "u2", "Q2"),
+      assistantEndTurn("s1", "a2", "A2"),
+    ]);
+
+    handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
+    await waitFor(async () => (await storage.count()) === 2);
+
+    const events = await storage.query({ order: "asc" });
+    expect(
+      events.filter((event) => event.content === "USER: Q1\n\nASSISTANT: A1"),
+    ).toHaveLength(1);
+    expect(
+      events.filter((event) => event.content === "USER: Q2\n\nASSISTANT: A2"),
+    ).toHaveLength(1);
+    const checkpoint = await storage.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(
+      (checkpoint?.state["jsonl_source"] as Record<string, unknown>)[
+        "generation"
+      ],
+    ).toBe(0);
+    expect(captured.writes.join("")).toContain("handler_source_changed");
+    expect(captured.writes.join("")).not.toContain("jsonl_read_retry");
+  });
+
+  it("retries a rewritten unread suffix from the latest durable turn", async () => {
+    const path = join(projDir, "durable-turn-retry.jsonl");
+    const firstTurn = [
+      userText("s1", "u1", "Q1"),
+      assistantEndTurn("s1", "a1", "A1"),
+    ];
+    writeJsonlFresh(path, [
+      ...firstTurn,
+      userText("s1", "u2", "OLD2"),
+      assistantEndTurn("s1", "a2", "A2"),
+    ]);
+    storage = new RewriteAfterFirstTurnCheckpointStorage(path, [
+      ...firstTurn,
+      userText("s1", "u2", "NEW2"),
+      assistantEndTurn("s1", "a2", "A2"),
+    ]);
+
+    handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
+    await waitFor(async () =>
+      (await storage.query({ order: "asc" })).some(
+        (event) => event.content === "USER: NEW2\n\nASSISTANT: A2",
+      ),
+    );
+
+    const events = await storage.query({ order: "asc" });
+    const first = events.filter(
+      (event) => event.content === "USER: Q1\n\nASSISTANT: A1",
+    );
+    expect(first).toHaveLength(1);
+    expect(
+      events.some(
+        (event) => event.content === "USER: OLD2\n\nASSISTANT: A2",
+      ),
+    ).toBe(false);
+    const firstOffset = (first[0]!.metadata as Record<string, unknown>)[
+      "byte_offset"
+    ];
+    const logs = captured.writes.join("");
+    expect(logs).toContain('"message":"jsonl_read_retry"');
+    expect(logs).toContain(`"retry_offset":${String(firstOffset)}`);
+    expect(logs).toContain('"durable_boundary":true');
+  });
+
+  it("rewinds the bounded page start when the cumulative durable prefix was rewritten", async () => {
+    const path = join(projDir, "durable-prefix-rewrite.jsonl");
+    const suffix = "x".repeat(6_000);
+    writeJsonlFresh(path, [
+      userText("s1", "u1", `OLD${suffix}`),
+      assistantEndTurn("s1", "a1", "A1"),
+      userText("s1", "u2", "Q2"),
+      assistantEndTurn("s1", "a2", "A2"),
+    ]);
+    storage = new RewriteAfterFirstTurnCheckpointStorage(path, [
+      userText("s1", "u1", `NEW${suffix}`),
+      assistantEndTurn("s1", "a1", "A1"),
+      userText("s1", "u2", "Q2"),
+      assistantEndTurn("s1", "a2", "A2"),
+    ]);
+
+    handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
+    await waitFor(async () =>
+      (await storage.query({ order: "asc" })).some((event) =>
+        event.content.startsWith("USER: NEW"),
+      ),
+    );
+
+    const checkpoint = await storage.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(
+      (checkpoint?.state["jsonl_source"] as Record<string, unknown>)[
+        "generation"
+      ],
+    ).toBe(1);
+    const logs = captured.writes.join("");
+    expect(logs).toContain('"message":"jsonl_read_retry"');
+    expect(logs).toContain('"retry_offset":0');
+    expect(logs).toContain('"durable_boundary":false');
+  });
+
   it("does not suppress a same-inode rewrite during candidate append", async () => {
     const path = join(projDir, "append-race.jsonl");
     const suffix = "x".repeat(6_000);
@@ -1129,6 +1304,58 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
       (checkpointAfter?.state["jsonl_source"] as Record<string, unknown>)[
         "generation"
       ],
+    ).toBe(1);
+    const eventsAfter = await storage.query({ order: "asc" });
+    expect(
+      eventsAfter.filter(
+        (event) =>
+          event.content === "USER: question one\n\nASSISTANT: answer one",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reconciles a stale inflight proof when the unread suffix shrinks exactly to the durable offset", async () => {
+    const path = join(projDir, "inflight-equal-size.jsonl");
+    const crashing = new AppendThenFailStorage("ASSISTANT: answer two");
+    storage = crashing;
+    writeJsonlFresh(path, [
+      userText("s1", "u1", "question one"),
+      assistantEndTurn("s1", "a1", "answer one"),
+      userText("s1", "u2", "question two"),
+      assistantEndTurn("s1", "a2", "answer two"),
+    ]);
+    handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
+    await waitFor(async () => (await storage.count()) === 2);
+    await waitFor(() => captured.writes.join("").includes("handler_error"));
+    await handle.stop();
+    handle = null;
+
+    const before = await storage.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(before?.state["jsonl_inflight_source"]).toBeDefined();
+    const durableOffset = before!.position!;
+    writeFileSync(path, readFileSync(path).subarray(0, durableOffset));
+    expect(readFileSync(path).length).toBe(durableOffset);
+
+    crashing.allowCheckpoints();
+    handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
+    await waitFor(async () => {
+      const checkpoint = await storage.getCaptureCheckpoint({
+        extractor: "claude_code",
+        resource: path,
+      });
+      return checkpoint?.state["jsonl_inflight_source"] === undefined;
+    });
+
+    const after = await storage.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(after?.position).toBe(durableOffset);
+    expect(
+      (after?.state["jsonl_source"] as Record<string, unknown>)["generation"],
     ).toBe(1);
   });
 
@@ -1251,7 +1478,12 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
       assistantText("s1", "a3", "A3"),
       userText("s1", "u4", "Q4"),
     ]);
-    await waitFor(async () => (await storage.count()) >= 3);
+    await waitFor(async () =>
+      (await storage.query({ order: "asc" })).some(
+        (event) =>
+          (event.metadata as Record<string, unknown>)["turn_index"] === 2,
+      ),
+    );
 
     const events = await storage.query({ order: "asc" });
     expect(events).toHaveLength(3);

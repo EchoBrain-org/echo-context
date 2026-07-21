@@ -14,6 +14,7 @@ import {
   startCodexExtractor,
   type CodexExtractorHandle,
 } from "../../../src/capture/extractors/codex.js";
+import { JsonlSourceChangedError } from "../../../src/capture/extractors/_shared.js";
 import type { CaptureEvent, EventId } from "../../../src/storage/interface.js";
 import { MemoryStorage } from "../../../src/storage/memory.js";
 import {
@@ -120,6 +121,62 @@ class AppendThenFailStorage extends MemoryStorage {
       throw new Error("synthetic crash after append before checkpoint");
     }
     return id;
+  }
+}
+
+/** Accepts one event, appends only beyond the parsed page, then reports the
+ * transient source-change signal a snapshot check would produce if it raced
+ * that append between its two stats. */
+class BenignAppendThenSignalStorage extends MemoryStorage {
+  private signaled = false;
+
+  constructor(
+    private readonly sourcePath: string,
+    private readonly appended: CodexLine[],
+  ) {
+    super();
+  }
+
+  override async append(
+    event: Omit<CaptureEvent, "id">,
+    options?: Parameters<MemoryStorage["append"]>[1],
+  ): Promise<EventId> {
+    const id = await super.append(event, options);
+    if (!this.signaled) {
+      this.signaled = true;
+      appendJsonl(this.sourcePath, this.appended);
+      throw new JsonlSourceChangedError(this.sourcePath);
+    }
+    return id;
+  }
+}
+
+/** Rewrites only the unread suffix immediately after turn zero's checkpoint
+ * reaches storage. The wrapper's post-save prefix check succeeds; the next
+ * turn's wider proof then forces recovery from the latest durable boundary. */
+class RewriteAfterFirstTurnCheckpointStorage extends MemoryStorage {
+  private rewritten = false;
+
+  constructor(
+    private readonly sourcePath: string,
+    private readonly replacement: CodexLine[],
+  ) {
+    super();
+  }
+
+  override async upsertCaptureCheckpoint(
+    input: Parameters<MemoryStorage["upsertCaptureCheckpoint"]>[0],
+  ) {
+    const checkpoint = await super.upsertCaptureCheckpoint(input);
+    if (
+      !this.rewritten &&
+      input.ordinal === 0 &&
+      input.state?.["jsonl_inflight_source"] !== undefined
+    ) {
+      this.rewritten = true;
+      writeJsonl(this.sourcePath, this.replacement);
+    }
+    return checkpoint;
   }
 }
 
@@ -1093,6 +1150,88 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
     ).toBe(2);
   });
 
+  it("keeps the generation stable when benign growth races an accepted append before its checkpoint", async () => {
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("q1"),
+      assistantMsg("a1"),
+      taskComplete(),
+    ]);
+    storage = new BenignAppendThenSignalStorage(path, [
+      userMsg("q2"),
+      assistantMsg("a2"),
+      taskComplete(),
+    ]);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await waitFor(async () => (await storage.count()) === 2);
+
+    const events = await storage.query({ order: "asc" });
+    expect(
+      events.filter((event) => event.content === "USER: q1\n\nASSISTANT: a1"),
+    ).toHaveLength(1);
+    expect(
+      events.filter((event) => event.content === "USER: q2\n\nASSISTANT: a2"),
+    ).toHaveLength(1);
+    const checkpoint = await storage.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(
+      (checkpoint?.state["jsonl_source"] as Record<string, unknown>)[
+        "generation"
+      ],
+    ).toBe(0);
+    expect(captured.writes.join("")).toContain("handler_source_changed");
+    expect(captured.writes.join("")).not.toContain("jsonl_read_retry");
+  });
+
+  it("retries a rewritten unread suffix from the latest durable turn", async () => {
+    const firstTurn = [
+      sessionMeta(),
+      userMsg("q1"),
+      assistantMsg("a1"),
+      taskComplete(),
+    ];
+    writeJsonl(path, [
+      ...firstTurn,
+      userMsg("OLD2"),
+      assistantMsg("a2"),
+      taskComplete(),
+    ]);
+    storage = new RewriteAfterFirstTurnCheckpointStorage(path, [
+      ...firstTurn,
+      userMsg("NEW2"),
+      assistantMsg("a2"),
+      taskComplete(),
+    ]);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await waitFor(async () =>
+      (await storage.query({ order: "asc" })).some(
+        (event) => event.content === "USER: NEW2\n\nASSISTANT: a2",
+      ),
+    );
+
+    const events = await storage.query({ order: "asc" });
+    const first = events.filter(
+      (event) => event.content === "USER: q1\n\nASSISTANT: a1",
+    );
+    expect(first).toHaveLength(1);
+    expect(
+      events.some(
+        (event) => event.content === "USER: OLD2\n\nASSISTANT: a2",
+      ),
+    ).toBe(false);
+    const firstOffset = (first[0]!.metadata as Record<string, unknown>)[
+      "byte_offset"
+    ];
+    const logs = captured.writes.join("");
+    expect(logs).toContain('"message":"jsonl_read_retry"');
+    expect(logs).toContain(`"retry_offset":${String(firstOffset)}`);
+    expect(logs).toContain('"durable_boundary":true');
+  });
+
   it("does not suppress a same-inode rewrite during candidate append", async () => {
     // The changed prefix is deliberately more than 4 KiB before EOF. The two
     // files have identical identity, size, and final checkpoint-boundary hash,
@@ -1308,6 +1447,13 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
         "generation"
       ],
     ).toBe(1);
+    const eventsAfter = await storage.query({ order: "asc" });
+    expect(
+      eventsAfter.filter(
+        (event) =>
+          event.content === "USER: question one\n\nASSISTANT: answer one",
+      ),
+    ).toHaveLength(1);
   });
 
   // Regression: rapid in-place appends elude FSEvents; polling must catch them.
