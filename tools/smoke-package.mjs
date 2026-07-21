@@ -314,7 +314,7 @@ try {
   }
   const mcpSearch = await rpc(url, 'tools/call', {
     name: 'search_memories',
-    arguments: { query: 'service-to-mcp exact artifact marker', limit: 10 },
+    arguments: { query: PACKAGE_SMOKE_CAPTURE.content, limit: 10 },
   });
   if (!JSON.stringify(mcpSearch).includes(captured.id)) {
     throw new Error('service-captured record was not retrievable through MCP');

@@ -8,6 +8,7 @@ import {
   AuthorityTransactionError,
   REQUIRED_AUTHORITY_SAMPLES,
   advanceAuthorityAcceptanceWindow,
+  bootstrapAndKickstartLaunchdAgent,
   executeAuthorityRollback,
   executeAuthorityRecovery,
   executeAuthorityTransfer,
@@ -28,6 +29,52 @@ describe('launchd package boundary', () => {
       observed.push(consecutive);
     }
     expect(observed).toEqual([1, 0, 1, 2, REQUIRED_AUTHORITY_SAMPLES]);
+  });
+
+  it('bootstraps then explicitly kickstarts a dormant launchd job without killing it', () => {
+    const calls: string[][] = [];
+    bootstrapAndKickstartLaunchdAgent(
+      'com.echo.context.candidate',
+      '/tmp/context.plist',
+      (args) => calls.push(args),
+    );
+    const domain = `gui/${process.getuid?.()}`;
+    expect(calls).toEqual([
+      ['bootstrap', domain, '/tmp/context.plist'],
+      ['kickstart', `${domain}/com.echo.context.candidate`],
+    ]);
+    expect(calls.flat()).not.toContain('-k');
+  });
+
+  it('does not kickstart after bootstrap fails and propagates kickstart failure', () => {
+    const bootstrapCalls: string[][] = [];
+    expect(() =>
+      bootstrapAndKickstartLaunchdAgent(
+        'com.echo.context.candidate',
+        '/tmp/context.plist',
+        (args) => {
+          bootstrapCalls.push(args);
+          throw new Error('bootstrap rejected');
+        },
+      ),
+    ).toThrow('bootstrap rejected');
+    expect(bootstrapCalls).toHaveLength(1);
+
+    const kickstartCalls: string[][] = [];
+    expect(() =>
+      bootstrapAndKickstartLaunchdAgent(
+        'com.echo.context.candidate',
+        '/tmp/context.plist',
+        (args) => {
+          kickstartCalls.push(args);
+          if (args[0] === 'kickstart') throw new Error('kickstart rejected');
+        },
+      ),
+    ).toThrow('kickstart rejected');
+    expect(kickstartCalls.map((args) => args[0])).toEqual([
+      'bootstrap',
+      'kickstart',
+    ]);
   });
 
   it('renders a lean plist with no Project_echo or product secrets', () => {

@@ -79,8 +79,8 @@ const CURSOR_KEY_PREVIEW_BYTES =
  * reader. Filtering happens after LIMIT, so sparse relevant keys cannot make
  * SQLite walk an unbounded number of rows to fill one JavaScript page. */
 export const CURSOR_RAW_ROWID_ASC_PAGE_SQL = `SELECT rowid AS row_id,
-       CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT) AS key,
-       length(CAST(key AS BLOB)) AS key_bytes,
+       COALESCE(CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT), '') AS key,
+       COALESCE(length(CAST(key AS BLOB)), 0) AS key_bytes,
        length(CAST(value AS BLOB)) AS value_bytes
   FROM cursorDiskKV
  WHERE rowid > ? AND rowid <= ?
@@ -88,8 +88,8 @@ export const CURSOR_RAW_ROWID_ASC_PAGE_SQL = `SELECT rowid AS row_id,
  LIMIT ?`;
 
 export const CURSOR_RAW_ROWID_DESC_PAGE_SQL = `SELECT rowid AS row_id,
-       CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT) AS key,
-       length(CAST(key AS BLOB)) AS key_bytes,
+       COALESCE(CAST(substr(CAST(key AS BLOB), 1, ${CURSOR_KEY_PREVIEW_BYTES}) AS TEXT), '') AS key,
+       COALESCE(length(CAST(key AS BLOB)), 0) AS key_bytes,
        length(CAST(value AS BLOB)) AS value_bytes
   FROM cursorDiskKV
  WHERE rowid < ?

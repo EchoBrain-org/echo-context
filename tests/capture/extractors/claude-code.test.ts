@@ -14,7 +14,11 @@ import {
   startClaudeCodeExtractor,
   type ClaudeCodeExtractorHandle,
 } from "../../../src/capture/extractors/claude-code.js";
-import { JsonlSourceChangedError } from "../../../src/capture/extractors/_shared.js";
+import {
+  JSONL_RAW_FRAGMENT_CONTENT_PREFIX,
+  JsonlSourceChangedError,
+  MAX_JSONL_READ_BYTES,
+} from "../../../src/capture/extractors/_shared.js";
 import type { CaptureEvent, EventId } from "../../../src/storage/interface.js";
 import { MemoryStorage } from "../../../src/storage/memory.js";
 import {
@@ -29,6 +33,7 @@ import {
   writeJsonl as writeJsonlFresh,
 } from "../../fixtures/jsonl.js";
 import { captureStdout } from "../../fixtures/stdout.js";
+import { expectExactRawJsonlFragments } from "../../fixtures/raw-jsonl-fragments.js";
 
 /** Storage whose append throws once for the event whose content contains the
  *  marker — simulates a mid-batch storage failure inside handleJsonlChange. */
@@ -362,7 +367,7 @@ describe("extractClaudeCodeTurns (pure)", () => {
     const appended = `\n${assistant2}\n\n${closingUser}\n`;
     appendFileSync(path, appended);
     const expectedSecondOffset =
-      Buffer.byteLength(initial) + Buffer.byteLength(`\n${assistant2}\n`);
+      Buffer.byteLength(initial) + Buffer.byteLength(`\n${assistant2}\n\n`);
 
     const second = await extractClaudeCodeTurns(path, first.newOffset);
     expect(second.turns.map((turn) => turn.user_message)).toEqual(["Q2"]);
@@ -434,6 +439,28 @@ describe("extractClaudeCodeTurns (pure)", () => {
     // No turn emitted means confirmedThroughOffset stays at lastByteOffset (0)
     // — the user line is "consumed" but pending, so the next pass re-reads it.
     expect(newOffset).toBe(0);
+  });
+
+  it("stops at a bounded page when one logical cluster exceeds the budget", async () => {
+    const path = join(dir, "sess.jsonl");
+    const huge = "x".repeat(1_500_000);
+    writeJsonlFresh(path, [
+      userText("s1", "u1", "oversized question"),
+      assistantText("s1", "a1", huge),
+      assistantText("s1", "a2", huge),
+      assistantText("s1", "a3", huge),
+      userText("s1", "u2", "bounded question"),
+      assistantEndTurn("s1", "a4", "bounded answer"),
+    ]);
+
+    const result = await extractClaudeCodeTurns(path, 0);
+
+    expect(result.turns).toEqual([]);
+    expect(result.newOffset).toBe(0);
+    expect(result.firstUserOffset).toBe(0);
+    expect(
+      result.readSnapshot!.through_offset - result.readSnapshot!.first_offset,
+    ).toBeLessThanOrEqual(MAX_JSONL_READ_BYTES);
   });
 
   it("drops orphan assistant (no preceding user) and warns", async () => {
@@ -939,6 +966,166 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
     expect(events[0]!.source).toBe(`fs:${path}`);
   });
 
+  it("preserves an oversized multi-line cluster exactly across a crash and restart", async () => {
+    const path = join(projDir, "oversized.jsonl");
+    const huge = "x".repeat(1_500_000);
+    const oversizedBytes = Buffer.from(
+      [
+        userText("s1", "u1", "oversized question"),
+        assistantText("s1", "a1", huge),
+        assistantText("s1", "a2", huge),
+        assistantText("s1", "a3", huge),
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n",
+    );
+    const boundedBytes = Buffer.from(
+      [
+        userText("s1", "u2", "bounded question"),
+        assistantEndTurn("s1", "a4", "bounded answer"),
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n",
+    );
+    const continuationBytes = Buffer.from(
+      `${JSON.stringify(
+        assistantText("s1", "a-cont", "oversized continuation"),
+      )}\n`,
+    );
+    expect(oversizedBytes.byteLength).toBeGreaterThan(MAX_JSONL_READ_BYTES);
+    const completedOversizedBytes = Buffer.concat([
+      oversizedBytes,
+      continuationBytes,
+    ]);
+    const source = Buffer.concat([
+      oversizedBytes,
+      continuationBytes,
+      boundedBytes,
+    ]);
+    writeFileSync(path, oversizedBytes);
+
+    const flaky = new AppendThenFailStorage(JSONL_RAW_FRAGMENT_CONTENT_PREFIX);
+    storage = flaky;
+    handle = await startClaudeCodeExtractor(flaky, { projectsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth().state).toBe("unhealthy");
+    const crashed = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    const firstFragment = crashed.find(
+      (event) =>
+        event.metadata?.["capture_fragment"] === "oversized_jsonl_cluster",
+    );
+    expect(firstFragment).toBeDefined();
+
+    await handle.stop();
+    handle = null;
+    flaky.allowCheckpoints();
+    handle = await startClaudeCodeExtractor(flaky, { projectsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const activeEvents = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    const raw = expectExactRawJsonlFragments({
+      events: activeEvents,
+      expected: oversizedBytes,
+      expectedExtractor: "claude_code",
+      expectedStart: 0,
+    });
+    expect(raw.ids.filter((id) => id === firstFragment!.id)).toHaveLength(1);
+    const activeCheckpoint = await flaky.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(activeCheckpoint?.position).toBe(oversizedBytes.byteLength);
+    expect(activeCheckpoint?.state).toHaveProperty("jsonl_raw_fallback");
+
+    const idsBeforeBoundaryRestart = activeEvents
+      .map((event) => event.id)
+      .sort();
+    await handle.stop();
+    handle = null;
+    handle = await startClaudeCodeExtractor(flaky, { projectsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const boundaryRestarted = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expect(boundaryRestarted.map((event) => event.id).sort()).toEqual(
+      idsBeforeBoundaryRestart,
+    );
+    const boundaryRestartedCheckpoint = await flaky.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(boundaryRestartedCheckpoint?.state["jsonl_raw_fallback"]).toEqual(
+      activeCheckpoint?.state["jsonl_raw_fallback"],
+    );
+
+    appendFileSync(path, Buffer.concat([continuationBytes, boundedBytes]));
+    await waitFor(async () => {
+      const checkpoint = await flaky.getCaptureCheckpoint({
+        extractor: "claude_code",
+        resource: path,
+      });
+      return checkpoint?.position === source.byteLength;
+    });
+    const events = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expectExactRawJsonlFragments({
+      events,
+      expected: completedOversizedBytes,
+      expectedExtractor: "claude_code",
+      expectedStart: 0,
+    });
+    const semantic = events.filter(
+      (event) =>
+        event.content === "USER: bounded question\n\nASSISTANT: bounded answer",
+    );
+    expect(semantic).toHaveLength(1);
+    expect(semantic[0]?.metadata?.["turn_index"]).toBe(0);
+    const checkpoint = await flaky.getCaptureCheckpoint({
+      extractor: "claude_code",
+      resource: path,
+    });
+    expect(checkpoint?.position).toBe(source.byteLength);
+    expect(checkpoint?.state).not.toHaveProperty("jsonl_raw_fallback");
+
+    const idsBeforeCleanRestart = events.map((event) => event.id).sort();
+    await handle.stop();
+    handle = null;
+    handle = await startClaudeCodeExtractor(flaky, { projectsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const restarted = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expect(restarted.map((event) => event.id).sort()).toEqual(
+      idsBeforeCleanRestart,
+    );
+  }, 20_000);
+
   it("emits one CandidateEvent per turn through the pipeline on file growth", async () => {
     handle = await startClaudeCodeExtractor(storage, { projectsPrefix });
     const path = join(projDir, "sess.jsonl");
@@ -1133,9 +1320,7 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
     );
     expect(first).toHaveLength(1);
     expect(
-      events.some(
-        (event) => event.content === "USER: OLD2\n\nASSISTANT: A2",
-      ),
+      events.some((event) => event.content === "USER: OLD2\n\nASSISTANT: A2"),
     ).toBe(false);
     const firstOffset = (first[0]!.metadata as Record<string, unknown>)[
       "byte_offset"
@@ -1291,9 +1476,7 @@ describe("startClaudeCodeExtractor (lifecycle + integration)", () => {
         extractor: "claude_code",
         resource: path,
       });
-      return (
-        hasNew && checkpoint?.state["jsonl_inflight_source"] === undefined
-      );
+      return hasNew && checkpoint?.state["jsonl_inflight_source"] === undefined;
     });
     const checkpointAfter = await storage.getCaptureCheckpoint({
       extractor: "claude_code",

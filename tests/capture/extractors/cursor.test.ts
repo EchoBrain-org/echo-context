@@ -1105,6 +1105,31 @@ describe('startCursorExtractor bounded checkpoint startup', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('treats a SQL NULL key as bounded irrelevant noise during startup', async () => {
+    const storage = new MemoryStorage();
+    createGlobalStorageFixture(dbPath, [
+      { composer_id: 'c1', bubble_id: 'u1', type: 1, text: 'question' },
+      { composer_id: 'c1', bubble_id: 'a1', type: 2, text: 'answer' },
+    ]);
+    const db = new Database(dbPath);
+    db.prepare('INSERT INTO cursorDiskKV (key, value) VALUES (NULL, ?)').run(
+      'irrelevant',
+    );
+    db.close();
+
+    handle = await startCursorExtractor(storage, {
+      globalDbPath: dbPath,
+      workspacePrefix,
+      repollIntervalMs: 60_000,
+      exposeTestHooks: true,
+      __bounds: { scanPageRows: 2, maxScanPagesPerSlice: 1 },
+    });
+    await handle.initialCatchUp;
+
+    expect(handle.getHealth().state).toBe('healthy');
+    expect(await storage.count()).toBe(1);
+  });
+
   it('uses exact checkpoints only and keeps every SQL page/queue/read below configured caps', async () => {
     const storage = new NoHistoryQueryStorage();
     createGlobalStorageFixture(

@@ -18,13 +18,18 @@ import {
   dedupStrings,
   inspectJsonlCheckpointProof,
   inspectJsonlSource,
+  JSONL_RAW_FRAGMENT_CONTENT_PREFIX,
   makeJsonlCheckpointSource,
+  MAX_JSONL_READ_BYTES,
   readJsonlCheckpointSource,
+  readJsonlRawFallback,
   readJsonlTail,
+  visitJsonlRawFragments,
   withJsonlReadSnapshot,
   wireJsonlExtractor,
   type ExtractorHandle,
   type JsonlCheckpointSource,
+  type JsonlRawFallback,
   JsonlSourceChangedError,
   type JsonlReadSnapshot,
   type JsonlSourceInspection,
@@ -92,6 +97,10 @@ export interface ExtractCodexResult {
   turns: CodexTurn[];
   newOffset: number;
   readSnapshot?: JsonlReadSnapshot;
+  firstUserOffset?: number;
+  firstUserCwd?: string;
+  firstUserGit?: CodexGitMeta;
+  firstUserCodex?: CodexSessionMeta;
   cwd?: string;
   git?: CodexGitMeta;
   codex?: CodexSessionMeta;
@@ -487,10 +496,17 @@ export async function extractCodexTurns(
   const {
     lines,
     lineEndOffsets,
+    firstLineOffset,
     mtimeMs: fileMtime,
     snapshot: readSnapshot,
   } = tail;
-  if (lines.length === 0) return { turns: [], newOffset: lastByteOffset };
+  if (lines.length === 0) {
+    return {
+      turns: [],
+      newOffset: lastByteOffset,
+      ...(readSnapshot !== undefined ? { readSnapshot } : {}),
+    };
+  }
   const session_id = deriveSessionId(jsonlPath);
 
   const turns: CodexTurn[] = [];
@@ -503,6 +519,16 @@ export async function extractCodexTurns(
   // intentionally NOT past confirmedThroughOffset, so the next pass re-reads
   // them and rebuilds the pending cluster from scratch.
   let confirmedThroughOffset = lastByteOffset;
+  let firstUserOffset: number | undefined;
+  let firstUserCwd: string | undefined;
+  let firstUserGit: CodexGitMeta | undefined;
+  let firstUserCodex: CodexSessionMeta | undefined;
+
+  function markSafeThrough(offset: number): void {
+    if (pending === null && offset > confirmedThroughOffset) {
+      confirmedThroughOffset = offset;
+    }
+  }
 
   function emitPendingIfComplete(): void {
     if (pending === null) return;
@@ -550,8 +576,11 @@ export async function extractCodexTurns(
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex]!;
     const lineEndOffset = lineEndOffsets[lineIndex]!;
+    const lineStartOffset =
+      lineIndex === 0 ? firstLineOffset : lineEndOffsets[lineIndex - 1]!;
     const parsed = parseLine(line);
     if (parsed === null) {
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -563,6 +592,7 @@ export async function extractCodexTurns(
         cli_version: parsed.cli_version,
         model_provider: parsed.model_provider,
       });
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -583,6 +613,7 @@ export async function extractCodexTurns(
         permission_network: parsed.permission_network,
         file_system_sandbox_kind: parsed.file_system_sandbox_kind,
       });
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -604,6 +635,7 @@ export async function extractCodexTurns(
           pending.toolCalls.push(tc);
         }
       }
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -625,6 +657,7 @@ export async function extractCodexTurns(
           break;
         }
       }
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -632,6 +665,7 @@ export async function extractCodexTurns(
       if (pending !== null && parsed.reasoning_text !== undefined) {
         pending.thinking.push(parsed.reasoning_text);
       }
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -643,15 +677,23 @@ export async function extractCodexTurns(
         emitPendingIfComplete();
         pending = null;
       }
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
     if (parsed.kind === "other") {
+      markSafeThrough(lineEndOffset);
       continue;
     }
 
     // kind === 'message'
     if (parsed.role === "user") {
+      if (firstUserOffset === undefined) {
+        firstUserOffset = lineStartOffset;
+        firstUserCwd = cwd;
+        firstUserGit = git;
+        firstUserCodex = codexMeta;
+      }
       // A new user closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
@@ -659,6 +701,11 @@ export async function extractCodexTurns(
         } else {
           log.warn("user_with_no_assistant", { session_id });
         }
+      }
+      // Everything before the new user record is durable. Keep the user line
+      // itself unread until its cluster closes so restart can rebuild it.
+      if (lineStartOffset > confirmedThroughOffset) {
+        confirmedThroughOffset = lineStartOffset;
       }
       pending = {
         userText: parsed.text ?? "",
@@ -677,6 +724,7 @@ export async function extractCodexTurns(
     } else {
       if (pending === null) {
         log.warn("orphan_assistant", { session_id });
+        markSafeThrough(lineEndOffset);
       } else if ((parsed.text ?? "").length > 0) {
         pending.assistantTexts.push(parsed.text!);
         pending.assistantLastLineEndOffset = lineEndOffset;
@@ -695,6 +743,10 @@ export async function extractCodexTurns(
     newOffset: confirmedThroughOffset,
   };
   if (readSnapshot !== undefined) result.readSnapshot = readSnapshot;
+  if (firstUserOffset !== undefined) result.firstUserOffset = firstUserOffset;
+  if (firstUserCwd !== undefined) result.firstUserCwd = firstUserCwd;
+  if (firstUserGit !== undefined) result.firstUserGit = firstUserGit;
+  if (firstUserCodex !== undefined) result.firstUserCodex = firstUserCodex;
   if (cwd !== undefined) result.cwd = cwd;
   if (git !== undefined) result.git = git;
   if (codexMeta !== undefined) result.codex = codexMeta;
@@ -710,6 +762,7 @@ interface OffsetEntry {
   git?: CodexGitMeta;
   codex?: CodexSessionMeta;
   page_start?: CodexPageStart;
+  raw_fallback?: JsonlRawFallback;
 }
 
 interface CodexPageStart {
@@ -718,6 +771,7 @@ interface CodexPageStart {
   cwd?: string;
   git?: CodexGitMeta;
   codex?: CodexSessionMeta;
+  raw_fallback?: JsonlRawFallback;
 }
 
 function readGitMetaFromMd(
@@ -801,8 +855,19 @@ function readCodexPageStart(
   if (typeof cwd === "string") pageStart.cwd = cwd;
   const git = readGitMetaFromMd(value);
   const codex = readCodexMetaFromMd(value);
+  const rawFallback = readJsonlRawFallback(value, "raw_fallback");
+  if (
+    rawFallback !== undefined &&
+    (rawFallback.cluster_start_offset >= pageStart.offset ||
+      rawFallback.next_fragment === 0)
+  ) {
+    throw new TypeError(
+      "capture checkpoint jsonl_page_start raw fallback is invalid",
+    );
+  }
   if (git !== undefined) pageStart.git = git;
   if (codex !== undefined) pageStart.codex = codex;
+  if (rawFallback !== undefined) pageStart.raw_fallback = rawFallback;
   return pageStart;
 }
 
@@ -814,6 +879,9 @@ function codexPageStart(entry: OffsetEntry): CodexPageStart {
   if (entry.cwd !== undefined) pageStart.cwd = entry.cwd;
   if (entry.git !== undefined) pageStart.git = entry.git;
   if (entry.codex !== undefined) pageStart.codex = entry.codex;
+  if (entry.raw_fallback !== undefined) {
+    pageStart.raw_fallback = entry.raw_fallback;
+  }
   return pageStart;
 }
 
@@ -874,7 +942,10 @@ export async function startCodexExtractor(
       if (
         source?.page_start_offset !== pageStart.offset ||
         pageStart.offset > entry.offset ||
-        pageStart.turn_index > entry.turn_index
+        pageStart.turn_index > entry.turn_index ||
+        (pageStart.raw_fallback !== undefined &&
+          (source === undefined ||
+            pageStart.raw_fallback.group_generation > source.generation))
       ) {
         throw new TypeError(
           "capture checkpoint jsonl_page_start does not match its page proof",
@@ -882,6 +953,19 @@ export async function startCodexExtractor(
       }
       entry.page_start = pageStart;
     }
+    const rawFallback = readJsonlRawFallback(state);
+    if (
+      rawFallback !== undefined &&
+      (rawFallback.cluster_start_offset >= entry.offset ||
+        rawFallback.next_fragment === 0 ||
+        source === undefined ||
+        rawFallback.group_generation > source.generation)
+    ) {
+      throw new TypeError(
+        "capture checkpoint jsonl_raw_fallback state is invalid",
+      );
+    }
+    if (rawFallback !== undefined) entry.raw_fallback = rawFallback;
     if (
       inflightSource !== undefined &&
       (source === undefined ||
@@ -934,6 +1018,9 @@ export async function startCodexExtractor(
     if (entry.git !== undefined) state["git"] = entry.git;
     if (entry.codex !== undefined) state["codex"] = entry.codex;
     if (pageStart !== undefined) state["jsonl_page_start"] = pageStart;
+    if (entry.raw_fallback !== undefined) {
+      state["jsonl_raw_fallback"] = entry.raw_fallback;
+    }
     await storage.upsertCaptureCheckpoint({
       extractor: "codex",
       resource: path,
@@ -950,14 +1037,68 @@ export async function startCodexExtractor(
     offsetMap.set(path, cached);
   }
 
+  async function appendRawFallbackFragments(
+    path: string,
+    snapshot: JsonlReadSnapshot,
+    throughOffset: number,
+    fallback: JsonlRawFallback,
+    generation: number,
+  ): Promise<number> {
+    return visitJsonlRawFragments(
+      path,
+      snapshot,
+      throughOffset,
+      fallback.next_fragment,
+      async (fragment, fragmentIndex) => {
+        const result = await processExtractorCandidate(
+          {
+            source: `fs:${path}`,
+            timestamp: new Date().toISOString(),
+            content: JSONL_RAW_FRAGMENT_CONTENT_PREFIX + fragment.base64,
+            metadata: {
+              capture_fragment: "oversized_jsonl_cluster",
+              fragment_schema: "jsonl_raw_v1",
+              extractor: "codex",
+              encoding: "base64",
+              source_generation: generation,
+              group_generation: fallback.group_generation,
+              fragment_group: captureDedupeKey("codex", [
+                "raw-jsonl-fragment-group-v1",
+                path,
+                fallback.group_generation,
+                fallback.cluster_start_offset,
+              ]),
+              cluster_start_offset: fallback.cluster_start_offset,
+              fragment_index: fragmentIndex,
+              byte_start: fragment.start_offset,
+              byte_through: fragment.through_offset,
+              byte_count: fragment.bytes,
+              sha256: fragment.sha256,
+            },
+            dedupe_key: captureDedupeKey("codex", [
+              "raw-jsonl-fragment-v1",
+              path,
+              generation,
+              fragment.start_offset,
+              fragment.through_offset,
+              fragment.sha256,
+            ]),
+          },
+          storage,
+          capturePolicy,
+        );
+        if (!result.accepted) {
+          throw new Error(`raw JSONL fragment rejected: ${result.reason}`);
+        }
+      },
+    );
+  }
+
   async function rewindChangedRead(
     path: string,
     durableEntry: OffsetEntry,
     sourceAtDurableEntry: JsonlSourceInspection,
-    discontinuity: Exclude<
-      ReturnType<typeof classifyJsonlDiscontinuity>,
-      null
-    >,
+    discontinuity: Exclude<ReturnType<typeof classifyJsonlDiscontinuity>, null>,
     changedInspection: JsonlSourceInspection,
     retryAtDurableBoundary: boolean,
   ): Promise<void> {
@@ -1000,6 +1141,9 @@ export async function startCodexExtractor(
     if (retryMetadata?.git !== undefined) retry.git = retryMetadata.git;
     if (retryMetadata?.codex !== undefined) {
       retry.codex = retryMetadata.codex;
+    }
+    if (retryMetadata?.raw_fallback !== undefined) {
+      retry.raw_fallback = retryMetadata.raw_fallback;
     }
     await saveCheckpoint(path, retry, current);
     log.warn("jsonl_read_retry", {
@@ -1052,6 +1196,9 @@ export async function startCodexExtractor(
       if (resetMetadata?.cwd !== undefined) reset.cwd = resetMetadata.cwd;
       if (resetMetadata?.git !== undefined) reset.git = resetMetadata.git;
       if (resetMetadata?.codex !== undefined) reset.codex = resetMetadata.codex;
+      if (resetMetadata?.raw_fallback !== undefined) {
+        reset.raw_fallback = resetMetadata.raw_fallback;
+      }
       cur = reset;
       // A replaced/truncated source rewinds to zero. A mismatch confined to
       // the persisted bounded page rewinds only to that page's durable start.
@@ -1083,6 +1230,10 @@ export async function startCodexExtractor(
       git: passGit,
       codex: passCodex,
       readSnapshot,
+      firstUserOffset,
+      firstUserCwd,
+      firstUserGit,
+      firstUserCodex,
     } = await extractCodexTurns(path, cur.offset, extractInput);
     try {
       await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
@@ -1109,6 +1260,101 @@ export async function startCodexExtractor(
           latestDurableEntry = offsetMap.get(path) ?? cur;
           latestDurableInspection = durableStartInspection!;
         });
+      }
+      let rawFallback = cur.raw_fallback;
+      if (
+        rawFallback !== undefined &&
+        readSnapshot !== undefined &&
+        firstUserOffset === cur.offset
+      ) {
+        const resumed: OffsetEntry = { ...cur };
+        delete resumed.raw_fallback;
+        const resumedInspection = readSnapshot.sourceAt(cur.offset);
+        await withJsonlReadSnapshot(path, readSnapshot, async () => {
+          await saveCheckpoint(
+            path,
+            resumed,
+            resumedInspection,
+            pageStart,
+            inflightInspection,
+          );
+        });
+        cur = resumed;
+        latestDurableEntry = offsetMap.get(path) ?? resumed;
+        latestDurableInspection = resumedInspection;
+        rawFallback = undefined;
+      }
+      const startsRawFallback =
+        rawFallback === undefined &&
+        readSnapshot !== undefined &&
+        newOffset === cur.offset &&
+        readSnapshot.size - cur.offset > MAX_JSONL_READ_BYTES;
+      if (
+        readSnapshot !== undefined &&
+        (rawFallback !== undefined || startsRawFallback)
+      ) {
+        const activeFallback = rawFallback ?? {
+          cluster_start_offset: cur.offset,
+          next_fragment: 0,
+          group_generation: cur.source?.generation ?? 0,
+        };
+        const resumesAtUser =
+          rawFallback !== undefined &&
+          firstUserOffset !== undefined &&
+          firstUserOffset > cur.offset;
+        const throughOffset = resumesAtUser
+          ? firstUserOffset
+          : readSnapshot.through_offset;
+        if (throughOffset > cur.offset) {
+          const rawInspection = readSnapshot.sourceAt(throughOffset);
+          const rawProof = readSnapshot.rangeAt(
+            readSnapshot.first_offset,
+            throughOffset,
+          );
+          let nextFragment = activeFallback.next_fragment;
+          await withJsonlReadSnapshot(path, rawProof, async () => {
+            nextFragment = await appendRawFallbackFragments(
+              path,
+              readSnapshot,
+              throughOffset,
+              activeFallback,
+              cur.source?.generation ?? 0,
+            );
+            const rawCheckpoint: OffsetEntry = {
+              ...cur,
+              offset: throughOffset,
+              ...(resumesAtUser
+                ? {}
+                : {
+                    raw_fallback: {
+                      cluster_start_offset: activeFallback.cluster_start_offset,
+                      next_fragment: nextFragment,
+                      group_generation: activeFallback.group_generation,
+                    },
+                  }),
+            };
+            if (resumesAtUser) delete rawCheckpoint.raw_fallback;
+            const boundaryCwd = resumesAtUser ? firstUserCwd : passCwd;
+            const boundaryGit = resumesAtUser ? firstUserGit : passGit;
+            const boundaryCodex = resumesAtUser ? firstUserCodex : passCodex;
+            if (boundaryCwd !== undefined) rawCheckpoint.cwd = boundaryCwd;
+            if (boundaryGit !== undefined) rawCheckpoint.git = boundaryGit;
+            if (boundaryCodex !== undefined) {
+              rawCheckpoint.codex = boundaryCodex;
+            }
+            await saveCheckpoint(path, rawCheckpoint, rawInspection, pageStart);
+            latestDurableEntry = offsetMap.get(path) ?? rawCheckpoint;
+            latestDurableInspection = rawInspection;
+          });
+          log.warn("oversized_cluster_fragmented", {
+            path,
+            cluster_start_offset: activeFallback.cluster_start_offset,
+            through_offset: throughOffset,
+            fragments_written: nextFragment - activeFallback.next_fragment,
+            resumed_at_user: resumesAtUser,
+          });
+          return;
+        }
       }
       let nextTurnIndex = cur.turn_index + 1;
       for (const turn of turns) {
@@ -1217,16 +1463,14 @@ export async function startCodexExtractor(
       if (nextCwd !== undefined) next.cwd = nextCwd;
       if (nextGit !== undefined) next.git = nextGit;
       if (nextCodex !== undefined) next.codex = nextCodex;
+      if (cur.raw_fallback !== undefined) {
+        next.raw_fallback = cur.raw_fallback;
+      }
       await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
       const pageInspection =
         readSnapshot?.sourceAt(newOffset) ?? sourceAtResume;
       const persistPage = async () => {
-        await saveCheckpoint(
-          path,
-          next,
-          pageInspection,
-          pageStart,
-        );
+        await saveCheckpoint(path, next, pageInspection, pageStart);
         latestDurableEntry = offsetMap.get(path) ?? next;
         latestDurableInspection = pageInspection;
       };

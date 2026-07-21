@@ -567,6 +567,22 @@ function runLaunchctl(args: string[], allowMissing = false): void {
   throw new Error(`launchctl ${args[0] ?? ''} failed${detail.length > 0 ? `: ${detail}` : ''}`);
 }
 
+/** Load a launchd definition and explicitly request its first run. RunAtLoad
+ * is retained as declarative policy, but `bootstrap` alone is not an
+ * immediate-start contract on every supported macOS launchd. */
+export function bootstrapAndKickstartLaunchdAgent(
+  label: string,
+  plistPath: string,
+  execute: (args: string[]) => void = runLaunchctl,
+): void {
+  assertLabel(label);
+  const domain = launchDomain();
+  execute(['bootstrap', domain, plistPath]);
+  // Bare kickstart starts a dormant job without killing one that raced to
+  // start from RunAtLoad while bootstrap returned.
+  execute(['kickstart', `${domain}/${label}`]);
+}
+
 async function ensureLaunchdAgentStarted(
   label: string,
   plistPath: string,
@@ -575,7 +591,7 @@ async function ensureLaunchdAgentStarted(
 ): Promise<void> {
   if (serviceIsRunning(label)) return;
   await stopLaunchdAgentAndWait(label, config, timeoutMs);
-  runLaunchctl(['bootstrap', launchDomain(), plistPath]);
+  bootstrapAndKickstartLaunchdAgent(label, plistPath);
 }
 
 function assertPlistValid(content: string): void {
@@ -1012,7 +1028,7 @@ async function installLaunchdAgentUnlocked(
     }
     atomicWrite({ filePath: plistPath, content: nextPlist, secretSensitive: true });
     if (start) {
-      runLaunchctl(['bootstrap', launchDomain(), plistPath]);
+      bootstrapAndKickstartLaunchdAgent(label, plistPath);
       await waitForExactHealth(label, launchConfig, options.healthTimeoutMs ?? 300_000);
     }
     return { label, plistPath, started: start, ...identity };

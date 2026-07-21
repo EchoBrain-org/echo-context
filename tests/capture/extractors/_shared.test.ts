@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   mkdirSync,
@@ -19,8 +20,10 @@ import {
   inspectJsonlSource,
   JsonlSourceChangedError,
   makeJsonlCheckpointSource,
+  MAX_JSONL_RAW_FRAGMENT_BYTES,
   MAX_JSONL_READ_BYTES,
   readJsonlTail,
+  visitJsonlRawFragments,
   wireJsonlExtractor,
   type ExtractorHandle,
 } from "../../../src/capture/extractors/_shared.js";
@@ -249,14 +252,52 @@ describe("wireJsonlExtractor bounded startup", () => {
     ]);
   });
 
-  it("fails closed when one JSONL record exceeds the byte page", async () => {
+  it("exposes one oversized JSONL record as bounded, exact raw fragments", async () => {
     const prefix = mkdtempSync(join(tmpdir(), "echo-shared-read-budget-"));
     dirs.push(prefix);
     const path = join(prefix, "oversized.jsonl");
-    writeFileSync(path, "x".repeat(MAX_JSONL_READ_BYTES + 1));
-    await expect(readJsonlTail(path, 0, silentLog)).rejects.toThrow(
-      /read budget/,
+    const source = Buffer.from("x".repeat(MAX_JSONL_READ_BYTES + 1));
+    writeFileSync(path, source);
+
+    const page = await readJsonlTail(path, 0, silentLog);
+    expect(page?.lines).toEqual([]);
+    expect(page?.snapshot).toMatchObject({
+      first_offset: 0,
+      through_offset: MAX_JSONL_READ_BYTES,
+    });
+
+    const fragments: Buffer[] = [];
+    const nextIndex = await visitJsonlRawFragments(
+      path,
+      page!.snapshot!,
+      page!.snapshot!.through_offset,
+      0,
+      async (fragment) => {
+        expect(fragment.bytes).toBeLessThanOrEqual(
+          MAX_JSONL_RAW_FRAGMENT_BYTES,
+        );
+        fragments.push(Buffer.from(fragment.base64, "base64"));
+      },
     );
+    expect(nextIndex).toBe(
+      Math.ceil(MAX_JSONL_READ_BYTES / MAX_JSONL_RAW_FRAGMENT_BYTES),
+    );
+    const reconstructed = Buffer.concat(fragments);
+    expect(reconstructed.byteLength).toBe(MAX_JSONL_READ_BYTES);
+    expect(createHash("sha256").update(reconstructed).digest("hex")).toBe(
+      createHash("sha256")
+        .update(source.subarray(0, MAX_JSONL_READ_BYTES))
+        .digest("hex"),
+    );
+
+    const finalPage = await readJsonlTail(
+      path,
+      MAX_JSONL_READ_BYTES,
+      silentLog,
+    );
+    expect(finalPage?.lines).toEqual([]);
+    expect(finalPage?.snapshot).toBeUndefined();
+    expect(finalPage?.firstLineOffset).toBe(MAX_JSONL_READ_BYTES);
   });
 
   it("detects an atomic replacement before candidates can be emitted", async () => {

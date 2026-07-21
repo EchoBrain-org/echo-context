@@ -18,13 +18,18 @@ import {
   dedupStrings,
   inspectJsonlCheckpointProof,
   inspectJsonlSource,
+  JSONL_RAW_FRAGMENT_CONTENT_PREFIX,
   makeJsonlCheckpointSource,
+  MAX_JSONL_READ_BYTES,
   readJsonlTail,
   readJsonlCheckpointSource,
+  readJsonlRawFallback,
+  visitJsonlRawFragments,
   withJsonlReadSnapshot,
   wireJsonlExtractor,
   type ExtractorHandle,
   type JsonlCheckpointSource,
+  type JsonlRawFallback,
   JsonlSourceChangedError,
   type JsonlReadSnapshot,
   type JsonlSourceInspection,
@@ -99,6 +104,7 @@ export interface ExtractClaudeCodeResult {
   newOffset: number;
   droppedUsers: DroppedUserLine[];
   readSnapshot?: JsonlReadSnapshot;
+  firstUserOffset?: number;
 }
 
 const INJECT_TAG_PREFIXES = [
@@ -326,7 +332,12 @@ export async function extractClaudeCodeTurns(
     snapshot: readSnapshot,
   } = tail;
   if (lines.length === 0)
-    return { turns: [], newOffset: lastByteOffset, droppedUsers: [] };
+    return {
+      turns: [],
+      newOffset: lastByteOffset,
+      droppedUsers: [],
+      ...(readSnapshot !== undefined ? { readSnapshot } : {}),
+    };
   const session_id = deriveSessionId(jsonlPath);
   const project = deriveProject(jsonlPath);
 
@@ -358,6 +369,7 @@ export async function extractClaudeCodeTurns(
   let toolUsesBetween: ParsedToolUse[] = [];
   let toolResultsBetween: ParsedToolResult[] = [];
   let thinkingBetween: string[] = [];
+  let betweenStartOffset: number | null = null;
   let lineStartOffset = firstLineOffset;
   // Tracks the END of the last line that contributed to an EMITTED turn.
   // Pending-cluster lines (user + assistants without a closing next-user) are
@@ -365,6 +377,27 @@ export async function extractClaudeCodeTurns(
   // them and rebuilds the pending cluster from scratch (idempotent).
   let confirmedThroughOffset = lastByteOffset;
   let currentCwd: string | undefined;
+  let firstUserOffset: number | undefined;
+
+  function hasBetweenState(): boolean {
+    return (
+      hadToolBetween ||
+      filesBetween.length > 0 ||
+      toolUsesBetween.length > 0 ||
+      toolResultsBetween.length > 0 ||
+      thinkingBetween.length > 0
+    );
+  }
+
+  function markSafeThrough(offset: number): void {
+    if (
+      pending === null &&
+      !hasBetweenState() &&
+      offset > confirmedThroughOffset
+    ) {
+      confirmedThroughOffset = offset;
+    }
+  }
 
   function emitPendingIfComplete(): void {
     if (pending === null) return;
@@ -408,6 +441,7 @@ export async function extractClaudeCodeTurns(
     const lineEndOffset = lineEndOffsets[lineIndex]!;
     const parsed = parseLine(line, lineStartOffset);
     if (parsed === null) {
+      markSafeThrough(lineEndOffset);
       lineStartOffset = lineEndOffset;
       continue;
     }
@@ -427,6 +461,15 @@ export async function extractClaudeCodeTurns(
         if (parsed.thinking.length > 0)
           pending.thinking.push(...parsed.thinking);
       } else {
+        const carriesBetweenState =
+          parsed.hasTool ||
+          parsed.files.length > 0 ||
+          parsed.toolUses.length > 0 ||
+          parsed.toolResults.length > 0 ||
+          parsed.thinking.length > 0;
+        if (carriesBetweenState && !hasBetweenState()) {
+          betweenStartOffset = lineStartOffset;
+        }
         if (parsed.hasTool) hadToolBetween = true;
         if (parsed.files.length > 0) filesBetween.push(...parsed.files);
         if (parsed.toolUses.length > 0)
@@ -436,11 +479,13 @@ export async function extractClaudeCodeTurns(
         if (parsed.thinking.length > 0)
           thinkingBetween.push(...parsed.thinking);
       }
+      markSafeThrough(lineEndOffset);
       lineStartOffset = lineEndOffset;
       continue;
     }
 
     if (parsed.role === "user") {
+      if (firstUserOffset === undefined) firstUserOffset = lineStartOffset;
       // A new text-bearing user line closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
@@ -455,6 +500,10 @@ export async function extractClaudeCodeTurns(
             dropped.timestamp = pending.timestamp;
           droppedUsers.push(dropped);
         }
+      }
+      const safePendingStart = betweenStartOffset ?? lineStartOffset;
+      if (safePendingStart > confirmedThroughOffset) {
+        confirmedThroughOffset = safePendingStart;
       }
       pending = {
         userText: parsed.text,
@@ -478,10 +527,12 @@ export async function extractClaudeCodeTurns(
       toolUsesBetween = [];
       toolResultsBetween = [];
       thinkingBetween = [];
+      betweenStartOffset = null;
     } else {
       // text-bearing assistant
       if (pending === null) {
         log.warn("orphan_assistant", { session_id });
+        markSafeThrough(lineEndOffset);
       } else {
         pending.assistantTexts.push(parsed.text);
         pending.assistantLastLineEndOffset = lineEndOffset;
@@ -506,6 +557,7 @@ export async function extractClaudeCodeTurns(
           // stop_reason=end_turn — assistant is done; close the cluster now.
           emitPendingIfComplete();
           pending = null;
+          markSafeThrough(lineEndOffset);
         }
       }
     }
@@ -521,6 +573,7 @@ export async function extractClaudeCodeTurns(
     newOffset: confirmedThroughOffset,
     droppedUsers,
     ...(readSnapshot !== undefined ? { readSnapshot } : {}),
+    ...(firstUserOffset !== undefined ? { firstUserOffset } : {}),
   };
 }
 
@@ -564,11 +617,13 @@ interface ClaudeCodeOffsetEntry {
   source?: JsonlCheckpointSource;
   inflight_source?: JsonlCheckpointSource;
   page_start?: ClaudeCodePageStart;
+  raw_fallback?: JsonlRawFallback;
 }
 
 interface ClaudeCodePageStart {
   offset: number;
   turn_index: number;
+  raw_fallback?: JsonlRawFallback;
 }
 
 function readClaudeCodePageStart(
@@ -590,7 +645,35 @@ function readClaudeCodePageStart(
   ) {
     throw new TypeError("capture checkpoint jsonl_page_start state is invalid");
   }
-  return { offset: offset as number, turn_index: turnIndex as number };
+  const pageStart: ClaudeCodePageStart = {
+    offset: offset as number,
+    turn_index: turnIndex as number,
+  };
+  const rawFallback = readJsonlRawFallback(value, "raw_fallback");
+  if (
+    rawFallback !== undefined &&
+    (rawFallback.cluster_start_offset >= pageStart.offset ||
+      rawFallback.next_fragment === 0)
+  ) {
+    throw new TypeError(
+      "capture checkpoint jsonl_page_start raw fallback is invalid",
+    );
+  }
+  if (rawFallback !== undefined) pageStart.raw_fallback = rawFallback;
+  return pageStart;
+}
+
+function claudeCodePageStart(
+  entry: ClaudeCodeOffsetEntry,
+): ClaudeCodePageStart {
+  const pageStart: ClaudeCodePageStart = {
+    offset: entry.offset,
+    turn_index: entry.turn_index,
+  };
+  if (entry.raw_fallback !== undefined) {
+    pageStart.raw_fallback = entry.raw_fallback;
+  }
+  return pageStart;
 }
 
 export type ClaudeCodeExtractorHandle = ExtractorHandle;
@@ -635,7 +718,10 @@ export async function startClaudeCodeExtractor(
       if (
         entry.source?.page_start_offset !== pageStart.offset ||
         pageStart.offset > entry.offset ||
-        pageStart.turn_index > entry.turn_index
+        pageStart.turn_index > entry.turn_index ||
+        (pageStart.raw_fallback !== undefined &&
+          (entry.source === undefined ||
+            pageStart.raw_fallback.group_generation > entry.source.generation))
       ) {
         throw new TypeError(
           "capture checkpoint jsonl_page_start does not match its page proof",
@@ -643,6 +729,19 @@ export async function startClaudeCodeExtractor(
       }
       entry.page_start = pageStart;
     }
+    const rawFallback = readJsonlRawFallback(persisted?.state);
+    if (
+      rawFallback !== undefined &&
+      (rawFallback.cluster_start_offset >= entry.offset ||
+        rawFallback.next_fragment === 0 ||
+        entry.source === undefined ||
+        rawFallback.group_generation > entry.source.generation)
+    ) {
+      throw new TypeError(
+        "capture checkpoint jsonl_raw_fallback state is invalid",
+      );
+    }
+    if (rawFallback !== undefined) entry.raw_fallback = rawFallback;
     if (
       inflightSource !== undefined &&
       (entry.source === undefined ||
@@ -699,6 +798,9 @@ export async function startClaudeCodeExtractor(
           ? { jsonl_inflight_source: inflightSource }
           : {}),
         ...(pageStart !== undefined ? { jsonl_page_start: pageStart } : {}),
+        ...(entry.raw_fallback !== undefined
+          ? { jsonl_raw_fallback: entry.raw_fallback }
+          : {}),
       },
       updated_at: new Date().toISOString(),
     });
@@ -710,6 +812,63 @@ export async function startClaudeCodeExtractor(
     offsetMap.set(path, cached);
   }
 
+  async function appendRawFallbackFragments(
+    path: string,
+    snapshot: JsonlReadSnapshot,
+    throughOffset: number,
+    fallback: JsonlRawFallback,
+    generation: number,
+  ): Promise<number> {
+    return visitJsonlRawFragments(
+      path,
+      snapshot,
+      throughOffset,
+      fallback.next_fragment,
+      async (fragment, fragmentIndex) => {
+        const result = await processExtractorCandidate(
+          {
+            source: `fs:${path}`,
+            timestamp: new Date().toISOString(),
+            content: JSONL_RAW_FRAGMENT_CONTENT_PREFIX + fragment.base64,
+            metadata: {
+              capture_fragment: "oversized_jsonl_cluster",
+              fragment_schema: "jsonl_raw_v1",
+              extractor: "claude_code",
+              encoding: "base64",
+              source_generation: generation,
+              group_generation: fallback.group_generation,
+              fragment_group: captureDedupeKey("claude-code", [
+                "raw-jsonl-fragment-group-v1",
+                path,
+                fallback.group_generation,
+                fallback.cluster_start_offset,
+              ]),
+              cluster_start_offset: fallback.cluster_start_offset,
+              fragment_index: fragmentIndex,
+              byte_start: fragment.start_offset,
+              byte_through: fragment.through_offset,
+              byte_count: fragment.bytes,
+              sha256: fragment.sha256,
+            },
+            dedupe_key: captureDedupeKey("claude-code", [
+              "raw-jsonl-fragment-v1",
+              path,
+              generation,
+              fragment.start_offset,
+              fragment.through_offset,
+              fragment.sha256,
+            ]),
+          },
+          storage,
+          capturePolicy,
+        );
+        if (!result.accepted) {
+          throw new Error(`raw JSONL fragment rejected: ${result.reason}`);
+        }
+      },
+    );
+  }
+
   // Per-file watermark: the highest byte_offset of a dropped-user line we've
   // already logged. Without this, every chokidar `change` event re-walks the
   // unconfirmed tail and re-detects the same drops, spamming warnings.
@@ -719,10 +878,7 @@ export async function startClaudeCodeExtractor(
     path: string,
     durableEntry: ClaudeCodeOffsetEntry,
     sourceAtDurableEntry: JsonlSourceInspection,
-    discontinuity: Exclude<
-      ReturnType<typeof classifyJsonlDiscontinuity>,
-      null
-    >,
+    discontinuity: Exclude<ReturnType<typeof classifyJsonlDiscontinuity>, null>,
     changedInspection: JsonlSourceInspection,
     retryAtDurableBoundary: boolean,
   ): Promise<void> {
@@ -758,6 +914,12 @@ export async function startClaudeCodeExtractor(
         : (boundedPageStart?.turn_index ?? durableEntry.turn_index),
       source: makeJsonlCheckpointSource(current, generation),
     };
+    const retryMetadata = retryAtDurableBoundary
+      ? durableEntry
+      : boundedPageStart;
+    if (retryMetadata?.raw_fallback !== undefined) {
+      retry.raw_fallback = retryMetadata.raw_fallback;
+    }
     await saveCheckpoint(path, retry, current);
     dropWatermark.delete(path);
     log.warn("jsonl_read_retry", {
@@ -799,13 +961,18 @@ export async function startClaudeCodeExtractor(
       sourceAtResume = retryAtDurable
         ? resumeProof.inspection
         : await inspectJsonlSource(path, resetOffset);
-      cur = {
+      const reset: ClaudeCodeOffsetEntry = {
         offset: resetOffset,
         turn_index: retryAtDurable
           ? cur.turn_index
           : (boundedPageStart?.turn_index ?? cur.turn_index),
         source: makeJsonlCheckpointSource(sourceAtResume, generation),
       };
+      const resetMetadata = retryAtDurable ? cur : boundedPageStart;
+      if (resetMetadata?.raw_fallback !== undefined) {
+        reset.raw_fallback = resetMetadata.raw_fallback;
+      }
+      cur = reset;
       // Persist the new generation before emitting anything. If this pass is
       // interrupted, replay uses the same deterministic generation key.
       await saveCheckpoint(path, cur, sourceAtResume);
@@ -826,14 +993,12 @@ export async function startClaudeCodeExtractor(
     // the latest durable boundary by the time control reaches the catch.
     let latestDurableEntry = cur;
     let latestDurableInspection = sourceAtResume;
-    const { turns, newOffset, droppedUsers, readSnapshot } =
+    const { turns, newOffset, droppedUsers, readSnapshot, firstUserOffset } =
       await extractClaudeCodeTurns(path, cur.offset);
     try {
       await assertJsonlSourceSnapshotCurrent(path, sourceAtResume);
       const pageStart: ClaudeCodePageStart | undefined =
-        readSnapshot === undefined
-          ? cur.page_start
-          : { offset: cur.offset, turn_index: cur.turn_index };
+        readSnapshot === undefined ? cur.page_start : claudeCodePageStart(cur);
       const inflightInspection =
         readSnapshot === undefined
           ? undefined
@@ -855,6 +1020,93 @@ export async function startClaudeCodeExtractor(
           latestDurableEntry = offsetMap.get(path) ?? cur;
           latestDurableInspection = durableStartInspection!;
         });
+      }
+      let rawFallback = cur.raw_fallback;
+      if (
+        rawFallback !== undefined &&
+        readSnapshot !== undefined &&
+        firstUserOffset === cur.offset
+      ) {
+        const resumed: ClaudeCodeOffsetEntry = { ...cur };
+        delete resumed.raw_fallback;
+        const resumedInspection = readSnapshot.sourceAt(cur.offset);
+        await withJsonlReadSnapshot(path, readSnapshot, async () => {
+          await saveCheckpoint(
+            path,
+            resumed,
+            resumedInspection,
+            pageStart,
+            inflightInspection,
+          );
+        });
+        cur = resumed;
+        latestDurableEntry = offsetMap.get(path) ?? resumed;
+        latestDurableInspection = resumedInspection;
+        rawFallback = undefined;
+      }
+      const startsRawFallback =
+        rawFallback === undefined &&
+        readSnapshot !== undefined &&
+        newOffset === cur.offset &&
+        readSnapshot.size - cur.offset > MAX_JSONL_READ_BYTES;
+      if (
+        readSnapshot !== undefined &&
+        (rawFallback !== undefined || startsRawFallback)
+      ) {
+        const activeFallback = rawFallback ?? {
+          cluster_start_offset: cur.offset,
+          next_fragment: 0,
+          group_generation: cur.source?.generation ?? 0,
+        };
+        const resumesAtUser =
+          rawFallback !== undefined &&
+          firstUserOffset !== undefined &&
+          firstUserOffset > cur.offset;
+        const throughOffset = resumesAtUser
+          ? firstUserOffset
+          : readSnapshot.through_offset;
+        if (throughOffset > cur.offset) {
+          const rawInspection = readSnapshot.sourceAt(throughOffset);
+          const rawProof = readSnapshot.rangeAt(
+            readSnapshot.first_offset,
+            throughOffset,
+          );
+          let nextFragment = activeFallback.next_fragment;
+          await withJsonlReadSnapshot(path, rawProof, async () => {
+            nextFragment = await appendRawFallbackFragments(
+              path,
+              readSnapshot,
+              throughOffset,
+              activeFallback,
+              cur.source?.generation ?? 0,
+            );
+            const rawCheckpoint: ClaudeCodeOffsetEntry = {
+              ...cur,
+              offset: throughOffset,
+              ...(resumesAtUser
+                ? {}
+                : {
+                    raw_fallback: {
+                      cluster_start_offset: activeFallback.cluster_start_offset,
+                      next_fragment: nextFragment,
+                      group_generation: activeFallback.group_generation,
+                    },
+                  }),
+            };
+            if (resumesAtUser) delete rawCheckpoint.raw_fallback;
+            await saveCheckpoint(path, rawCheckpoint, rawInspection, pageStart);
+            latestDurableEntry = offsetMap.get(path) ?? rawCheckpoint;
+            latestDurableInspection = rawInspection;
+          });
+          log.warn("oversized_cluster_fragmented", {
+            path,
+            cluster_start_offset: activeFallback.cluster_start_offset,
+            through_offset: throughOffset,
+            fragments_written: nextFragment - activeFallback.next_fragment,
+            resumed_at_user: resumesAtUser,
+          });
+          return;
+        }
       }
       const wm = dropWatermark.get(path) ?? -1;
       const fresh = droppedUsers.filter((d) => d.byte_offset > wm);
@@ -1004,15 +1256,13 @@ export async function startClaudeCodeExtractor(
         turn_index: nextTurnIndex - 1,
         source: cur.source,
       };
+      if (cur.raw_fallback !== undefined) {
+        pageCheckpoint.raw_fallback = cur.raw_fallback;
+      }
       const pageInspection =
         readSnapshot?.sourceAt(newOffset) ?? sourceAtResume;
       const persistPage = async () => {
-        await saveCheckpoint(
-          path,
-          pageCheckpoint,
-          pageInspection,
-          pageStart,
-        );
+        await saveCheckpoint(path, pageCheckpoint, pageInspection, pageStart);
         latestDurableEntry = offsetMap.get(path) ?? pageCheckpoint;
         latestDurableInspection = pageInspection;
       };

@@ -87,6 +87,9 @@ function nativeJsonlWatcher(prefix: string): FSWatcher {
 
 /** Maximum unread JSONL bytes materialized by one handler invocation. */
 export const MAX_JSONL_READ_BYTES = 4 * 1024 * 1024;
+export const MAX_JSONL_RAW_FRAGMENT_BYTES = 512 * 1024;
+export const JSONL_RAW_FRAGMENT_CONTENT_PREFIX =
+  "ECHO_CONTEXT_OVERSIZED_JSONL_FRAGMENT_BASE64\n";
 export const MAX_EXTRACTOR_RESOURCE_CACHE_ENTRIES = 1024;
 const JSONL_CHECKPOINT_BOUNDARY_BYTES = 4 * 1024;
 
@@ -123,8 +126,8 @@ export interface JsonlSourceInspection {
 }
 
 /** Bounded proof for the exact unread byte page parsed by an extractor.
- * Content never leaves this module: callers can verify the page and derive a
- * checkpoint boundary, but cannot access or log its raw bytes. */
+ * Callers cannot access raw bytes through this proof. The explicit fragment
+ * visitor below is the sole bounded path for preserving an oversized range. */
 export interface JsonlReadSnapshot {
   identity: string;
   change_token: string;
@@ -138,6 +141,20 @@ export interface JsonlReadSnapshot {
   ) => JsonlSourceInspection;
   /** Derive a proof for a subrange without exposing or copying raw content. */
   rangeAt: (firstOffset: number, throughOffset: number) => JsonlReadSnapshot;
+}
+
+export interface JsonlRawFallback {
+  cluster_start_offset: number;
+  next_fragment: number;
+  group_generation: number;
+}
+
+export interface JsonlRawFragment {
+  start_offset: number;
+  through_offset: number;
+  bytes: number;
+  sha256: string;
+  base64: string;
 }
 
 export type JsonlDiscontinuity =
@@ -456,6 +473,40 @@ export function readJsonlCheckpointSource(
   return parsed;
 }
 
+export function readJsonlRawFallback(
+  state: Record<string, unknown> | undefined,
+  stateKey = "jsonl_raw_fallback",
+): JsonlRawFallback | undefined {
+  const raw = state?.[stateKey];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new TypeError(
+      "capture checkpoint jsonl_raw_fallback state is invalid",
+    );
+  }
+  const value = raw as Record<string, unknown>;
+  const clusterStartOffset = value["cluster_start_offset"];
+  const nextFragment = value["next_fragment"];
+  const groupGeneration = value["group_generation"];
+  if (
+    !Number.isSafeInteger(clusterStartOffset) ||
+    (clusterStartOffset as number) < 0 ||
+    !Number.isSafeInteger(nextFragment) ||
+    (nextFragment as number) < 0 ||
+    !Number.isSafeInteger(groupGeneration) ||
+    (groupGeneration as number) < 0
+  ) {
+    throw new TypeError(
+      "capture checkpoint jsonl_raw_fallback state is invalid",
+    );
+  }
+  return {
+    cluster_start_offset: clusterStartOffset as number,
+    next_fragment: nextFragment as number,
+    group_generation: groupGeneration as number,
+  };
+}
+
 export function classifyJsonlPageProof(
   persisted: JsonlCheckpointSource,
   current: JsonlSourceInspection,
@@ -559,10 +610,7 @@ export async function inspectJsonlCheckpointProof(
         };
   }
 
-  const inflightDiscontinuity = classifyJsonlPageProof(
-    inflightSource,
-    current,
-  );
+  const inflightDiscontinuity = classifyJsonlPageProof(inflightSource, current);
   if (inflightDiscontinuity === null) {
     if (source === undefined) return { status: "current", inspection: current };
     // A matching full-page hash proves every byte of its accepted prefix. Use
@@ -881,12 +929,7 @@ export async function readJsonlTail(
         break;
       }
     }
-    if (lastNewline === -1) {
-      if (unreadLength > MAX_JSONL_READ_BYTES) {
-        throw new RangeError(
-          `JSONL record exceeds ${MAX_JSONL_READ_BYTES} byte read budget at ${jsonlPath}`,
-        );
-      }
+    if (lastNewline === -1 && unreadLength <= MAX_JSONL_READ_BYTES) {
       return {
         lines: [],
         lineEndOffsets: [],
@@ -894,17 +937,26 @@ export async function readJsonlTail(
         mtimeMs,
       };
     }
-
-    const consumableLength = lastNewline + 1;
+    // If no newline fits in one full bounded page, expose an opaque proven
+    // range instead of materialising an unbounded JSON record. A shorter
+    // incomplete tail remains uncheckpointed until its terminating newline
+    // arrives, so a partially written next-user record is never consumed raw.
+    const consumableLength =
+      lastNewline === -1 ? unreadReadLength : lastNewline + 1;
     const consumable = buffer.subarray(
       prefixLength,
       prefixLength + consumableLength,
     );
-    const lines = consumable.toString("utf8").slice(0, -1).split("\n");
+    const lines =
+      lastNewline === -1
+        ? []
+        : consumable.toString("utf8").slice(0, -1).split("\n");
     const lineEndOffsets: number[] = [];
-    for (let index = 0; index <= lastNewline; index += 1) {
-      if (consumable[index] === 0x0a) {
-        lineEndOffsets.push(lastByteOffset + index + 1);
+    if (lastNewline !== -1) {
+      for (let index = 0; index <= lastNewline; index += 1) {
+        if (consumable[index] === 0x0a) {
+          lineEndOffsets.push(lastByteOffset + index + 1);
+        }
       }
     }
     const throughOffset = lastByteOffset + consumableLength;
@@ -1012,6 +1064,79 @@ export async function withJsonlReadSnapshot<T>(
     await assertJsonlReadSnapshotCurrent(jsonlPath, snapshot);
     throw err;
   }
+}
+
+/** Visit exact bounded source fragments without ever retaining more than one
+ * fragment in memory. Every visitor call is wrapped by the fragment's source
+ * proof, so a rewrite wins over a concurrent append/checkpoint operation. */
+export async function visitJsonlRawFragments(
+  jsonlPath: string,
+  snapshot: JsonlReadSnapshot,
+  throughOffset: number,
+  startIndex: number,
+  visit: (fragment: JsonlRawFragment, index: number) => Promise<void>,
+): Promise<number> {
+  if (
+    !Number.isSafeInteger(throughOffset) ||
+    throughOffset < snapshot.first_offset ||
+    throughOffset > snapshot.through_offset ||
+    !Number.isSafeInteger(startIndex) ||
+    startIndex < 0
+  ) {
+    throw new RangeError("raw JSONL fragment range is outside its page proof");
+  }
+  const fragmentCount = Math.ceil(
+    (throughOffset - snapshot.first_offset) / MAX_JSONL_RAW_FRAGMENT_BYTES,
+  );
+  if (startIndex > Number.MAX_SAFE_INTEGER - fragmentCount) {
+    throw new RangeError("raw JSONL fragment index exceeds safe integer range");
+  }
+  let offset = snapshot.first_offset;
+  let index = startIndex;
+  while (offset < throughOffset) {
+    const end = Math.min(throughOffset, offset + MAX_JSONL_RAW_FRAGMENT_BYTES);
+    const proof = snapshot.rangeAt(offset, end);
+    await withJsonlReadSnapshot(jsonlPath, proof, async () => {
+      const fh = await open(jsonlPath, "r");
+      try {
+        const buffer = Buffer.alloc(end - offset);
+        let bytesRead = 0;
+        while (bytesRead < buffer.length) {
+          const result = await fh.read(
+            buffer,
+            bytesRead,
+            buffer.length - bytesRead,
+            offset + bytesRead,
+          );
+          if (result.bytesRead === 0) break;
+          bytesRead += result.bytesRead;
+        }
+        if (bytesRead !== buffer.length) {
+          throw new JsonlSourceChangedError(jsonlPath);
+        }
+        const digest = createHash("sha256").update(buffer).digest("hex");
+        if (digest !== proof.page_sha256) {
+          throw new JsonlSourceChangedError(jsonlPath);
+        }
+        await assertJsonlReadSnapshotCurrent(jsonlPath, proof);
+        await visit(
+          {
+            start_offset: offset,
+            through_offset: end,
+            bytes: buffer.length,
+            sha256: digest,
+            base64: buffer.toString("base64"),
+          },
+          index,
+        );
+      } finally {
+        await fh.close();
+      }
+    });
+    offset = end;
+    index += 1;
+  }
+  return index;
 }
 
 /** Wire up a native watcher + serialised processing queue + boot scan for a

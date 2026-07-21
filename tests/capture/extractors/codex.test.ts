@@ -14,7 +14,11 @@ import {
   startCodexExtractor,
   type CodexExtractorHandle,
 } from "../../../src/capture/extractors/codex.js";
-import { JsonlSourceChangedError } from "../../../src/capture/extractors/_shared.js";
+import {
+  JSONL_RAW_FRAGMENT_CONTENT_PREFIX,
+  JsonlSourceChangedError,
+  MAX_JSONL_READ_BYTES,
+} from "../../../src/capture/extractors/_shared.js";
 import type { CaptureEvent, EventId } from "../../../src/storage/interface.js";
 import { MemoryStorage } from "../../../src/storage/memory.js";
 import {
@@ -29,6 +33,7 @@ import {
   writeJsonl,
 } from "../../fixtures/jsonl.js";
 import { captureStdout } from "../../fixtures/stdout.js";
+import { expectExactRawJsonlFragments } from "../../fixtures/raw-jsonl-fragments.js";
 
 /** Storage whose append throws once for the event whose content contains the
  *  marker — simulates a mid-batch storage failure inside handleJsonlChange. */
@@ -415,19 +420,45 @@ describe("extractCodexTurns (pure)", () => {
   });
 
   it("does not emit a turn for a trailing user with no assistant", async () => {
-    writeJsonl(path, [sessionMeta(), userMsg("hi")]);
+    const meta = sessionMeta();
+    writeJsonl(path, [meta, userMsg("hi")]);
     const r = await extractCodexTurns(path, 0);
     expect(r.turns).toHaveLength(0);
-    // Pending cluster — offset MUST stay before the user line so the next
-    // pass re-reads it once an assistant arrives.
-    expect(r.newOffset).toBe(0);
+    // Metadata is durable, while the pending user remains unread for restart.
+    expect(r.newOffset).toBe(Buffer.byteLength(`${JSON.stringify(meta)}\n`));
   });
 
   it("does not emit even after assistant arrives — cluster only closes on next user", async () => {
-    writeJsonl(path, [sessionMeta(), userMsg("hi"), assistantMsg("hello")]);
+    const meta = sessionMeta();
+    writeJsonl(path, [meta, userMsg("hi"), assistantMsg("hello")]);
     const r = await extractCodexTurns(path, 0);
     expect(r.turns).toHaveLength(0);
-    expect(r.newOffset).toBe(0);
+    expect(r.newOffset).toBe(Buffer.byteLength(`${JSON.stringify(meta)}\n`));
+  });
+
+  it("stops at a bounded page when one logical cluster exceeds the budget", async () => {
+    const huge = "x".repeat(1_500_000);
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("oversized question"),
+      assistantMsg(huge),
+      assistantMsg(huge),
+      assistantMsg(huge),
+      taskComplete(),
+      userMsg("bounded question"),
+      assistantMsg("bounded answer"),
+      taskComplete(),
+    ]);
+
+    const prefix = await extractCodexTurns(path, 0);
+    const result = await extractCodexTurns(path, prefix.newOffset);
+
+    expect(result.turns).toEqual([]);
+    expect(result.newOffset).toBe(prefix.newOffset);
+    expect(result.firstUserOffset).toBe(prefix.newOffset);
+    expect(
+      result.readSnapshot!.through_offset - result.readSnapshot!.first_offset,
+    ).toBeLessThanOrEqual(MAX_JSONL_READ_BYTES);
   });
 
   it("emits the first cluster as a turn once a SECOND user arrives", async () => {
@@ -621,7 +652,7 @@ describe("extractCodexTurns (pure)", () => {
     const appended = `\n${assistant2}\n\n${closingUser}\n`;
     appendFileSync(path, appended);
     const expectedSecondOffset =
-      Buffer.byteLength(initial) + Buffer.byteLength(`\n${assistant2}\n`);
+      Buffer.byteLength(initial) + Buffer.byteLength(`\n${assistant2}\n\n`);
 
     const second = await extractCodexTurns(path, first.newOffset);
     expect(second.turns.map((turn) => turn.user_message)).toEqual(["q2"]);
@@ -1043,6 +1074,254 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
     expect(events[0]!.content).toBe("USER: q1\n\nASSISTANT: a1");
   });
 
+  it("preserves an oversized multi-line cluster exactly across a crash and restart", async () => {
+    const huge = "x".repeat(1_500_000);
+    const metadataBytes = Buffer.from(`${JSON.stringify(sessionMeta())}\n`);
+    const oversizedBytes = Buffer.from(
+      [
+        userMsg("oversized question"),
+        assistantMsg(huge),
+        assistantMsg(huge),
+        assistantMsg(huge),
+        taskComplete(),
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n",
+    );
+    const boundedUserBytes = Buffer.from(
+      `${JSON.stringify(userMsg("bounded question"))}\n`,
+    );
+    const boundedRestBytes = Buffer.from(
+      [assistantMsg("bounded answer"), taskComplete()]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n",
+    );
+    const boundedBytes = Buffer.concat([boundedUserBytes, boundedRestBytes]);
+    const continuationBytes = Buffer.from(
+      `${JSON.stringify(assistantMsg("oversized continuation"))}\n`,
+    );
+    expect(oversizedBytes.byteLength).toBeGreaterThan(MAX_JSONL_READ_BYTES);
+    const sourceBeforeBoundary = Buffer.concat([metadataBytes, oversizedBytes]);
+    const completedOversizedBytes = Buffer.concat([
+      oversizedBytes,
+      continuationBytes,
+    ]);
+    const source = Buffer.concat([
+      sourceBeforeBoundary,
+      continuationBytes,
+      boundedBytes,
+    ]);
+    writeFileSync(path, sourceBeforeBoundary);
+
+    const flaky = new AppendThenFailStorage(JSONL_RAW_FRAGMENT_CONTENT_PREFIX);
+    storage = flaky;
+    handle = await startCodexExtractor(flaky, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth().state).toBe("unhealthy");
+    const crashed = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    const firstFragment = crashed.find(
+      (event) =>
+        event.metadata?.["capture_fragment"] === "oversized_jsonl_cluster",
+    );
+    expect(firstFragment).toBeDefined();
+
+    await handle.stop();
+    handle = null;
+    flaky.allowCheckpoints();
+    handle = await startCodexExtractor(flaky, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+
+    const activeEvents = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    const raw = expectExactRawJsonlFragments({
+      events: activeEvents,
+      expected: oversizedBytes,
+      expectedExtractor: "codex",
+      expectedStart: metadataBytes.byteLength,
+    });
+    expect(raw.ids.filter((id) => id === firstFragment!.id)).toHaveLength(1);
+    const activeCheckpoint = await flaky.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(activeCheckpoint?.position).toBe(sourceBeforeBoundary.byteLength);
+    expect(activeCheckpoint?.state).toHaveProperty("jsonl_raw_fallback");
+
+    const idsBeforeBoundaryRestart = activeEvents
+      .map((event) => event.id)
+      .sort();
+    await handle.stop();
+    handle = null;
+    handle = await startCodexExtractor(flaky, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const boundaryRestarted = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expect(boundaryRestarted.map((event) => event.id).sort()).toEqual(
+      idsBeforeBoundaryRestart,
+    );
+    const boundaryRestartedCheckpoint = await flaky.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(boundaryRestartedCheckpoint?.state["jsonl_raw_fallback"]).toEqual(
+      activeCheckpoint?.state["jsonl_raw_fallback"],
+    );
+
+    const partialUserLength = Math.floor(boundedUserBytes.byteLength / 2);
+    appendFileSync(
+      path,
+      Buffer.concat([
+        continuationBytes,
+        boundedUserBytes.subarray(0, partialUserLength),
+      ]),
+    );
+    const partialCheckpointPosition =
+      sourceBeforeBoundary.byteLength + continuationBytes.byteLength;
+    await waitFor(async () => {
+      const checkpoint = await flaky.getCaptureCheckpoint({
+        extractor: "codex",
+        resource: path,
+      });
+      return checkpoint?.position === partialCheckpointPosition;
+    });
+    const partialCheckpoint = await flaky.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(partialCheckpoint?.state).toHaveProperty("jsonl_raw_fallback");
+    expect(
+      (await flaky.query({ source: `fs:${path}`, limit: 500 })).some((event) =>
+        event.content.includes("bounded question"),
+      ),
+    ).toBe(false);
+
+    appendFileSync(
+      path,
+      Buffer.concat([
+        boundedUserBytes.subarray(partialUserLength),
+        boundedRestBytes,
+      ]),
+    );
+    await waitFor(async () => {
+      const checkpoint = await flaky.getCaptureCheckpoint({
+        extractor: "codex",
+        resource: path,
+      });
+      return checkpoint?.position === source.byteLength;
+    });
+    const events = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expectExactRawJsonlFragments({
+      events,
+      expected: completedOversizedBytes,
+      expectedExtractor: "codex",
+      expectedStart: metadataBytes.byteLength,
+    });
+    const semantic = events.filter(
+      (event) =>
+        event.content === "USER: bounded question\n\nASSISTANT: bounded answer",
+    );
+    expect(semantic).toHaveLength(1);
+    expect(semantic[0]?.metadata?.["turn_index"]).toBe(0);
+    const checkpoint = await flaky.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(checkpoint?.position).toBe(source.byteLength);
+    expect(checkpoint?.state).not.toHaveProperty("jsonl_raw_fallback");
+
+    const idsBeforeCleanRestart = events.map((event) => event.id).sort();
+    await handle.stop();
+    handle = null;
+    handle = await startCodexExtractor(flaky, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const restarted = await flaky.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expect(restarted.map((event) => event.id).sort()).toEqual(
+      idsBeforeCleanRestart,
+    );
+  }, 20_000);
+
+  it("preserves one JSONL record larger than a read page before resuming turns", async () => {
+    const oversizedRecord = Buffer.from(
+      `${JSON.stringify({
+        type: "unsupported",
+        payload: "z".repeat(MAX_JSONL_READ_BYTES + 1024),
+      })}\n`,
+    );
+    const boundedBytes = Buffer.from(
+      [
+        userMsg("after giant record"),
+        assistantMsg("still captured"),
+        taskComplete(),
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n",
+    );
+    expect(oversizedRecord.byteLength).toBeGreaterThan(MAX_JSONL_READ_BYTES);
+    const source = Buffer.concat([oversizedRecord, boundedBytes]);
+    writeFileSync(path, source);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(handle.getHealth()).toMatchObject({
+      state: "healthy",
+      errorCount: 0,
+    });
+    const events = await storage.query({
+      source: `fs:${path}`,
+      order: "asc",
+      limit: 500,
+    });
+    expectExactRawJsonlFragments({
+      events,
+      expected: oversizedRecord,
+      expectedExtractor: "codex",
+      expectedStart: 0,
+    });
+    expect(
+      events.filter(
+        (event) =>
+          event.content ===
+          "USER: after giant record\n\nASSISTANT: still captured",
+      ),
+    ).toHaveLength(1);
+    const checkpoint = await storage.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(checkpoint?.position).toBe(source.byteLength);
+    expect(checkpoint?.state).not.toHaveProperty("jsonl_raw_fallback");
+  }, 20_000);
+
   it("seeds source identity for a migrated offset-only checkpoint at EOF without replay", async () => {
     writeJsonl(path, [
       sessionMeta(),
@@ -1219,9 +1498,7 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
     );
     expect(first).toHaveLength(1);
     expect(
-      events.some(
-        (event) => event.content === "USER: OLD2\n\nASSISTANT: a2",
-      ),
+      events.some((event) => event.content === "USER: OLD2\n\nASSISTANT: a2"),
     ).toBe(false);
     const firstOffset = (first[0]!.metadata as Record<string, unknown>)[
       "byte_offset"
@@ -1433,9 +1710,7 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
         extractor: "codex",
         resource: path,
       });
-      return (
-        hasNew && checkpoint?.state["jsonl_inflight_source"] === undefined
-      );
+      return hasNew && checkpoint?.state["jsonl_inflight_source"] === undefined;
     });
     const checkpointAfter = await storage.getCaptureCheckpoint({
       extractor: "codex",
