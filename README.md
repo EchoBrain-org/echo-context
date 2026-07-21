@@ -29,6 +29,21 @@ Defaults:
 The HTTP server refuses non-loopback binds. Runtime configuration is isolated
 under `ECHO_CONTEXT_*`; it does not inherit Project_echo product secrets.
 
+## Adapter incubation boundary
+
+The context-adapter registry is the single composition point for observational
+source integrations. Every bundled adapter has a stable identity and a
+normalization registration; live capture is a separate, optional capability.
+Codex and Claude Code currently provide both. Cursor, Git, and Granola remain
+normalization-only registrations, so historical data stays readable without
+silently activating provider access or background work.
+
+The runtime starts enabled capture registrations sequentially and stops them in
+reverse order. Adding an incubating source here does not make it an Echo Brain
+operational adapter: this package owns only capture, normalization, storage, and
+retrieval. Product actions, credentials, coordination, and client-facing
+capability selection remain outside this boundary.
+
 ## Build and package
 
 Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. Run the source gates,

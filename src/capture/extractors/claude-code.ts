@@ -47,6 +47,7 @@ const log = createLogger("capture.claude-code");
 
 const HOME = homedir();
 const DEFAULT_PROJECTS_PREFIX = `${HOME}/.claude/projects/`;
+export const CLAUDE_CODE_CHECKPOINT_NAMESPACE = "claude_code";
 
 export interface ClaudeCodeTurn {
   project: string;
@@ -692,7 +693,7 @@ export async function startClaudeCodeExtractor(
     const cached = offsetMap.get(path);
     if (cached !== undefined) return cached;
     const persisted = await storage.getCaptureCheckpoint({
-      extractor: "claude_code",
+      extractor: CLAUDE_CODE_CHECKPOINT_NAMESPACE,
       resource: path,
     });
     const entry: ClaudeCodeOffsetEntry = {
@@ -788,7 +789,7 @@ export async function startClaudeCodeExtractor(
             entry.source?.generation ?? 0,
           );
     await storage.upsertCaptureCheckpoint({
-      extractor: "claude_code",
+      extractor: CLAUDE_CODE_CHECKPOINT_NAMESPACE,
       resource: path,
       position: entry.offset,
       ...(entry.turn_index >= 0 ? { ordinal: entry.turn_index } : {}),
@@ -833,7 +834,7 @@ export async function startClaudeCodeExtractor(
             metadata: {
               capture_fragment: "oversized_jsonl_cluster",
               fragment_schema: "jsonl_raw_v1",
-              extractor: "claude_code",
+              extractor: CLAUDE_CODE_CHECKPOINT_NAMESPACE,
               encoding: "base64",
               source_generation: generation,
               group_generation: fallback.group_generation,

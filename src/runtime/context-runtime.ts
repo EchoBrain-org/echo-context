@@ -1,11 +1,9 @@
 import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { startClaudeCodeExtractor } from '../capture/extractors/claude-code.js';
-import { startCodexExtractor } from '../capture/extractors/codex.js';
-import type {
-  ExtractorHandle,
-  ExtractorHealth,
-} from '../capture/extractors/_shared.js';
+import {
+  captureAdapterStatus,
+  createCaptureAdapterRegistrations,
+} from '../context-adapters/registry.js';
 import { createLogger } from '../logging/index.js';
 import { startMcpServer, type McpServerHandle } from '../mcp/server.js';
 import { SqliteStorage } from '../storage/sqlite.js';
@@ -25,6 +23,7 @@ import {
   databaseIdentityDigest,
 } from './artifact-identity.js';
 import { verifyPromotionReceipt } from './promotion-receipt.js';
+import { createCaptureAdapterRunner } from './capture-adapter-runner.js';
 
 const log = createLogger('runtime.context');
 
@@ -33,10 +32,6 @@ export interface ContextRuntimeHandle {
   health: () => HealthSnapshot;
   mcp: McpServerHandle;
   stop: () => Promise<void>;
-}
-
-function withTrailingSlash(path: string): string {
-  return path.endsWith('/') ? path : `${path}/`;
 }
 
 async function settleStop(name: string, stop: () => Promise<void>): Promise<void> {
@@ -110,78 +105,24 @@ export async function startContextRuntime(
   health.setComponent('runtime', 'starting', {
     details: runtimeDetails,
   });
+  const captureRunner = createCaptureAdapterRunner(
+    createCaptureAdapterRegistrations(config.capture),
+    {
+      onStopError: (name, err) => {
+        log.error('component_stop_failed', {
+          name,
+          message: (err as Error).message,
+        });
+      },
+    },
+  );
   let storage: SqliteStorage | undefined;
   let databaseAuthority: DatabaseAuthorityLock | undefined;
   let mcp: McpServerHandle | undefined;
-  let codex: ExtractorHandle | undefined;
-  let claude: ExtractorHandle | undefined;
   let stopped = false;
-  let startupUnhealthy = false;
 
   function observedHealth(): HealthSnapshot {
-    const snapshot = health.snapshot();
-    const observed: Array<[string, { getHealth?: () => ExtractorHealth } | undefined]> = [
-      ['codex', codex],
-      ['claude_code', claude],
-    ];
-    let observedStatus = snapshot.status;
-    for (const [name, handle] of observed) {
-      const adapter = handle?.getHealth?.();
-      if (adapter === undefined) continue;
-      const componentStatus =
-        adapter.state === 'stopped'
-          ? snapshot.status === 'stopping'
-            ? 'stopping'
-            : 'unhealthy'
-          : adapter.state;
-      snapshot.components[name] = {
-        status: componentStatus,
-        updated_at: new Date().toISOString(),
-        ...(adapter.lastError !== null ? { message: adapter.lastError } : {}),
-        details: {
-          queueDepth: adapter.queueDepth,
-          overflowCount: adapter.overflowCount,
-          reconciliationPending: adapter.reconciliationPending,
-          errorCount: adapter.errorCount,
-          ...(adapter.sourceStatus !== undefined
-            ? { sourceStatus: adapter.sourceStatus }
-            : {}),
-        },
-      };
-      if (snapshot.status === 'healthy') {
-        if (componentStatus === 'unhealthy') observedStatus = 'unhealthy';
-        else if (
-          observedStatus !== 'unhealthy' &&
-          (componentStatus === 'starting' || componentStatus === 'catching_up')
-        ) {
-          observedStatus = 'catching_up';
-        }
-      }
-    }
-    snapshot.status = observedStatus;
-    return snapshot;
-  }
-
-  async function startJsonlAdapter(
-    name: 'codex' | 'claude_code',
-    start: () => Promise<ExtractorHandle>,
-  ): Promise<ExtractorHandle> {
-    health.transition('catching_up');
-    health.setComponent(name, 'starting');
-    const handle = await start();
-    health.setComponent(name, 'catching_up');
-    await handle.initialCatchUp;
-    const adapterHealth = handle.getHealth();
-    const componentStatus =
-      adapterHealth.state === 'stopped' ? 'unhealthy' : adapterHealth.state;
-    if (componentStatus === 'unhealthy') startupUnhealthy = true;
-    health.setComponent(
-      name,
-      componentStatus,
-      adapterHealth.lastError ??
-        `queued=${adapterHealth.queueDepth}; overflow=${adapterHealth.overflowCount}`,
-    );
-    return handle;
+    return captureRunner.observe(health.snapshot());
   }
 
   try {
@@ -196,25 +137,7 @@ export async function startContextRuntime(
     });
     health.setComponent('mcp', 'healthy');
 
-    if (config.capture.codex) {
-      codex = await startJsonlAdapter('codex', () =>
-        startCodexExtractor(startupStorage, {
-          sessionsPrefix: withTrailingSlash(config.capture.codexSessionsDir),
-        }),
-      );
-    } else {
-      health.setComponent('codex', 'healthy', 'disabled');
-    }
-
-    if (config.capture.claudeCode) {
-      claude = await startJsonlAdapter('claude_code', () =>
-        startClaudeCodeExtractor(startupStorage, {
-          projectsPrefix: withTrailingSlash(config.capture.claudeProjectsDir),
-        }),
-      );
-    } else {
-      health.setComponent('claude_code', 'healthy', 'disabled');
-    }
+    const startupUnhealthy = await captureRunner.start(startupStorage, health);
 
     health.setComponent('runtime', startupUnhealthy ? 'unhealthy' : 'healthy', {
       details: runtimeDetails,
@@ -224,8 +147,7 @@ export async function startContextRuntime(
     health.transition('unhealthy');
     health.setComponent('startup', 'unhealthy', (err as Error).message);
     await Promise.all([
-      ...(claude !== undefined ? [settleStop('claude_code', claude.stop)] : []),
-      ...(codex !== undefined ? [settleStop('codex', codex.stop)] : []),
+      captureRunner.stop(),
       ...(mcp !== undefined ? [settleStop('mcp', mcp.stop)] : []),
     ]);
     storage?.close();
@@ -254,8 +176,7 @@ export async function startContextRuntime(
       if (stopped) return;
       stopped = true;
       health.transition('stopping');
-      if (claude !== undefined) await settleStop('claude_code', claude.stop);
-      if (codex !== undefined) await settleStop('codex', codex.stop);
+      await captureRunner.stop();
       await settleStop('mcp', runningMcp.stop);
       runningStorage.close();
       databaseAuthority?.release();
@@ -270,10 +191,7 @@ export async function runContextDaemon(config: ContextRuntimeConfig): Promise<vo
   log.info('ready', {
     url: runtime.mcp.url,
     db_path: config.dbPath,
-    capture: {
-      codex: config.capture.codex,
-      claude_code: config.capture.claudeCode,
-    },
+    capture: captureAdapterStatus(config.capture),
   });
 
   await new Promise<void>((resolve) => {

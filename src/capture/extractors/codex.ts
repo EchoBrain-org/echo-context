@@ -47,6 +47,7 @@ const log = createLogger("capture.codex");
 
 const HOME = homedir();
 const DEFAULT_SESSIONS_PREFIX = `${HOME}/.codex/sessions/`;
+export const CODEX_CHECKPOINT_NAMESPACE = "codex";
 
 export interface CodexGitMeta {
   sha?: string;
@@ -907,7 +908,7 @@ export async function startCodexExtractor(
     const cached = offsetMap.get(path);
     if (cached !== undefined) return cached;
     const persisted = await storage.getCaptureCheckpoint({
-      extractor: "codex",
+      extractor: CODEX_CHECKPOINT_NAMESPACE,
       resource: path,
     });
     const entry: OffsetEntry = {
@@ -1022,7 +1023,7 @@ export async function startCodexExtractor(
       state["jsonl_raw_fallback"] = entry.raw_fallback;
     }
     await storage.upsertCaptureCheckpoint({
-      extractor: "codex",
+      extractor: CODEX_CHECKPOINT_NAMESPACE,
       resource: path,
       position: entry.offset,
       ...(entry.turn_index >= 0 ? { ordinal: entry.turn_index } : {}),
@@ -1058,7 +1059,7 @@ export async function startCodexExtractor(
             metadata: {
               capture_fragment: "oversized_jsonl_cluster",
               fragment_schema: "jsonl_raw_v1",
-              extractor: "codex",
+              extractor: CODEX_CHECKPOINT_NAMESPACE,
               encoding: "base64",
               source_generation: generation,
               group_generation: fallback.group_generation,
