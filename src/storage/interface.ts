@@ -18,11 +18,10 @@ export interface AppendOptions {
 /** Durable capture progress for one extractor-owned resource partition.
  *
  * `resource` is the concrete source path/identifier consumed by an extractor.
- * Most file extractors use the default empty partition; Cursor uses one
- * partition per composer within its shared global database. Numeric progress
- * fields are intentionally generic so the same substrate can represent byte
- * offsets, turn ordinals, and source mtimes without coupling storage to an
- * extractor implementation. */
+ * Current file extractors use the default empty partition. Migrated legacy
+ * Cursor checkpoints retain one partition per composer from the former shared
+ * global database. Numeric progress fields remain generic so the same storage
+ * substrate can represent byte offsets, turn ordinals, and source mtimes. */
 export interface CaptureCheckpoint {
   extractor: string;
   resource: string;
@@ -86,22 +85,19 @@ export interface QueryFilter {
   // silently dropped the newest. Pass 'asc' explicitly when downstream logic
   // needs oldest-first (e.g., turn-pair reconstruction).
   order?: 'asc' | 'desc';
-  // Exclude rows whose metadata.surface is in this list. Used by the trace
-  // tool to drop raw fs-watcher change events (`surface: 'fs'`) that the
-  // normalizer throws away — they otherwise dominate storage's newest-N and
-  // starve real conversation/git atoms out of the trace input.
+  // Exclude rows whose metadata.surface is in this list. Retrieval uses this
+  // to drop historical raw filesystem notifications (`surface: 'fs'`) that
+  // normalization intentionally ignores; they otherwise dominate newest-N
+  // scans and starve conversation/git atoms from the result window.
   exclude_metadata_surface?: string[];
   // Restrict rows to those whose JSON metadata matches the given key→value
   // pairs using string equality; each entry implies an AND clause. Mirrors
   // `exclude_metadata_surface` (set-membership on a single key); this is
-  // general key/value equality across N keys. Empty `{}` is a no-op
-  // (treated as if omitted). Item 035's only consumer is `tail_session`'s
-  // repo-scoping path, where `composer_id` restricts the cursor `.vscdb`
-  // tail to a specific workspace's composer. To prevent caller-supplied
-  // keys from probing arbitrary metadata fields, the storage layer
-  // enforces a whitelist — see METADATA_MATCH_KEY_WHITELIST. Any key
-  // outside the whitelist causes the query to throw at the storage seam
-  // (defense in depth — independent of any MCP-tool-level validation).
+  // general key/value equality across N keys. Empty `{}` is a no-op (treated
+  // as if omitted). `repo_root` supports current repo-scoped retrieval;
+  // workspace, composer, and session keys remain readable for stored
+  // compatibility. The storage layer enforces a whitelist so callers cannot
+  // probe arbitrary metadata fields; see METADATA_MATCH_KEY_WHITELIST.
   metadata_match?: Record<string, string>;
   // Composite-key cursor pagination boundary: returns rows strictly older than
   // (timestamp, id) under the storage `(timestamp DESC, id DESC)` ordering.
@@ -119,10 +115,9 @@ export interface QueryFilter {
 // Whitelist of metadata keys callers may reach via `QueryFilter.metadata_match`.
 // Enforced inside both storage adapters (SQLite + Memory) so adding a future
 // MCP tool that forwards `metadata_match` cannot accidentally probe arbitrary
-// JSON paths. Adding a key here is a deliberate decision — current consumers
-// are tail_session's repo-scoping (composer_id) + integration test helpers
-// (workspace_id, session_id) + item 037's work-artifact (repo) scoping across
-// all four retrieval tools (repo_root).
+// JSON paths. Adding a key here is a deliberate decision. `repo_root` serves
+// current retrieval; the other keys preserve stored-data compatibility and
+// bounded integration seams.
 export const METADATA_MATCH_KEY_WHITELIST: ReadonlySet<string> = new Set([
   'workspace_id',
   'composer_id',

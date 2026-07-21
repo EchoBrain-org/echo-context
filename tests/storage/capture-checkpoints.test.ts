@@ -423,7 +423,7 @@ describe("capture checkpoint migration", () => {
     unchanged.close();
   });
 
-  it("additively backfills latest Claude, Codex, and Cursor progress without changing events", async () => {
+  it("additively backfills current Claude/Codex and legacy Cursor progress without changing events", async () => {
     const dbPath = join(dir, "echo.db");
     const legacy = new Database(dbPath);
     legacy.exec(readFileSync(INITIAL_MIGRATION, "utf8"));

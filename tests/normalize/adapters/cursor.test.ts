@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEvent } from '../../../src/normalize/index.js';
+import { normalizeEvent } from '../../../src/context-adapters/normalization.js';
 import { cursorFixture, cursorFixtureNoContext } from '../fixtures/cursor.js';
 
 describe('cursor adapter', () => {

@@ -247,8 +247,7 @@ async function pollOnce(
   since: string,
   normalisedRepoPath: string | null,
 ): Promise<PollPage> {
-  // Item 038 / AC5: route the fs-watcher exclusion through the shared helper
-  // so a re-hardcoded inline literal is caught by the CI grep-scan.
+  // Reuse the historical raw-fs exclusion applied by all retrieval paths.
   const filterCommon: Pick<
     QueryFilter,
     'since' | 'limit' | 'exclude_metadata_surface' | 'metadata_match'

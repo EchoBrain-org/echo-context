@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEvent } from '../../../src/normalize/index.js';
+import { normalizeEvent } from '../../../src/context-adapters/normalization.js';
 import type { CaptureEvent } from '../../../src/storage/interface.js';
 
 const granolaSummaryFixture: CaptureEvent = {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type {
   ExtractorHandle,
   ExtractorHealth,
-} from '../../src/capture/extractors/_shared.js';
+} from '../../src/capture/contracts.js';
 import type { CaptureAdapterRegistration } from '../../src/context-adapters/contracts.js';
 import { createCaptureAdapterRunner } from '../../src/runtime/capture-adapter-runner.js';
 import { HealthTracker } from '../../src/runtime/health.js';

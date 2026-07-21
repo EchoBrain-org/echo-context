@@ -10,6 +10,7 @@ import {
   processExtractorCandidate,
 } from "../pipeline.js";
 import { resolveCanonicalRoot } from "../workspace-root.js";
+import { CODEX_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 import {
   assertJsonlReadSnapshotCurrent,
   assertJsonlSourceSnapshotCurrent,
@@ -47,7 +48,7 @@ const log = createLogger("capture.codex");
 
 const HOME = homedir();
 const DEFAULT_SESSIONS_PREFIX = `${HOME}/.codex/sessions/`;
-export const CODEX_CHECKPOINT_NAMESPACE = "codex";
+export { CODEX_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 
 export interface CodexGitMeta {
   sha?: string;
@@ -1420,9 +1421,8 @@ export async function startCodexExtractor(
         } else {
           log.warn("candidate_rejected", { reason: result.reason, path });
         }
-        // Checkpoint per processed turn (cursor.ts's per-turn lastSeenMap.set is
-        // the in-tree precedent): a mid-batch throw on a later turn then resumes
-        // AFTER this one instead of durably re-appending it on every poll tick.
+        // Checkpoint each processed turn so a later mid-batch failure resumes
+        // after durable work instead of replaying the whole batch.
         const checkpoint: OffsetEntry = {
           offset: turn.byte_offset,
           turn_index: nextTurnIndex - 1,

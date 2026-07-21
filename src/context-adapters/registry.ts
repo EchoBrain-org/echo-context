@@ -1,11 +1,7 @@
 import {
   CLAUDE_CODE_CHECKPOINT_NAMESPACE,
-  startClaudeCodeExtractor,
-} from '../capture/extractors/claude-code.js';
-import {
   CODEX_CHECKPOINT_NAMESPACE,
-  startCodexExtractor,
-} from '../capture/extractors/codex.js';
+} from '../capture/checkpoint-namespaces.js';
 import {
   adaptClaudeCode,
   CLAUDE_CODE_VERSION,
@@ -36,15 +32,17 @@ import type { CaptureRuntimeConfig } from '../runtime/config.js';
 import type {
   CaptureAdapterRegistration,
   ContextAdapterDefinition,
+  ContextCaptureDefinition,
 } from './contracts.js';
-
-interface BundledContextAdapterDefinition extends ContextAdapterDefinition {
-  createCapture?: (config: CaptureRuntimeConfig) => CaptureAdapterRegistration;
-}
 
 function withTrailingSlash(path: string): string {
   return path.endsWith('/') ? path : `${path}/`;
 }
+
+type BundledContextAdapterDefinition = ContextAdapterDefinition<CaptureRuntimeConfig>;
+type LiveContextAdapterDefinition = BundledContextAdapterDefinition & {
+  capture: ContextCaptureDefinition<CaptureRuntimeConfig>;
+};
 
 const CLAUDE_CODE_ADAPTER: BundledContextAdapterDefinition = {
   identity: {
@@ -60,17 +58,19 @@ const CLAUDE_CODE_ADAPTER: BundledContextAdapterDefinition = {
   capture: {
     component_id: 'claude_code',
     checkpoint_namespace: CLAUDE_CODE_CHECKPOINT_NAMESPACE,
+    startup_priority: 20,
+    configure: (config) => ({
+      enabled: config.claudeCode,
+      start: async (storage) => {
+        const { startClaudeCodeExtractor } = await import(
+          '../capture/extractors/claude-code.js'
+        );
+        return startClaudeCodeExtractor(storage, {
+          projectsPrefix: withTrailingSlash(config.claudeProjectsDir),
+        });
+      },
+    }),
   },
-  createCapture: (config) => ({
-    identity: CLAUDE_CODE_ADAPTER.identity,
-    component_id: CLAUDE_CODE_ADAPTER.capture!.component_id,
-    checkpoint_namespace: CLAUDE_CODE_ADAPTER.capture!.checkpoint_namespace,
-    enabled: config.claudeCode,
-    start: (storage) =>
-      startClaudeCodeExtractor(storage, {
-        projectsPrefix: withTrailingSlash(config.claudeProjectsDir),
-      }),
-  }),
 };
 
 const CODEX_ADAPTER: BundledContextAdapterDefinition = {
@@ -87,17 +87,19 @@ const CODEX_ADAPTER: BundledContextAdapterDefinition = {
   capture: {
     component_id: 'codex',
     checkpoint_namespace: CODEX_CHECKPOINT_NAMESPACE,
+    startup_priority: 10,
+    configure: (config) => ({
+      enabled: config.codex,
+      start: async (storage) => {
+        const { startCodexExtractor } = await import(
+          '../capture/extractors/codex.js'
+        );
+        return startCodexExtractor(storage, {
+          sessionsPrefix: withTrailingSlash(config.codexSessionsDir),
+        });
+      },
+    }),
   },
-  createCapture: (config) => ({
-    identity: CODEX_ADAPTER.identity,
-    component_id: CODEX_ADAPTER.capture!.component_id,
-    checkpoint_namespace: CODEX_ADAPTER.capture!.checkpoint_namespace,
-    enabled: config.codex,
-    start: (storage) =>
-      startCodexExtractor(storage, {
-        sessionsPrefix: withTrailingSlash(config.codexSessionsDir),
-      }),
-  }),
 };
 
 const CONTEXT_ADAPTERS: readonly BundledContextAdapterDefinition[] =
@@ -133,14 +135,13 @@ const CONTEXT_ADAPTERS: readonly BundledContextAdapterDefinition[] =
     },
   ]);
 
-const CAPTURE_ORDER = ['codex', 'claude-code'] as const;
-
-export function validateContextAdapterDefinitions(
-  definitions: readonly ContextAdapterDefinition[],
+export function validateContextAdapterDefinitions<Config>(
+  definitions: readonly ContextAdapterDefinition<Config>[],
 ): void {
   const adapterIds = new Set<string>();
   const components = new Set<string>();
   const checkpoints = new Set<string>();
+  const startupPriorities = new Set<number>();
   for (const definition of definitions) {
     const { adapter_id, version } = definition.identity;
     if (adapter_id.length === 0 || version.length === 0) {
@@ -168,6 +169,19 @@ export function validateContextAdapterDefinitions(
         `context adapter capture identity must be non-empty: ${adapter_id}`,
       );
     }
+    if (
+      !Number.isSafeInteger(capture.startup_priority) ||
+      capture.startup_priority < 0
+    ) {
+      throw new Error(
+        `context adapter capture startup priority must be a non-negative safe integer: ${adapter_id}`,
+      );
+    }
+    if (startupPriorities.has(capture.startup_priority)) {
+      throw new Error(
+        `capture startup priority already registered: ${capture.startup_priority}`,
+      );
+    }
     if (components.has(capture.component_id)) {
       throw new Error(
         `capture health component already registered: ${capture.component_id}`,
@@ -180,6 +194,7 @@ export function validateContextAdapterDefinitions(
     }
     components.add(capture.component_id);
     checkpoints.add(capture.checkpoint_namespace);
+    startupPriorities.add(capture.startup_priority);
   }
 }
 
@@ -189,7 +204,17 @@ const NORMALIZATION_ADAPTERS: readonly AdapterRegistration[] = Object.freeze(
   CONTEXT_ADAPTERS.map((definition) => definition.normalization),
 );
 
-export function getContextAdapterRegistry(): readonly ContextAdapterDefinition[] {
+const CAPTURE_ADAPTERS: readonly LiveContextAdapterDefinition[] = Object.freeze(
+  CONTEXT_ADAPTERS.filter(
+    (definition): definition is LiveContextAdapterDefinition =>
+      definition.capture !== undefined,
+  ).sort(
+    (left, right) =>
+      left.capture.startup_priority - right.capture.startup_priority,
+  ),
+);
+
+export function getContextAdapterRegistry(): readonly BundledContextAdapterDefinition[] {
   return CONTEXT_ADAPTERS;
 }
 
@@ -200,27 +225,25 @@ export function getNormalizationAdapterRegistry(): readonly AdapterRegistration[
 export function createCaptureAdapterRegistrations(
   config: CaptureRuntimeConfig,
 ): readonly CaptureAdapterRegistration[] {
-  return CAPTURE_ORDER.map((adapterId) => {
-    const definition = CONTEXT_ADAPTERS.find(
-      (candidate) => candidate.identity.adapter_id === adapterId,
-    );
-    if (
-      definition?.capture === undefined ||
-      definition.createCapture === undefined
-    ) {
-      throw new Error(`capture adapter is not installed: ${adapterId}`);
-    }
-    return definition.createCapture(config);
+  return CAPTURE_ADAPTERS.map((definition) => {
+    const binding = definition.capture.configure(config);
+    return {
+      identity: definition.identity,
+      component_id: definition.capture.component_id,
+      checkpoint_namespace: definition.capture.checkpoint_namespace,
+      enabled: binding.enabled,
+      start: binding.start,
+    };
   });
 }
 
 export function captureAdapterStatus(
-  config: CaptureRuntimeConfig,
-): Record<string, boolean> {
-  return Object.fromEntries(
-    createCaptureAdapterRegistrations(config).map((registration) => [
+  registrations: readonly CaptureAdapterRegistration[],
+): Readonly<Record<string, boolean>> {
+  return Object.freeze(Object.fromEntries(
+    registrations.map((registration) => [
       registration.component_id,
       registration.enabled,
     ]),
-  );
+  ));
 }

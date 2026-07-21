@@ -10,6 +10,7 @@ import {
   processExtractorCandidate,
 } from "../pipeline.js";
 import { resolveCanonicalRoot } from "../workspace-root.js";
+import { CLAUDE_CODE_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 import {
   assertJsonlReadSnapshotCurrent,
   assertJsonlSourceSnapshotCurrent,
@@ -47,7 +48,7 @@ const log = createLogger("capture.claude-code");
 
 const HOME = homedir();
 const DEFAULT_PROJECTS_PREFIX = `${HOME}/.claude/projects/`;
-export const CLAUDE_CODE_CHECKPOINT_NAMESPACE = "claude_code";
+export { CLAUDE_CODE_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 
 export interface ClaudeCodeTurn {
   project: string;
@@ -1224,9 +1225,8 @@ export async function startClaudeCodeExtractor(
         } else {
           log.warn("candidate_rejected", { reason: result.reason, path });
         }
-        // Checkpoint per processed turn (cursor.ts's per-turn lastSeenMap.set is
-        // the in-tree precedent): a mid-batch throw on a later turn then resumes
-        // AFTER this one instead of durably re-appending it on every poll tick.
+        // Checkpoint each processed turn so a later mid-batch failure resumes
+        // after durable work instead of replaying the whole batch.
         const checkpoint: ClaudeCodeOffsetEntry = {
           offset: turn.byte_offset,
           turn_index: nextTurnIndex - 1,

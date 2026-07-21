@@ -29,6 +29,7 @@ const log = createLogger('runtime.context');
 
 export interface ContextRuntimeHandle {
   config: ContextRuntimeConfig;
+  captureStatus: Readonly<Record<string, boolean>>;
   health: () => HealthSnapshot;
   mcp: McpServerHandle;
   stop: () => Promise<void>;
@@ -89,6 +90,12 @@ export async function startContextRuntime(
     }
     databaseDigest = observed;
   }
+  // Compose provider bindings before acquiring process-owned resources. A
+  // future adapter configuration error must not strand the PID lock.
+  const captureRegistrations = createCaptureAdapterRegistrations(
+    config.capture,
+  );
+  const captureStatus = captureAdapterStatus(captureRegistrations);
   mkdirSync(config.home, { recursive: true, mode: 0o700 });
   mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   chmodSync(config.home, 0o700);
@@ -106,7 +113,7 @@ export async function startContextRuntime(
     details: runtimeDetails,
   });
   const captureRunner = createCaptureAdapterRunner(
-    createCaptureAdapterRegistrations(config.capture),
+    captureRegistrations,
     {
       onStopError: (name, err) => {
         log.error('component_stop_failed', {
@@ -170,6 +177,7 @@ export async function startContextRuntime(
 
   return {
     config,
+    captureStatus,
     mcp: runningMcp,
     health: observedHealth,
     stop: async () => {
@@ -191,7 +199,7 @@ export async function runContextDaemon(config: ContextRuntimeConfig): Promise<vo
   log.info('ready', {
     url: runtime.mcp.url,
     db_path: config.dbPath,
-    capture: captureAdapterStatus(config.capture),
+    capture: runtime.captureStatus,
   });
 
   await new Promise<void>((resolve) => {

@@ -1,7 +1,7 @@
 import type {
   ExtractorHandle,
   ExtractorHealth,
-} from '../capture/extractors/_shared.js';
+} from '../capture/contracts.js';
 import type { CaptureAdapterRegistration } from '../context-adapters/contracts.js';
 import type { Storage } from '../storage/interface.js';
 import { HealthTracker, type HealthSnapshot } from './health.js';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEvent } from '../../src/normalize/index.js';
+import { normalizeEvent } from '../../src/context-adapters/normalization.js';
 import { claudeCodeFixture } from './fixtures/claude-code.js';
 import { codexFixture } from './fixtures/codex.js';
 import { cursorFixture } from './fixtures/cursor.js';

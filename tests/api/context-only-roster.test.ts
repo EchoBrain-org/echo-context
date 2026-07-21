@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { homedir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startMcpServer, type McpServerHandle } from '../../src/mcp/server.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
@@ -67,11 +68,17 @@ describe('AC3 — context-only MCP roster', () => {
 
   it('executes every current context tool through the live server', async () => {
     const storage = new MemoryStorage();
+    const source = `fs:${homedir()}/.codex/sessions/2026/07/21/rollout-current-contract.jsonl`;
     const atomId = await storage.append({
-      source: 'codex:/fixture/repo',
+      source,
       timestamp: '2026-07-21T12:00:00.000Z',
       content: 'USER: alpha work\n\nASSISTANT: current runtime contract',
-      metadata: { repo_root: '/fixture/repo', session_id: 'current-contract', turn_index: 0 },
+      metadata: {
+        cwd: '/fixture/repo',
+        repo_root: '/fixture/repo',
+        session_id: 'current-contract',
+        turn_index: 0,
+      },
     });
     handle = await startMcpServer(storage, { port: 0 });
     const calls = [
@@ -100,18 +107,38 @@ describe('AC3 — context-only MCP roster', () => {
     ];
 
     const results = await withClient(handle.url, async (client) => {
-      const observed = [];
-      for (const call of calls) observed.push(await client.callTool(call));
+      const observed = new Map<string, Record<string, unknown>>();
+      for (const call of calls) {
+        const result = await client.callTool(call);
+        expect(result.isError).not.toBe(true);
+        const content = result.content;
+        expect(Array.isArray(content)).toBe(true);
+        if (!Array.isArray(content) || content[0]?.type !== 'text') {
+          throw new Error(`${call.name} returned no text content`);
+        }
+        observed.set(
+          call.name,
+          JSON.parse(content[0].text) as Record<string, unknown>,
+        );
+      }
       return observed;
     });
 
     expect(calls.map((call) => call.name)).toEqual(EXPECTED_TOOLS);
-    for (const result of results) {
-      expect(result.isError).not.toBe(true);
-      const content = result.content;
-      expect(Array.isArray(content)).toBe(true);
-      if (!Array.isArray(content)) throw new Error('current context tool returned no content array');
-      expect(content.length).toBeGreaterThan(0);
+    expect(results.get('echo_ping')).toMatchObject({
+      pong: true,
+      received: 'current-contract',
+    });
+    expect(JSON.stringify(results.get('echo_resolve_mru'))).toContain(source);
+    for (const tool of [
+      'find_clusters',
+      'get_atom',
+      'get_atoms',
+      'get_recent_work_context',
+      'search_memories',
+      'wait_for_new_turns',
+    ]) {
+      expect(JSON.stringify(results.get(tool)), tool).toContain(atomId);
     }
   });
 });

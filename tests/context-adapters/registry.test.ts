@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CLAUDE_CODE_CHECKPOINT_NAMESPACE } from '../../src/capture/extractors/claude-code.js';
-import { CODEX_CHECKPOINT_NAMESPACE } from '../../src/capture/extractors/codex.js';
+import {
+  CLAUDE_CODE_CHECKPOINT_NAMESPACE,
+  CODEX_CHECKPOINT_NAMESPACE,
+} from '../../src/capture/checkpoint-namespaces.js';
 import type { ContextAdapterDefinition } from '../../src/context-adapters/contracts.js';
 import {
   captureAdapterStatus,
@@ -26,8 +28,9 @@ function definition(
     normalizationVersion?: string;
     componentId?: string;
     checkpointNamespace?: string;
+    startupPriority?: number;
   } = {},
-): ContextAdapterDefinition {
+): ContextAdapterDefinition<CaptureRuntimeConfig> {
   const version = options.version ?? '1';
   return {
     identity: { adapter_id: adapterId, version },
@@ -38,12 +41,20 @@ function definition(
       adapter: () => null,
     },
     ...(options.componentId !== undefined ||
-    options.checkpointNamespace !== undefined
+    options.checkpointNamespace !== undefined ||
+    options.startupPriority !== undefined
       ? {
           capture: {
             component_id: options.componentId ?? `${adapterId}_component`,
             checkpoint_namespace:
               options.checkpointNamespace ?? `${adapterId}_checkpoint`,
+            startup_priority: options.startupPriority ?? 10,
+            configure: () => ({
+              enabled: false,
+              start: async () => {
+                throw new Error('test capture must not start');
+              },
+            }),
           },
         }
       : {}),
@@ -64,13 +75,20 @@ describe('context adapter registry', () => {
 
   it('exposes live capture only for Codex and Claude Code', () => {
     const registry = getContextAdapterRegistry();
-    expect(
-      registry
-        .filter((entry) => entry.capture !== undefined)
-        .map((entry) => entry.identity.adapter_id),
-    ).toEqual(['claude-code', 'codex']);
+    const liveDefinitions = registry.filter(
+      (entry) => entry.capture !== undefined,
+    );
+    expect(liveDefinitions.map((entry) => entry.identity.adapter_id)).toEqual([
+      'claude-code',
+      'codex',
+    ]);
 
     const captures = createCaptureAdapterRegistrations(CONFIG);
+    expect(
+      captures.map((entry) => entry.identity.adapter_id).sort(),
+    ).toEqual(
+      liveDefinitions.map((entry) => entry.identity.adapter_id).sort(),
+    );
     expect(
       captures.map((entry) => ({
         adapter: entry.identity.adapter_id,
@@ -92,7 +110,18 @@ describe('context adapter registry', () => {
         enabled: false,
       },
     ]);
-    expect(captureAdapterStatus(CONFIG)).toEqual({
+    expect(captures).toHaveLength(liveDefinitions.length);
+    for (const registration of captures) {
+      const definition = liveDefinitions.find(
+        (entry) =>
+          entry.identity.adapter_id === registration.identity.adapter_id,
+      );
+      expect(definition?.capture).toMatchObject({
+        component_id: registration.component_id,
+        checkpoint_namespace: registration.checkpoint_namespace,
+      });
+    }
+    expect(captureAdapterStatus(captures)).toEqual({
       codex: true,
       claude_code: false,
     });
@@ -114,15 +143,21 @@ describe('context adapter registry', () => {
 
     expect(() =>
       validateContextAdapterDefinitions([
-        definition('alpha', { componentId: 'shared' }),
-        definition('beta', { componentId: 'shared' }),
+        definition('alpha', { componentId: 'shared', startupPriority: 1 }),
+        definition('beta', { componentId: 'shared', startupPriority: 2 }),
       ]),
     ).toThrow('capture health component already registered: shared');
 
     expect(() =>
       validateContextAdapterDefinitions([
-        definition('alpha', { checkpointNamespace: 'shared' }),
-        definition('beta', { checkpointNamespace: 'shared' }),
+        definition('alpha', {
+          checkpointNamespace: 'shared',
+          startupPriority: 1,
+        }),
+        definition('beta', {
+          checkpointNamespace: 'shared',
+          startupPriority: 2,
+        }),
       ]),
     ).toThrow('capture checkpoint namespace already registered: shared');
 
@@ -131,5 +166,22 @@ describe('context adapter registry', () => {
         definition('alpha', { componentId: '', checkpointNamespace: 'alpha' }),
       ]),
     ).toThrow('context adapter capture identity must be non-empty: alpha');
+
+    for (const startupPriority of [-1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        validateContextAdapterDefinitions([
+          definition('alpha', { startupPriority }),
+        ]),
+      ).toThrow(
+        'context adapter capture startup priority must be a non-negative safe integer: alpha',
+      );
+    }
+
+    expect(() =>
+      validateContextAdapterDefinitions([
+        definition('alpha', { startupPriority: 1 }),
+        definition('beta', { startupPriority: 1 }),
+      ]),
+    ).toThrow('capture startup priority already registered: 1');
   });
 });

@@ -26,7 +26,7 @@ import {
   connectedComponents,
 } from '../../src/trace/cluster.js';
 import { normalizeRemoteUrl } from '../../src/normalize/artifacts.js';
-import { normalizeEvents } from '../../src/normalize/index.js';
+import { normalizeEvents } from '../../src/context-adapters/normalization.js';
 import type { ArtifactRef, NormalizedContextEvent } from '../../src/normalize/types.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 

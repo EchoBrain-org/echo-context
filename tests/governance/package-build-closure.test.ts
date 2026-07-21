@@ -74,7 +74,6 @@ describe('lean package TypeScript closure', () => {
         return true;
       }
       return (
-        path.startsWith('src/capture/surfaces/') ||
         path.startsWith('src/enrich/') ||
         path === 'src/capture/granola-source-policy.ts' ||
         path === 'src/mcp/parse-anchors.ts' ||
@@ -82,12 +81,39 @@ describe('lean package TypeScript closure', () => {
         path === 'src/trace/signal-window.ts' ||
         /(?:^|\/)(?:backlog|coord(?:ination)?|product|project-config|slack)(?:\/|[-_.])/u.test(
           path,
-        ) ||
-        /(?:watcher|poller|worker-loop|enrich(?:ment)?-(?:loop|worker))\.ts$/u.test(path)
+        )
       );
     });
 
     expect(forbidden).toEqual([]);
+  });
+
+  it('binds every concrete capture entrypoint exactly once in the adapter registry', () => {
+    const extractorEntries = readdirSync(
+      join(ROOT, 'src', 'capture', 'extractors'),
+      { withFileTypes: true },
+    )
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.endsWith('.ts') &&
+          !entry.name.startsWith('_'),
+      )
+      .map((entry) => entry.name)
+      .sort();
+    const registry = readFileSync(
+      join(ROOT, 'src', 'context-adapters', 'registry.ts'),
+      'utf8',
+    );
+    const bindings = Array.from(
+      registry.matchAll(
+        /import\(\s*['"]\.\.\/capture\/extractors\/([^'"]+)\.js['"]\s*\)/gu,
+      ),
+      (match) => `${match[1] as string}.ts`,
+    ).sort();
+
+    expect(new Set(bindings).size).toBe(bindings.length);
+    expect(bindings).toEqual(extractorEntries);
   });
 
   it('orders artifact-manifest paths with the runtime verifier ordinal contract', () => {

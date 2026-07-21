@@ -8,28 +8,20 @@ import { open, opendir, stat } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import type { FSWatcher } from "chokidar";
+import type {
+  ExtractorHandle,
+  ExtractorHealthState,
+  FreshnessProbe,
+} from "../contracts.js";
 import type { Logger } from "../../logging/index.js";
-import type { CaptureEvent } from "../../storage/interface.js";
 import { BoundedLruMap } from "../../util/bounded-lru-map.js";
 
-/** Path-fragment markers used to identify which agent surface produced an
- *  event. Centralised so causal.ts, render-trace, serve-trace, and
- *  stream-watch all sniff against the same strings. */
-export const SOURCE_MARKERS = {
-  codex: "/.codex/sessions/",
-  cc: "/.claude/projects/",
-  cursor: "/Cursor/",
-} as const;
-
-export type Lane = "cc" | "codex" | "cursor" | "git" | "other";
-
-export function laneOf(event: CaptureEvent): Lane {
-  if (event.source.startsWith("git:")) return "git";
-  if (event.source.includes(SOURCE_MARKERS.codex)) return "codex";
-  if (event.source.includes(SOURCE_MARKERS.cc)) return "cc";
-  if (event.source.includes(SOURCE_MARKERS.cursor)) return "cursor";
-  return "other";
-}
+export type {
+  ExtractorHandle,
+  ExtractorHealth,
+  ExtractorHealthState,
+  FreshnessProbe,
+} from "../contracts.js";
 
 export function dedupStrings(values: string[]): string[] {
   const seen = new Set<string>();
@@ -719,34 +711,6 @@ export function makeJsonlCheckpointSource(
 
 export function createBoundedResourceCache<V>(): Map<string, V> {
   return new BoundedLruMap<string, V>(MAX_EXTRACTOR_RESOURCE_CACHE_ENTRIES);
-}
-
-export interface FreshnessProbe {
-  maxGapBytes: number;
-  maxGapPath: string | null;
-  filesChecked: number;
-}
-
-export type ExtractorHealthState =
-  "starting" | "catching_up" | "healthy" | "unhealthy" | "stopped";
-
-export interface ExtractorHealth {
-  state: ExtractorHealthState;
-  queueDepth: number;
-  overflowCount: number;
-  reconciliationPending: boolean;
-  errorCount: number;
-  lastError: string | null;
-  sourceStatus?: "active" | "absent";
-}
-
-export interface ExtractorHandle {
-  /** Resolves once watcher readiness, the streaming boot scan, and any
-   *  overflow reconciliation caused during that scan have completed. */
-  initialCatchUp: Promise<void>;
-  getHealth: () => ExtractorHealth;
-  stop: () => Promise<void>;
-  probeFreshness: () => Promise<FreshnessProbe>;
 }
 
 /** Persistent non-zero gap = the watcher is dropping events. */

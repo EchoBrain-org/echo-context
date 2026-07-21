@@ -31,8 +31,8 @@ export function matchesClaudeCode(source: string): boolean {
 
 export const adaptClaudeCode: Adapter = (event: CaptureEvent): NormalizedContextEvent | null => {
   // The source-prefix dispatch is intentionally coarse: a `fs:.../.claude/projects/.../*.jsonl`
-  // event might be a turn-pair from the claude-code-extractor OR a generic stat-change event
-  // from the fs-watcher (same path observed by two surfaces). Only the former is ours.
+  // event might be a current turn pair or a migrated raw stat notification
+  // for the same path. Only the turn-pair envelope belongs to this adapter.
   const pair = tryParseTurnPair(event.content);
   if (pair === null) return null;
 

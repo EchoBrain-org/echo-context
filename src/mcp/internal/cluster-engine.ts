@@ -12,7 +12,7 @@
 // `metadata_match: {repo_root: normalised}` into the storage query. Mirrors
 // the contract that the four retrieval tools agreed on in 037.
 
-import { normalizeEvent } from '../../normalize/index.js';
+import { normalizeEvent } from '../../context-adapters/normalization.js';
 import type { NormalizedContextEvent } from '../../normalize/types.js';
 import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
@@ -193,8 +193,7 @@ async function runRecentWorkContextPass(
   normalisedRepoPath: string | null,
 ): Promise<RecentWorkContextResponse> {
   const storageCap = limit * STORAGE_OVERFETCH;
-  // Item 038 / AC5: fs-watcher exclusion via the shared `withFsExclusion`
-  // helper — single source of truth across retrieval tools.
+  // Historical raw-fs exclusion uses one shared retrieval helper.
   const storagePage = await queryClusterEvents(
     storage,
     withFsExclusion({
@@ -249,7 +248,7 @@ async function runRecentWorkContextPass(
  * Core cluster-discovery engine. Returns clusters of related events from the
  * captured atom stream, joined by shared artifacts within a recent time window.
  * Honours the no-args 4h→24h auto-expand (with single-source-recent demotion),
- * fs-watcher exclusion, repo_path forwarding (item 037), and minimal-mode
+ * historical raw-fs exclusion, repo_path forwarding (item 037), and minimal-mode
  * content trimming.
  *
  * Strategy-internal: NOT exposed as an MCP tool. The two consumers are

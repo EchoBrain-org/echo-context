@@ -1,15 +1,10 @@
-// Item 038 / AC5: single source of truth for the fs-watcher meta-event
-// exclusion that every retrieval tool needs. Bug B (2026-05-08) fired 3
-// times because each new retrieval tool re-hardcoded
-// `exclude_metadata_surface: ['fs']`; this helper closes the structural-
-// impossibility loop. The CI grep-scan test (tests/mcp/util/fs-exclusion-grep.test.ts)
-// fails if any future tool re-hardcodes the literal pattern.
+// Single source of truth for excluding historical raw filesystem
+// notifications from semantic retrieval. The CI grep-scan test fails if a
+// future tool re-hardcodes `exclude_metadata_surface: ['fs']`.
 //
-// Why fs-watcher events are excluded everywhere: raw fs-watcher change events
-// (`metadata.surface === 'fs'`) carry `{event_type, path, mtime, size}` and
-// represent capture-implementation detail. The conversation/git atoms riding
-// the same `fs:/Users/...` source prefix carry richer per-extractor metadata
-// (no `surface: 'fs'`), so they're unaffected by this exclusion.
+// Migrated raw events (`metadata.surface === 'fs'`) carry only
+// `{event_type, path, mtime, size}`. Semantic conversation/git atoms sharing
+// the same `fs:/Users/...` prefix have no `surface: 'fs'` and remain visible.
 
 import type { QueryFilter } from '../../storage/interface.js';
 
@@ -19,7 +14,7 @@ import type { QueryFilter } from '../../storage/interface.js';
  *  when storage expects a fresh `string[]`. */
 export const EXCLUDE_FS_SURFACE: readonly ['fs'] = ['fs'] as const;
 
-/** Compose a `QueryFilter` with the fs-watcher exclusion already applied.
+/** Compose a `QueryFilter` with the historical raw-fs exclusion applied.
  *  Use this instead of inlining `exclude_metadata_surface: ['fs']` — the
  *  grep-scan CI test fails on the inline form. */
 export function withFsExclusion<F extends Omit<QueryFilter, 'exclude_metadata_surface'>>(

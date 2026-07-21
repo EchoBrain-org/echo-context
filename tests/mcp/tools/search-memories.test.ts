@@ -404,22 +404,17 @@ describe('searchMemories Bug A — per-match content envelope cap', () => {
   });
 });
 
-// Gap 3 (V1.5.7, surfaced 2026-05-08 17:01 PDT v1.5-livetest): search_memories
-// must EXCLUDE fs-watcher meta-events (`metadata.surface === 'fs'`) — same
-// discipline as `recent-work-context.ts:171` and `tail-session.ts:94-99`.
-// V1.5.6's Bug B fix landed in tail_session and recent-work-context but not
-// here; the cursor lane surfaced it because Cursor's extractor was stale and
-// the noise dominated, but the same contract violation applies to every
-// source_app.
-describe('searchMemories Gap 3 — fs-watcher meta-events must be excluded', () => {
-  it('source_app cursor: returns extractor turns, not fs-watcher events under the same prefix', async () => {
+// Stored historical raw filesystem notifications (`metadata.surface ===
+// 'fs'`) must not crowd semantic atoms out of bounded retrieval windows.
+describe('searchMemories — historical raw filesystem events are excluded', () => {
+  it('source_app cursor returns stored semantic atoms, not legacy raw notifications', async () => {
     const store = new MemoryStorage();
     const HOME = process.env['HOME'] ?? '/tmp';
     const cursorPrefix = `fs:${HOME}/Library/Application Support/Cursor/`;
     const wsRoot = `${cursorPrefix}User/workspaceStorage/abc/`;
 
-    // Seed five fs-watcher events on workspace files (the noisy meta-stream
-    // — every file mtime tick) AND two cursor extractor turn atoms.
+    // Seed five legacy raw workspace notifications and two stored historical
+    // Cursor semantic atoms under the same source-app prefix.
     for (let i = 0; i < 5; i++) {
       await store.append({
         source: `${wsRoot}cursor-retrieval/embeddable_files.txt`,
@@ -444,8 +439,7 @@ describe('searchMemories Gap 3 — fs-watcher meta-events must be excluded', () 
 
     const r = await searchMemories(store, { source_app: 'cursor', limit: 10 });
 
-    // Pre-fix: would return 5 fs-watcher events (newest by ts among the
-    // matching prefix). Post-fix: returns only the 2 extractor turns.
+    // Only the two semantic atoms should survive the historical-noise filter.
     expect(r.total_returned).toBe(2);
     expect(r.matches.every((m) => m.content.startsWith('EXTRACTOR_TURN_'))).toBe(true);
     expect(r.matches.every((m) => (m.metadata as { surface?: string }).surface !== 'fs')).toBe(
@@ -470,7 +464,7 @@ describe('searchMemories Gap 3 — fs-watcher meta-events must be excluded', () 
 
     const r = await searchMemories(store, { query: 'change', limit: 10 });
 
-    // Both atoms have "change" in content, but the fs-watcher one must be
+    // Both atoms have "change" in content, but the raw notification must be
     // excluded. Only the conversation turn survives.
     expect(r.total_returned).toBe(1);
     expect(r.matches[0]!.content).toBe('real conversation about the change event');
@@ -1102,10 +1096,11 @@ describe('search_memories item 025 (outputSchema + readOnlyHint + source_app + c
     expect(r3.structuredContent).toBeUndefined();
   });
 
-  it('description mentions source_app, cursor, and three-tool integration', async () => {
+  it('description documents source apps, historical Cursor, and pagination', async () => {
     const { SEARCH_MEMORIES_DESCRIPTION } =
       await import('../../../src/mcp/tools/search-memories.js');
     expect(SEARCH_MEMORIES_DESCRIPTION).toMatch(/source_app/);
+    expect(SEARCH_MEMORIES_DESCRIPTION).toMatch(/historical Cursor/);
     expect(SEARCH_MEMORIES_DESCRIPTION).toMatch(
       /cursor.*claude_code.*codex.*git.*granola|next_cursor/,
     );

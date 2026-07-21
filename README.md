@@ -32,11 +32,15 @@ under `ECHO_CONTEXT_*`; it does not inherit Project_echo product secrets.
 ## Adapter incubation boundary
 
 The context-adapter registry is the single composition point for observational
-source integrations. Every bundled adapter has a stable identity and a
-normalization registration; live capture is a separate, optional capability.
-Codex and Claude Code currently provide both. Cursor, Git, and Granola remain
-normalization-only registrations, so historical data stays readable without
-silently activating provider access or background work.
+source integrations. Core normalization accepts an immutable registration list
+from that outer layer; it does not import bundled adapters or capture code.
+Every bundled adapter has a stable identity and normalization registration.
+Live capture is an optional capability whose descriptor, startup priority, and
+factory live together on the same definition. Concrete extractor code loads
+only when that adapter starts, and every non-helper extractor entrypoint must
+be bound exactly once. Codex and Claude Code currently provide both. Cursor,
+Git, and Granola remain normalization-only registrations, so historical data
+stays readable without silently activating provider access or background work.
 
 The runtime starts enabled capture registrations sequentially and stops them in
 reverse order. Adding an incubating source here does not make it an Echo Brain

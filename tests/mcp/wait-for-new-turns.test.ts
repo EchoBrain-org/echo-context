@@ -164,7 +164,8 @@ describe('wait_for_new_turns — happy path', () => {
 
   it('source_app PREFIX match catches content under the app prefix (NOT just MRU exact-source)', async () => {
     const store = new MemoryStorage();
-    // Two cursor sessions; both should be caught by the prefix.
+    // Two stored historical Cursor sources; both match the compatibility
+    // prefix even though no live Cursor extractor remains.
     await store.append(
       ev(
         // canonical cursor prefix is `fs:<HOME>/Library/Application Support/Cursor/...`
@@ -414,9 +415,8 @@ describe('wait_for_new_turns — AC4 IDs-only response shape', () => {
 // Fix ⑤ — lossless chaining contract for `next_since` + overflow paging.
 //
 // The old contract lost turns two ways:
-//   (a) next_since = server wall clock at return. Atom timestamps are EVENT
-//       times that land in storage LATER (Cursor re-poll ~15s; CC/codex/git
-//       seconds of lag). A turn that occurred before the return moment but
+//   (a) next_since = server wall clock at return. Event timestamps can predate
+//       late ingestion into storage. A turn that occurred before the return moment but
 //       ingested after the final poll was permanently invisible to every
 //       chained call (strict `> since` filter).
 //   (b) per-poll cap kept the NEWEST 20 — a burst of >20 silently dropped

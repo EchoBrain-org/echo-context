@@ -4,7 +4,7 @@ import {
   FIND_CLUSTERS_RESPONSE_BYTE_CEILING,
 } from '../../src/mcp/tools/find-clusters.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
-import { normalizeEvent } from '../../src/normalize/index.js';
+import { normalizeEvent } from '../../src/context-adapters/normalization.js';
 import { buildRecentWorkContext } from '../../src/trace/index.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 

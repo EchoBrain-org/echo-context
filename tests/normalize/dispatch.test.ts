@@ -4,7 +4,11 @@ import {
   getRegistry,
   normalizeEvent,
   normalizeEvents,
+} from '../../src/context-adapters/normalization.js';
+import {
+  createNormalizer,
   NormalizationError,
+  type AdapterRegistration,
 } from '../../src/normalize/index.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 import { claudeCodeFixture } from './fixtures/claude-code.js';
@@ -13,6 +17,30 @@ import { cursorFixture } from './fixtures/cursor.js';
 import { gitFixture } from './fixtures/git.js';
 
 describe('normalize dispatch', () => {
+  it('uses an immutable registration snapshot supplied by composition', () => {
+    const supplied: AdapterRegistration[] = [
+      {
+        name: 'fixture',
+        version: 'fixture@1',
+        matches: (source) => source === 'fixture:event',
+        adapter: () => null,
+      },
+    ];
+    const isolated = createNormalizer(supplied);
+    supplied.push({
+      name: 'late-mutation',
+      version: 'late@1',
+      matches: () => true,
+      adapter: () => null,
+    });
+
+    expect(isolated.getRegistry().map((entry) => entry.name)).toEqual([
+      'fixture',
+    ]);
+    expect(isolated.findAdapter('fixture:event')?.name).toBe('fixture');
+    expect(isolated.findAdapter('other:event')).toBeNull();
+  });
+
   it('registers adapters in the documented order: claude-code, codex, cursor, git, granola', () => {
     const reg = getRegistry();
     expect(reg.map((r) => r.name)).toEqual([
@@ -32,7 +60,7 @@ describe('normalize dispatch', () => {
     expect(findAdapter('api:granola')?.name).toBe('granola');
   });
 
-  it('returns null when no adapter matches a generic fs-watcher event', () => {
+  it('returns null when no adapter matches a historical raw fs notification', () => {
     const evt: CaptureEvent = {
       id: 'evt_unknown',
       source: 'fs:/tmp/foo.txt',
@@ -57,12 +85,10 @@ describe('normalize dispatch', () => {
     expect(codexMatch).toBe(1);
   });
 
-  it('returns null on a source-matched event whose content is not the adapter envelope (e.g., fs-watcher stat events on the same .jsonl path)', () => {
-    // The fs-watcher and the claude-code-extractor both observe the same
-    // `~/.claude/projects/.../*.jsonl` files and both emit events with the
-    // same `fs:` source prefix. Only the latter has USER:/ASSISTANT: content.
-    // Source-prefix dispatch matches both; the adapter must decline coarsely
-    // routed events that don't actually contain its envelope.
+  it('returns null on a source-matched historical stat event without the adapter envelope', () => {
+    // Migrated databases can retain raw stat notifications for the same
+    // `~/.claude/projects/.../*.jsonl` path as normalized turn-pair capture.
+    // Only turn pairs carry the USER:/ASSISTANT: content envelope.
     const fsWatcherChange: CaptureEvent = {
       ...claudeCodeFixture,
       content: JSON.stringify({
