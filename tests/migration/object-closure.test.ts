@@ -62,4 +62,14 @@ describe('AC2 — frozen extraction object closure', () => {
     expect([...allowed].filter((path) => !tracked.has(path))).toEqual([]);
     expect(tracked.size).toBe(190);
   });
+
+  it('keeps every item-135 provenance file byte-identical to the accepted baseline', () => {
+    const provenancePaths = gitText([
+      'ls-tree', '-r', '--name-only', BASELINE, '--', 'provenance',
+    ]).trim().split('\n');
+    expect(provenancePaths).toHaveLength(18);
+    for (const path of provenancePaths) {
+      expect(readFileSync(join(ROOT, path)).equals(gitBytes(['show', `${BASELINE}:${path}`]))).toBe(true);
+    }
+  });
 });

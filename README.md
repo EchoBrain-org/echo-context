@@ -44,6 +44,13 @@ operational adapter: this package owns only capture, normalization, storage, and
 retrieval. Product actions, credentials, coordination, and client-facing
 capability selection remain outside this boundary.
 
+Every current TypeScript file under `src/` is part of the package build closure.
+Retired incubation prototypes stay recoverable in Git history instead of living
+as dormant source. The immutable item-135 parity records describe the accepted
+extraction baseline; their operator replay materializes that exact Git commit.
+They are not a requirement to retain every historical file in the current
+package.
+
 ## Build and package
 
 Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. Run the source gates,

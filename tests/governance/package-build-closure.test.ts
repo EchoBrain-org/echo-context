@@ -1,26 +1,62 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const RETIRED_SOURCE_PATHS = [
+  'src/capture/granola-source-policy.ts',
+  'src/capture/surfaces/fs-watcher.ts',
+  'src/capture/surfaces/git-watcher.ts',
+  'src/capture/surfaces/granola-poller.ts',
+  'src/echo-home/paths.ts',
+  'src/enrich/granola-signals.ts',
+  'src/mcp/parse-anchors.ts',
+  'src/mcp/util/role-state-git.ts',
+  'src/trace/signal-window.ts',
+  'src/util/subject.ts',
+  'src/util/subprocess.ts',
+];
 
+function sourceTreeTypeScript(directory = join(ROOT, 'src')): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...sourceTreeTypeScript(path));
+    if (entry.isFile() && entry.name.endsWith('.ts')) {
+      files.push(relative(ROOT, path).split('\\').join('/'));
+    }
+  }
+  return files.sort();
+}
+
+let cachedPackageSourceClosure: string[] | undefined;
 function packageSourceClosure(): string[] {
+  if (cachedPackageSourceClosure !== undefined) return cachedPackageSourceClosure;
   const tsc = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
   const output = execFileSync(
     process.execPath,
     [tsc, '--noEmit', '--listFiles', '--project', join(ROOT, 'tsconfig.build.json')],
     { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
   );
-  return output
+  cachedPackageSourceClosure = output
     .split(/\r?\n/u)
     .filter((path) => path.startsWith(join(ROOT, 'src')))
     .map((path) => relative(ROOT, path).split('\\').join('/'))
     .sort();
+  return cachedPackageSourceClosure;
 }
 
 describe('lean package TypeScript closure', () => {
+  it('contains every current TypeScript source file', () => {
+    expect(packageSourceClosure()).toEqual(sourceTreeTypeScript());
+  });
+
+  it('keeps retired incubation prototypes out of the current source tree', () => {
+    expect(RETIRED_SOURCE_PATHS.filter((path) => existsSync(join(ROOT, path)))).toEqual([]);
+  });
+
   it('contains context capture/retrieval but no product-owned runtime surface', () => {
     const closure = packageSourceClosure();
     expect(closure).toContain('src/cli.ts');

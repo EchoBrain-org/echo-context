@@ -5,13 +5,6 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetGitStateCache, probeGitState } from '../../src/capture/git-state.js';
-import { CAPTURED_SOURCES } from '../../src/capture/sources.js';
-import {
-  _resetGitWatcherOriginCache,
-  startGitWatcher,
-  type GitWatcherHandle,
-} from '../../src/capture/surfaces/git-watcher.js';
-import { MemoryStorage } from '../../src/storage/memory.js';
 import { captureStdout } from '../fixtures/stdout.js';
 
 const execFileP = promisify(execFile);
@@ -48,47 +41,20 @@ async function setOrigin(repo: string, url: string): Promise<void> {
   await execFileP('git', ['remote', 'add', 'origin', url], { cwd: repo });
 }
 
-async function waitForCount(
-  storage: MemoryStorage,
-  target: number,
-  timeoutMs = 8000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if ((await storage.count()) >= target) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`storage count never reached ${target}; current=${await storage.count()}`);
-}
-
-function pushAllowedRepo(repo: string): () => void {
-  const repos = CAPTURED_SOURCES.git_repos as unknown as string[];
-  repos.push(repo);
-  return () => {
-    const idx = repos.lastIndexOf(repo);
-    if (idx !== -1) repos.splice(idx, 1);
-  };
-}
-
 describe('origin URL capture', () => {
   let cleanups: Array<() => void> = [];
-  let handles: GitWatcherHandle[] = [];
   let stdout: string[] = [];
   let restoreStdout: () => void;
 
   beforeEach(() => {
     _resetGitStateCache();
-    _resetGitWatcherOriginCache();
     cleanups = [];
-    handles = [];
     const captured = captureStdout();
     stdout = captured.writes;
     restoreStdout = captured.restore;
   });
 
-  afterEach(async () => {
-    for (const h of handles) await h.stop();
-    handles = [];
+  afterEach(() => {
     for (const c of cleanups) c();
     cleanups = [];
     restoreStdout();
@@ -115,63 +81,6 @@ describe('origin URL capture', () => {
     const state = await probeGitState(repo, new Date().toISOString());
 
     expect(state?.origin_url).toBeUndefined();
-    expect(stdout.join('')).not.toContain('git_command_failed');
-  });
-
-  it('git watcher stamps each repo root with its own scrubbed origin_url', async () => {
-    const repoA = await makeRepo();
-    const repoB = await makeRepo();
-    cleanups.push(pushAllowedRepo(repoA), pushAllowedRepo(repoB));
-    cleanups.push(() => rmSync(repoA, { recursive: true, force: true }));
-    cleanups.push(() => rmSync(repoB, { recursive: true, force: true }));
-    await setOrigin(repoA, 'https://user:token@github.com/example/repo-a.git');
-    await setOrigin(repoB, 'https://github.com/example/repo-b.git');
-    await commitFile(repoA, 'a.txt', '1', 'repo-a');
-    await commitFile(repoB, 'b.txt', '1', 'repo-b');
-
-    const storage = new MemoryStorage();
-    const h = await startGitWatcher([repoA, repoB], storage, {
-      enableFsWatch: false,
-    });
-    handles.push(h);
-    await waitForCount(storage, 2);
-
-    const [eventA] = await storage.query({ source: `git:${repoA}` });
-    const [eventB] = await storage.query({ source: `git:${repoB}` });
-    expect((eventA?.metadata as Record<string, unknown>)['origin_url']).toBe(
-      'https://github.com/example/repo-a.git',
-    );
-    expect((eventB?.metadata as Record<string, unknown>)['origin_url']).toBe(
-      'https://github.com/example/repo-b.git',
-    );
-  });
-
-  it('git watcher retries an absent origin and captures one added later', async () => {
-    const repo = await makeRepo();
-    cleanups.push(pushAllowedRepo(repo));
-    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
-    await commitFile(repo, 'a.txt', '1', 'first-no-origin');
-
-    const storage = new MemoryStorage();
-    const h = await startGitWatcher([repo], storage, {
-      enableFsWatch: false,
-      pollIntervalMs: 100,
-    });
-    handles.push(h);
-    await waitForCount(storage, 1);
-
-    const [first] = await storage.query({ source: `git:${repo}` });
-    expect((first?.metadata as Record<string, unknown>)['origin_url']).toBeUndefined();
-
-    await setOrigin(repo, 'https://user:token@github.com/example/retry.git');
-    await commitFile(repo, 'a.txt', '2', 'second-with-origin');
-    await waitForCount(storage, 2);
-
-    const events = await storage.query({ source: `git:${repo}` });
-    const second = events.find((e) => e.content.includes('second-with-origin'));
-    expect((second?.metadata as Record<string, unknown>)['origin_url']).toBe(
-      'https://github.com/example/retry.git',
-    );
     expect(stdout.join('')).not.toContain('git_command_failed');
   });
 });
