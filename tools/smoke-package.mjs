@@ -237,7 +237,6 @@ try {
       String(port),
       '--no-capture-codex',
       '--no-capture-claude',
-      '--no-capture-cursor',
     ],
     {
       // This is a pre-promotion smoke. Exact identity is enabled only after
@@ -377,7 +376,6 @@ try {
       String(port),
       '--no-capture-codex',
       '--no-capture-claude',
-      '--no-capture-cursor',
     ],
     {
       env: {

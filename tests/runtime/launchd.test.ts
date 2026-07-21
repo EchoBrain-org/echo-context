@@ -90,6 +90,7 @@ describe('launchd package boundary', () => {
     expect(plist).toContain('com.echo.context.candidate');
     expect(plist).toContain(realpathSync(testCliPath));
     expect(plist).toContain('ECHO_CONTEXT_DB_PATH');
+    expect(plist).not.toMatch(/ECHO_CONTEXT_(?:CAPTURE_)?CURSOR/);
     expect(plist).not.toMatch(/Project_echo|SLACK|ANTHROPIC|OPENAI_API_KEY|coord|backlog/i);
     expect(plist).toContain('<string>/dev/null</string>');
     expect(plist).not.toMatch(/daemon(?:\.error)?\.log/);

@@ -7,11 +7,8 @@ export const DEFAULT_CONTEXT_HOST = '127.0.0.1';
 export interface CaptureRuntimeConfig {
   codex: boolean;
   claudeCode: boolean;
-  cursor: boolean;
   codexSessionsDir: string;
   claudeProjectsDir: string;
-  cursorGlobalDb: string;
-  cursorWorkspaceDir: string;
 }
 
 export interface ContextRuntimeConfig {
@@ -77,35 +74,11 @@ export function resolveContextRuntimeConfig(
     capture: {
       codex: readBoolean(env, 'ECHO_CONTEXT_CAPTURE_CODEX', true),
       claudeCode: readBoolean(env, 'ECHO_CONTEXT_CAPTURE_CLAUDE', true),
-      cursor: readBoolean(env, 'ECHO_CONTEXT_CAPTURE_CURSOR', true),
       codexSessionsDir: resolve(
         env['ECHO_CONTEXT_CODEX_SESSIONS_DIR'] ?? join(userHome, '.codex', 'sessions'),
       ),
       claudeProjectsDir: resolve(
         env['ECHO_CONTEXT_CLAUDE_PROJECTS_DIR'] ?? join(userHome, '.claude', 'projects'),
-      ),
-      cursorGlobalDb: resolve(
-        env['ECHO_CONTEXT_CURSOR_GLOBAL_DB'] ??
-          join(
-            userHome,
-            'Library',
-            'Application Support',
-            'Cursor',
-            'User',
-            'globalStorage',
-            'state.vscdb',
-          ),
-      ),
-      cursorWorkspaceDir: resolve(
-        env['ECHO_CONTEXT_CURSOR_WORKSPACE_DIR'] ??
-          join(
-            userHome,
-            'Library',
-            'Application Support',
-            'Cursor',
-            'User',
-            'workspaceStorage',
-          ),
       ),
     },
     identity: {

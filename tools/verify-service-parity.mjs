@@ -91,11 +91,8 @@ try {
     capture: {
       codex: false,
       claudeCode: false,
-      cursor: false,
       codexSessionsDir: join(scratchHome, 'sources', 'codex'),
       claudeProjectsDir: join(scratchHome, 'sources', 'claude'),
-      cursorGlobalDb: join(scratchHome, 'sources', 'cursor-global.db'),
-      cursorWorkspaceDir: join(scratchHome, 'sources', 'cursor-workspaces'),
     },
     identity: {
       instanceNonce: null,

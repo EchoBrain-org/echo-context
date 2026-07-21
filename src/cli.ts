@@ -38,16 +38,12 @@ const RUNTIME_VALUE_OPTIONS = ['--home', '--db', '--host', '--port'] as const;
 const CAPTURE_VALUE_OPTIONS = [
   '--codex-sessions-dir',
   '--claude-projects-dir',
-  '--cursor-global-db',
-  '--cursor-workspace-dir',
 ] as const;
 const CAPTURE_FLAG_OPTIONS = [
   '--capture-codex',
   '--no-capture-codex',
   '--capture-claude',
   '--no-capture-claude',
-  '--capture-cursor',
-  '--no-capture-cursor',
 ] as const;
 
 function applyToggle(
@@ -74,8 +70,6 @@ function configEnvironment(args: readonly string[]): NodeJS.ProcessEnv {
   const port = option(args, '--port');
   const codexSessionsDir = option(args, '--codex-sessions-dir');
   const claudeProjectsDir = option(args, '--claude-projects-dir');
-  const cursorGlobalDb = option(args, '--cursor-global-db');
-  const cursorWorkspaceDir = option(args, '--cursor-workspace-dir');
   if (home !== undefined) env['ECHO_CONTEXT_HOME'] = home;
   if (db !== undefined) env['ECHO_CONTEXT_DB_PATH'] = db;
   if (host !== undefined) env['ECHO_CONTEXT_HOST'] = host;
@@ -86,13 +80,8 @@ function configEnvironment(args: readonly string[]): NodeJS.ProcessEnv {
   if (claudeProjectsDir !== undefined) {
     env['ECHO_CONTEXT_CLAUDE_PROJECTS_DIR'] = claudeProjectsDir;
   }
-  if (cursorGlobalDb !== undefined) env['ECHO_CONTEXT_CURSOR_GLOBAL_DB'] = cursorGlobalDb;
-  if (cursorWorkspaceDir !== undefined) {
-    env['ECHO_CONTEXT_CURSOR_WORKSPACE_DIR'] = cursorWorkspaceDir;
-  }
   applyToggle(args, env, '--capture-codex', '--no-capture-codex', 'ECHO_CONTEXT_CAPTURE_CODEX');
   applyToggle(args, env, '--capture-claude', '--no-capture-claude', 'ECHO_CONTEXT_CAPTURE_CLAUDE');
-  applyToggle(args, env, '--capture-cursor', '--no-capture-cursor', 'ECHO_CONTEXT_CAPTURE_CURSOR');
   return env;
 }
 
@@ -111,9 +100,8 @@ Usage:
   echo-context version
 
 Runtime options: --home PATH --db PATH --host LOOPBACK_HOST --port PORT
-Capture options: --[no-]capture-codex --[no-]capture-claude --[no-]capture-cursor
+Capture options: --[no-]capture-codex --[no-]capture-claude
   --codex-sessions-dir PATH --claude-projects-dir PATH
-  --cursor-global-db PATH --cursor-workspace-dir PATH
 `;
 }
 

@@ -31,7 +31,6 @@ describe('context runtime resource transaction', () => {
       ECHO_CONTEXT_PORT: String(address.port),
       ECHO_CONTEXT_CAPTURE_CODEX: 'false',
       ECHO_CONTEXT_CAPTURE_CLAUDE: 'false',
-      ECHO_CONTEXT_CAPTURE_CURSOR: 'false',
     });
     await expect(startContextRuntime(config)).rejects.toMatchObject({ code: 'EADDRINUSE' });
     expect(existsSync(join(root, 'daemon.pid'))).toBe(false);
@@ -45,7 +44,6 @@ describe('context runtime resource transaction', () => {
       ECHO_CONTEXT_ARTIFACT_DIGEST: 'a'.repeat(64),
       ECHO_CONTEXT_CAPTURE_CODEX: 'false',
       ECHO_CONTEXT_CAPTURE_CLAUDE: 'false',
-      ECHO_CONTEXT_CAPTURE_CURSOR: 'false',
     });
     await expect(startContextRuntime(config)).rejects.toThrow(
       /exact launch requires instance, artifact, promotion receipt, and database identity/,

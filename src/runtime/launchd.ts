@@ -921,11 +921,8 @@ function environmentEntries(config: ContextRuntimeConfig): Array<[string, string
     ['ECHO_CONTEXT_PORT', String(config.port)],
     ['ECHO_CONTEXT_CAPTURE_CODEX', String(config.capture.codex)],
     ['ECHO_CONTEXT_CAPTURE_CLAUDE', String(config.capture.claudeCode)],
-    ['ECHO_CONTEXT_CAPTURE_CURSOR', String(config.capture.cursor)],
     ['ECHO_CONTEXT_CODEX_SESSIONS_DIR', config.capture.codexSessionsDir],
     ['ECHO_CONTEXT_CLAUDE_PROJECTS_DIR', config.capture.claudeProjectsDir],
-    ['ECHO_CONTEXT_CURSOR_GLOBAL_DB', config.capture.cursorGlobalDb],
-    ['ECHO_CONTEXT_CURSOR_WORKSPACE_DIR', config.capture.cursorWorkspaceDir],
   ];
   if (config.identity.instanceNonce !== null) {
     entries.push(['ECHO_CONTEXT_INSTANCE_NONCE', config.identity.instanceNonce]);

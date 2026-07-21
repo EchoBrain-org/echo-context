@@ -26,10 +26,8 @@ describe('CAPTURED_SOURCES', () => {
     expect(CAPTURED_SOURCES.apis).toEqual(['granola']);
   });
 
-  it('declares the FS prefixes for Cursor (workspace + global), Claude Code, and Codex', () => {
+  it('declares only the live founder coding-session FS prefixes', () => {
     expect(CAPTURED_SOURCES.fs_paths).toEqual([
-      '~/Library/Application Support/Cursor/User/workspaceStorage/',
-      '~/Library/Application Support/Cursor/User/globalStorage/',
       '~/.claude/projects/',
       '~/.codex/sessions/',
     ]);

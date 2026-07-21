@@ -16,15 +16,20 @@
 //     `metadata_match` is a string-equality predicate against the value the
 //     capture-side wrote (per AC1's contract).
 //
-// The normalise helper itself lives in `cursor-workspace-resolver.ts` so
-// both capture and retrieval call the SAME function (a different normaliser
-// here would silently desync the two sides). Re-exported via this util only
-// for ergonomic imports.
+import { isAbsolute, normalize as pathNormalize } from 'node:path';
 
-import { isAbsolute } from 'node:path';
-import { normaliseRepoPath } from '../cursor-workspace-resolver.js';
-
-export { normaliseRepoPath };
+/** Normalize a repository path for exact metadata equality without touching
+ * the filesystem or resolving symlinks. */
+export function normaliseRepoPath(p: string): string {
+  const normalized = pathNormalize(p);
+  if (
+    normalized.length > 1 &&
+    (normalized.endsWith('/') || normalized.endsWith('\\'))
+  ) {
+    return normalized.slice(0, -1);
+  }
+  return normalized;
+}
 
 /**
  * Throw a structured Error when `repo_path` is set but not absolute. The

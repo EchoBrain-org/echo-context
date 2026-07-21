@@ -11,7 +11,7 @@ workers, enrichment loops, or permanent raw filesystem-change capture.
 ## Runtime model
 
 The daemon opens a compact checkpoint table before starting capture watchers.
-Codex, Claude Code, and Cursor resume from those checkpoints and catch up through
+Codex and Claude Code resume from those checkpoints and catch up through
 coalesced, capped, serial queues. Health stays `starting` or `catching_up` until
 that work completes. SQLite retrieval is paged and has hard row, stored-byte,
 and scan-page budgets; free-text search advances through bounded keyset pages.
@@ -23,7 +23,8 @@ Defaults:
 - MCP: `http://127.0.0.1:38478/mcp`
 - health: `http://127.0.0.1:38478/healthz`
 - bounded service API: `http://127.0.0.1:38478/v1/*`
-- capture: Codex, Claude Code, and Cursor only
+- live capture: Codex and Claude Code only
+- historical compatibility: migrated Cursor events remain queryable and normalized
 
 The HTTP server refuses non-loopback binds. Runtime configuration is isolated
 under `ECHO_CONTEXT_*`; it does not inherit Project_echo product secrets.
@@ -105,11 +106,12 @@ sources, content, metadata, and embeddings are preserved. Migration 0003
 canonicalizes legacy timestamps to UTC `Z`; migration 0005 additively backfills
 an indexed normalized source key. The legacy database is never rewritten.
 
-Capture is enabled by default for all three coding tools. Use
-`--no-capture-codex`, `--no-capture-claude`, or `--no-capture-cursor` for an
-unused source; source paths also have explicit CLI overrides. A missing source
-is reported as optional/absent, while an existing unreadable source is
-unhealthy.
+Capture is enabled by default for Codex and Claude Code. Use
+`--no-capture-codex` or `--no-capture-claude` for an unused source; source paths
+also have explicit CLI overrides. A missing source is reported as
+optional/absent, while an existing unreadable source is unhealthy. Cursor live
+capture is retired; migration preserves its existing atoms, and the retrieval
+and normalization layers continue to recognize those historical records.
 
 ## Founder-live and cutover
 

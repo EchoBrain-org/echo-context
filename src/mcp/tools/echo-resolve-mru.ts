@@ -5,15 +5,13 @@
 // search-ready descriptors per resolved source. The canonical composition
 // pattern is:
 //
-//   r = echo_resolve_mru({sources: ['cursor'], repo_path: X})
-//   d = r.sources['cursor']
+//   r = echo_resolve_mru({sources: ['codex'], repo_path: X})
+//   d = r.sources['codex']
 //   if d != null: search_memories({source: d.source, ...d.filter, limit: N})
 //
 // The descriptor's `filter` field carries the metadata/path scoping the
 // caller must spread through to `search_memories` so cross-repo leak is
-// structurally impossible (especially relevant for Cursor, whose resolved
-// source is the global `state.vscdb` — the bare source alone would leak
-// across repos).
+// structurally impossible when multiple conversations share one source.
 //
 // Atomic by design: IDs-only / source-only, no body fetch. Bodies arrive
 // through `search_memories` or `get_atoms` on the next call.
@@ -22,10 +20,6 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
-import {
-  resolveCursorComposerForRepoPath,
-  type CursorComposerResolution,
-} from '../cursor-workspace-resolver.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
@@ -34,17 +28,17 @@ export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
 export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
 
 export const ECHO_RESOLVE_MRU_DESCRIPTION =
-  'Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source (NOT bare paths — bare source loses cross-repo scoping for Cursor). IDs-only / source-only; no atom bodies fetched here.\n\n' +
+  'Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source. IDs-only / source-only; no atom bodies fetched here.\n\n' +
   'PARAMETERS:\n' +
   '  • `sources: string[]` — required. Non-empty, ≤ ' +
   String(ECHO_RESOLVE_MRU_MAX_SOURCES) +
   '. Mixed entry types accepted (same shape as `wait_for_new_turns`):\n' +
   '      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH on the canonical app prefix; resolves to the newest non-fs source under that prefix.\n' +
   '      • Literal source path (e.g. `fs:/Users/.../session.jsonl`, `git:/Users/.../repo`) → EXACT match; descriptor returned only if the source has at least one non-fs atom.\n' +
-  "  • `repo_path?: string` — optional absolute repo root. When set, only sources whose newest non-fs atom matches the repo are eligible. Source-app entries: `claude_code` / `codex` filter via `metadata.repo_root`; `cursor` uses a two-phase fallback (Phase 1 metadata.repo_root, Phase 2 legacy composer↔workspace resolver — descriptor encodes `phase: 'cursor_legacy'` when Phase 2 fires); `git` uses a two-path OR (metadata.repo_root OR `source=git:<repo_path>`) to recover legacy git atoms by path; `granola` normally resolves only when repo_path is omitted because meeting-note atoms have no repo_root.\n\n" +
-  "RETURNS: `{ sources: Record<string, ResolvedSourceDescriptor | null>, repo_path?: string, warnings: string[] }`. Each descriptor has shape `{ source, filter: { metadata_match?, repo_path? }, phase?: 'cursor_legacy' }`. The descriptor is `search_memories`-ready ONLY — `filter.metadata_match` is NOT a `wait_for_new_turns` parameter, so the canonical live-watch path uses `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})` and ignores `metadata_match`. Legacy Cursor atoms via wait are out of scope (wait is for NEW turns; legacy = already-captured).\n\n" +
+  "  • `repo_path?: string` — optional absolute repo root. When set, only sources whose newest non-fs atom matches the repo are eligible. Source-app entries, including historical Cursor atoms, filter via `metadata.repo_root`; older Cursor atoms without that metadata remain discoverable only without `repo_path`. `git` uses a two-path OR (metadata.repo_root OR `source=git:<repo_path>`) to recover legacy git atoms by path; `granola` normally resolves only when repo_path is omitted because meeting-note atoms have no repo_root.\n\n" +
+  "RETURNS: `{ sources: Record<string, ResolvedSourceDescriptor | null>, repo_path?: string, warnings: string[] }`. Each descriptor has shape `{ source, filter: { metadata_match?, repo_path? } }` and is ready to spread into `search_memories`.\n\n" +
   'CANONICAL COMPOSITIONS:\n' +
-  "  • Tail (search_memories): `r = echo_resolve_mru({sources: ['cursor'], repo_path: X})` → if `r.sources['cursor'] !== null`, `search_memories({source: desc.source, ...desc.filter, limit: N})`. The `...desc.filter` spread carries through repo_path or metadata_match cleanly without the caller needing to know which Cursor phase fired.\n" +
+  "  • Tail (search_memories): `r = echo_resolve_mru({sources: ['codex'], repo_path: X})` → if `r.sources['codex'] !== null`, `search_memories({source: desc.source, ...desc.filter, limit: N})`.\n" +
   '  • Live watch (wait_for_new_turns): `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})`.';
 
 /** The descriptor returned for a resolved source. `filter` encodes the
@@ -56,12 +50,6 @@ export interface ResolvedSourceDescriptor {
     metadata_match?: Record<string, string>;
     repo_path?: string;
   };
-  /** Set ONLY when the Cursor Phase 2 legacy fallback fired (i.e. Phase 1
-   *  returned 0 atoms AND `resolveCursorComposerForRepoPath` returned a
-   *  non-null composer_id). When `phase` is set, `filter.metadata_match`
-   *  carries `{composer_id: <resolved>}` and `filter.repo_path` is absent
-   *  (legacy atoms predate the repo_root capture write). */
-  phase?: 'cursor_legacy';
 }
 
 export interface EchoResolveMruResult {
@@ -75,13 +63,6 @@ export interface EchoResolveMruResult {
 export interface EchoResolveMruParams {
   sources: string[];
   repo_path?: string;
-}
-
-export interface EchoResolveMruInjections {
-  /** Injection seam for the Cursor workspace + composer resolver. Tests
-   *  override this to point at mock-fs fixtures; production passes the
-   *  live `resolveCursorComposerForRepoPath` (the default). */
-  resolveCursorComposer?: (repoPath: string) => CursorComposerResolution | null;
 }
 
 const SOURCE_APP_SET = new Set<string>(SOURCE_APP_VALUES);
@@ -136,50 +117,9 @@ async function resolveAppNameEntry(
   storage: Storage,
   app: SourceApp,
   normalisedRepoPath: string | null,
-  rawRepoPath: string | undefined,
-  injections: EchoResolveMruInjections,
   scanState: ScanState,
 ): Promise<ResolvedSourceDescriptor | null> {
   const prefix = buildSourceAppMap()[app];
-
-  // Cursor branch (037 cooperation): when repo_path is set, run Phase 1
-  // (metadata.repo_root) first; only fall back to Phase 2 (legacy composer
-  // resolver) when Phase 1 returns 0 atoms.
-  if (app === 'cursor' && normalisedRepoPath !== null) {
-    const phase1 = await newestMatching(
-      storage,
-      withFsExclusion({
-        source_prefix: prefix,
-        metadata_match: { repo_root: normalisedRepoPath },
-      }),
-      scanState,
-    );
-    if (phase1 !== null) {
-      return {
-        source: phase1.source,
-        filter: { repo_path: normalisedRepoPath },
-      };
-    }
-    // Phase 2: legacy composer fallback. `rawRepoPath` (un-normalised) is
-    // passed to the resolver because the resolver normalises internally and
-    // accepts the trailing-slash shape too.
-    const resolver = injections.resolveCursorComposer ?? resolveCursorComposerForRepoPath;
-    const resolved = resolver(rawRepoPath ?? normalisedRepoPath);
-    if (resolved === null) return null;
-    // Pick the newest cursor source globally (independent of repo_root —
-    // legacy atoms by definition lack repo_root metadata).
-    const cursorNewest = await newestMatching(
-      storage,
-      withFsExclusion({ source_prefix: prefix }),
-      scanState,
-    );
-    if (cursorNewest === null) return null;
-    return {
-      source: cursorNewest.source,
-      filter: { metadata_match: { composer_id: resolved.composer_id } },
-      phase: 'cursor_legacy',
-    };
-  }
 
   // Git branch (037 AC6 Note 2 port): two-path OR when repo_path is set.
   if (app === 'git' && normalisedRepoPath !== null) {
@@ -256,7 +196,6 @@ async function resolveLiteralSourceEntry(
 export async function echoResolveMru(
   storage: Storage,
   params: EchoResolveMruParams,
-  injections: EchoResolveMruInjections = {},
 ): Promise<EchoResolveMruResult> {
   // Defense-in-depth validation — Zod also enforces these at the MCP
   // boundary, but the in-process function is also called directly by tests
@@ -286,8 +225,6 @@ export async function echoResolveMru(
           storage,
           entry,
           normalisedRepoPath,
-          params.repo_path,
-          injections,
           scanState,
         );
       } else {
@@ -321,7 +258,6 @@ const descriptorSchema = z.object({
     metadata_match: z.record(z.string(), z.string()).optional(),
     repo_path: z.string().optional(),
   }),
-  phase: z.literal('cursor_legacy').optional(),
 });
 
 const echoResolveMruOutputSchema = {

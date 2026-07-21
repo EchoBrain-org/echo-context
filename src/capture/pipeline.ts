@@ -65,7 +65,7 @@ export function processExtractorCandidate(
 }
 
 export function captureDedupeKey(
-  extractor: 'codex' | 'claude-code' | 'cursor',
+  extractor: 'codex' | 'claude-code',
   parts: readonly (string | number)[],
 ): string {
   const digest = createHash('sha256')

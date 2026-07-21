@@ -95,7 +95,7 @@ export const RECENT_WORK_CONTEXT_DESCRIPTION =
   'their own activity, or another agent/app on the same machine ("what is Codex/Claude ' +
   'Code working on?" — answered via `cluster.source_breakdown`, which counts atoms per ' +
   'app inside each cluster). Also: where they left off, or to bring prior context ' +
-  '(Cursor + Claude Code + Codex + git) into the current conversation. Returns one ' +
+  '(historical Cursor + Claude Code + Codex + git) into the current conversation. Returns one ' +
   'cluster per coherent work thread; the AI client decides which to attend to. `cluster.edges[]` is signal-bearing — pairs joined ' +
   'only by scope (repo/workspace) or session (conversation/thread) artifacts are ' +
   'omitted, so `edges.length` is no longer guaranteed to equal C(N, 2); use ' +

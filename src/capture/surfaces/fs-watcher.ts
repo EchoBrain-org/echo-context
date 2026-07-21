@@ -9,13 +9,11 @@ import { processCandidate } from '../pipeline.js';
 const log = createLogger('capture.surfaces.fs');
 
 const HOME = homedir();
-const CURSOR_PREFIX = `${HOME}/Library/Application Support/Cursor/User/workspaceStorage/`;
 const CLAUDE_PREFIX = `${HOME}/.claude/projects/`;
 
-export type FsFileKind = 'cursor-workspace' | 'claude-project';
+export type FsFileKind = 'claude-project';
 
 export function classifyKind(absPath: string): FsFileKind | undefined {
-  if (absPath.startsWith(CURSOR_PREFIX)) return 'cursor-workspace';
   if (absPath.startsWith(CLAUDE_PREFIX)) return 'claude-project';
   return undefined;
 }
@@ -74,7 +72,7 @@ function statAsync(absPath: string): Promise<Stats | null> {
 }
 
 function ignored(filepath: string): boolean {
-  // Cursor's SQLite triplet is owned by the cursor extractor; don't double-capture.
+  // Database journals and temporary files are not semantic context events.
   if (/\bstate\.vscdb(-wal|-shm|-journal)?$/.test(filepath)) return true;
   if (filepath.endsWith('-journal')) return true;
   if (filepath.endsWith('.tmp')) return true;

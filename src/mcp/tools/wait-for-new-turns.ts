@@ -15,8 +15,9 @@
 //   - echo_resolve_mru(sources=[<source_app>]) → MRU exact-source resolution
 //     for "where did I leave off" lookups.
 //   - wait_for_new_turns(sources=[<source_app>]) → PREFIX match across ALL
-//     sessions of that app (catches new Cursor composers, new CC sessions,
-//     etc. as they spawn — group session A wants to wake on ANY new turn).
+//     sessions of that app (catches new coding sessions as they spawn — group
+//     session A wants to wake on ANY new turn). Historical source identifiers
+//     remain accepted even when the bundled runtime no longer produces them.
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -66,6 +67,7 @@ export const WAIT_FOR_NEW_TURNS_DESCRIPTION =
   '. Mixed entry types accepted:\n' +
   '      • Literal source path (e.g. `fs:/Users/.../state.vscdb`, `git:/Users/.../repo`) → EXACT match.\n' +
   '      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH (matches ALL sessions/atoms of that app — explicitly DIFFERENT from `echo_resolve_mru(sources=[<app>])` which resolves to the MRU exact source). Group session A wants "wake on any session of these apps."\n' +
+  '        `cursor` is retained for historical/migrated records; this runtime does not produce new Cursor atoms.\n' +
   "  • `since: string` — required. ISO 8601 timestamp; only return turns with timestamp STRICTLY AFTER this (`> since`, not `>=`). Pass the previous call's `next_since` to chain.\n" +
   '  • `timeout?: number` — seconds; default ' +
   String(WAIT_DEFAULT_TIMEOUT_SECONDS) +
@@ -74,7 +76,7 @@ export const WAIT_FOR_NEW_TURNS_DESCRIPTION =
   '.\n\n' +
   // behavior — IDs-only contract (item 038 / AC4)
   'BEHAVIOR: polls echo.db every 1s. Returns immediately on any non-empty result; returns at `timeout` with empty `turn_ids[]`.\n\n' +
-  'CHAINING (lossless — `next_since` is NEVER the server wall clock): when turns are returned, `next_since` = the max timestamp among the RETURNED turns (canonical Z form, as stored); when the call times out empty, `next_since` = your own `since` (canonicalized) echoed back. Always chain with `since = next_since` — safe unconditionally, even after a timeout. Atom timestamps are event times that land in storage with ingest lag (Cursor re-poll ~15s; CC/codex/git seconds), so a wall-clock watermark would permanently skip late-ingested turns; anchoring `next_since` to delivered data makes the chain lossless.\n\n' +
+  'CHAINING (lossless — `next_since` is NEVER the server wall clock): when turns are returned, `next_since` = the max timestamp among the RETURNED turns (canonical Z form, as stored); when the call times out empty, `next_since` = your own `since` (canonicalized) echoed back. Always chain with `since = next_since` — safe unconditionally, even after a timeout. Atom timestamps are event times that can land in storage after ingest delay, so a wall-clock watermark would permanently skip late-ingested turns; anchoring `next_since` to delivered data makes the chain lossless.\n\n' +
   'OVERFLOW PAGING: at most ' +
   String(WAIT_MAX_RETURNED_TURNS) +
   ' turns per call. When more match, the call returns the OLDEST page (ascending by timestamp, id) plus a warning in `warnings[]` — chain immediately with `next_since` to page through the backlog. A same-timestamp group is never split across the page boundary: either the page carries the WHOLE group (it may exceed the cap by the tie count), or — when the group cannot be proven complete because a window-full fetch ends at its timestamp — the group is held back entirely and the chained call re-fetches it whole. The one lossy case left: a single same-millisecond group in one source larger than the per-source fetch window ships flagged with an explicit warning. `turn_ids` are ordered oldest→newest.\n\n' +
@@ -452,8 +454,8 @@ export async function waitForNewTurns(
   }
 
   // Lossless chaining (Fix ⑤): next_since is NEVER the wall clock. Atom
-  // timestamps are EVENT times that land in storage LATER (Cursor re-poll
-  // ~15s; CC/codex/git seconds of ingest lag) — a wall-clock next_since
+  // timestamps are EVENT times that can land in storage after ingest lag — a
+  // wall-clock next_since
   // ran AHEAD of delivered data, so a turn that occurred before our return
   // moment but ingested after the final poll was permanently invisible to
   // every chained call (strict `> since`). Instead:

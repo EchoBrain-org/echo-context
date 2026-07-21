@@ -2,10 +2,6 @@ import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { startClaudeCodeExtractor } from '../capture/extractors/claude-code.js';
 import { startCodexExtractor } from '../capture/extractors/codex.js';
-import {
-  startCursorExtractor,
-  type CursorExtractorHandle,
-} from '../capture/extractors/cursor.js';
 import type {
   ExtractorHandle,
   ExtractorHealth,
@@ -119,7 +115,6 @@ export async function startContextRuntime(
   let mcp: McpServerHandle | undefined;
   let codex: ExtractorHandle | undefined;
   let claude: ExtractorHandle | undefined;
-  let cursor: CursorExtractorHandle | undefined;
   let stopped = false;
   let startupUnhealthy = false;
 
@@ -128,7 +123,6 @@ export async function startContextRuntime(
     const observed: Array<[string, { getHealth?: () => ExtractorHealth } | undefined]> = [
       ['codex', codex],
       ['claude_code', claude],
-      ['cursor', cursor],
     ];
     let observedStatus = snapshot.status;
     for (const [name, handle] of observed) {
@@ -222,29 +216,6 @@ export async function startContextRuntime(
       health.setComponent('claude_code', 'healthy', 'disabled');
     }
 
-    if (config.capture.cursor) {
-      health.transition('catching_up');
-      health.setComponent('cursor', 'starting');
-      cursor = await startCursorExtractor(startupStorage, {
-        globalDbPath: config.capture.cursorGlobalDb,
-        workspacePrefix: withTrailingSlash(config.capture.cursorWorkspaceDir),
-      });
-      health.setComponent('cursor', 'catching_up');
-      await cursor.initialCatchUp;
-      const cursorHealth = cursor.getHealth();
-      const cursorStatus =
-        cursorHealth.state === 'stopped' ? 'unhealthy' : cursorHealth.state;
-      if (cursorStatus === 'unhealthy') startupUnhealthy = true;
-      health.setComponent(
-        'cursor',
-        cursorStatus,
-        cursorHealth.lastError ??
-          `queued=${cursorHealth.queueDepth}; overflow=${cursorHealth.overflowCount}`,
-      );
-    } else {
-      health.setComponent('cursor', 'healthy', 'disabled');
-    }
-
     health.setComponent('runtime', startupUnhealthy ? 'unhealthy' : 'healthy', {
       details: runtimeDetails,
     });
@@ -253,7 +224,6 @@ export async function startContextRuntime(
     health.transition('unhealthy');
     health.setComponent('startup', 'unhealthy', (err as Error).message);
     await Promise.all([
-      ...(cursor !== undefined ? [settleStop('cursor', cursor.stop)] : []),
       ...(claude !== undefined ? [settleStop('claude_code', claude.stop)] : []),
       ...(codex !== undefined ? [settleStop('codex', codex.stop)] : []),
       ...(mcp !== undefined ? [settleStop('mcp', mcp.stop)] : []),
@@ -284,7 +254,6 @@ export async function startContextRuntime(
       if (stopped) return;
       stopped = true;
       health.transition('stopping');
-      if (cursor !== undefined) await settleStop('cursor', cursor.stop);
       if (claude !== undefined) await settleStop('claude_code', claude.stop);
       if (codex !== undefined) await settleStop('codex', codex.stop);
       await settleStop('mcp', runningMcp.stop);
@@ -304,7 +273,6 @@ export async function runContextDaemon(config: ContextRuntimeConfig): Promise<vo
     capture: {
       codex: config.capture.codex,
       claude_code: config.capture.claudeCode,
-      cursor: config.capture.cursor,
     },
   });
 

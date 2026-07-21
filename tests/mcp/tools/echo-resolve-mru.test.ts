@@ -2,10 +2,7 @@
 //
 // Coverage matrix (≥ 15 unit tests per AC1 contract #7):
 //   - 8 matrix cases: each source_app (4) × {with, without} repo_path
-//   - Cursor Phase 1 (repo_root hit) — descriptor carries repo_path, no phase
-//   - Cursor Phase 2 (legacy composer fallback) — descriptor carries
-//     metadata_match.composer_id + phase: 'cursor_legacy', no repo_path
-//   - Cursor Phase-2-attempted-but-empty — whole slot is null (no descriptor)
+//   - Historical Cursor atoms remain resolvable from stored metadata
 //   - Mixed-entry-type input — source-app names AND literal paths together
 //   - Validation: empty array; absolute-path check
 //   - End-to-end composition: echo_resolve_mru → search_memories(source, ...filter)
@@ -83,7 +80,6 @@ describe('echoResolveMru — matrix: each source_app, with/without repo_path', (
     expect(r.sources['claude_code']).not.toBeNull();
     expect(r.sources['claude_code']!.source).toContain('sess-B.jsonl');
     expect(r.sources['claude_code']!.filter).toEqual({});
-    expect(r.sources['claude_code']!.phase).toBeUndefined();
   });
 
   it('claude_code with repo_path scopes to the newest matching repo_root source', async () => {
@@ -124,7 +120,7 @@ describe('echoResolveMru — matrix: each source_app, with/without repo_path', (
     expect(r.sources['codex']!.filter).toEqual({ repo_path: REPO_B });
   });
 
-  it('cursor without repo_path returns the newest cursor source (Phase 1 not exercised)', async () => {
+  it('historical cursor atoms remain resolvable without repo_path', async () => {
     const store = new MemoryStorage();
     await store.append(
       ev(`${CURSOR_PREFIX}User/globalStorage/state.vscdb`, ts(15), 'composer turn', {
@@ -136,10 +132,9 @@ describe('echoResolveMru — matrix: each source_app, with/without repo_path', (
     expect(r.sources['cursor']).not.toBeNull();
     expect(r.sources['cursor']!.source).toContain('state.vscdb');
     expect(r.sources['cursor']!.filter).toEqual({});
-    expect(r.sources['cursor']!.phase).toBeUndefined();
   });
 
-  it('cursor Phase 1 (repo_root match) — descriptor carries repo_path, no phase', async () => {
+  it('historical cursor atoms with repo metadata remain repo-scoped', async () => {
     const store = new MemoryStorage();
     await store.append(
       ev(`${CURSOR_PREFIX}User/globalStorage/state.vscdb`, ts(15), 'composer turn', {
@@ -155,43 +150,19 @@ describe('echoResolveMru — matrix: each source_app, with/without repo_path', (
     const desc = r.sources['cursor']!;
     expect(desc.source).toContain('state.vscdb');
     expect(desc.filter).toEqual({ repo_path: REPO_A });
-    expect(desc.phase).toBeUndefined();
   });
 
-  it('cursor Phase 2 (legacy composer fallback) — descriptor carries metadata_match.composer_id + phase=cursor_legacy', async () => {
+  it('historical cursor atoms without repo metadata are not guessed from live app state', async () => {
     const store = new MemoryStorage();
-    // Legacy cursor atom — has composer_id but NO repo_root metadata.
     await store.append(
       ev(`${CURSOR_PREFIX}User/globalStorage/state.vscdb`, ts(15), 'legacy', {
         composer_id: 'comp-legacy',
       }),
     );
-    const r = await echoResolveMru(
-      store,
-      { sources: ['cursor'], repo_path: REPO_A },
-      {
-        resolveCursorComposer: () => ({
-          workspace_id: 'ws-1',
-          composer_id: 'comp-legacy',
-        }),
-      },
-    );
-    expect(r.sources['cursor']).not.toBeNull();
-    const desc = r.sources['cursor']!;
-    expect(desc.phase).toBe('cursor_legacy');
-    expect(desc.filter.metadata_match).toEqual({ composer_id: 'comp-legacy' });
-    expect(desc.filter.repo_path).toBeUndefined();
-    expect(desc.source).toContain('state.vscdb');
-  });
-
-  it('cursor Phase 2 attempted but empty — whole slot is null (no descriptor)', async () => {
-    const store = new MemoryStorage();
-    // No cursor atoms at all + resolver returns null → null slot.
-    const r = await echoResolveMru(
-      store,
-      { sources: ['cursor'], repo_path: REPO_A },
-      { resolveCursorComposer: () => null },
-    );
+    const r = await echoResolveMru(store, {
+      sources: ['cursor'],
+      repo_path: REPO_A,
+    });
     expect(r.sources['cursor']).toBeNull();
   });
 

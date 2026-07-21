@@ -128,7 +128,7 @@ describe.skip('startFsWatcher', () => {
     expect(types).toContain('change');
   });
 
-  it('ignores Cursor SQLite WAL artifacts while still capturing normal files', async () => {
+  it('ignores SQLite WAL artifacts while still capturing normal files', async () => {
     handle = await startFsWatcher([dir], storage, { persistRawEvents: true });
 
     const walPath = join(dir, 'state.vscdb-wal');
@@ -371,11 +371,6 @@ describe('startFsWatcher emit-path error containment (Bug C)', () => {
 });
 
 describe('classifyKind', () => {
-  it("returns 'cursor-workspace' for paths under the Cursor workspace prefix", () => {
-    const path = `${process.env['HOME']!}/Library/Application Support/Cursor/User/workspaceStorage/abc/state.vscdb`;
-    expect(classifyKind(path)).toBe('cursor-workspace');
-  });
-
   it("returns 'claude-project' for paths under ~/.claude/projects/", () => {
     const path = `${process.env['HOME']!}/.claude/projects/foo/session.jsonl`;
     expect(classifyKind(path)).toBe('claude-project');
@@ -387,15 +382,6 @@ describe('classifyKind', () => {
 });
 
 describe('_isAllowedPathIn tilde expansion (FS allowlist contract)', () => {
-  it('accepts a Cursor workspace file under the tilde-prefixed allowlist entry', () => {
-    const home = process.env['HOME']!;
-    const concretePath = `${home}/Library/Application Support/Cursor/User/workspaceStorage/abc/state.vscdb`;
-    const allowlist = [
-      '~/Library/Application Support/Cursor/User/workspaceStorage/',
-    ];
-    expect(_isAllowedPathIn(concretePath, allowlist)).toBe(true);
-  });
-
   it('accepts a Claude Code project file under ~/.claude/projects/', () => {
     const home = process.env['HOME']!;
     const concretePath = `${home}/.claude/projects/foo/session.jsonl`;
@@ -406,17 +392,12 @@ describe('_isAllowedPathIn tilde expansion (FS allowlist contract)', () => {
   it("rejects sibling paths that don't share the prefix", () => {
     const home = process.env['HOME']!;
     expect(
-      _isAllowedPathIn(`${home}/Library/Other/foo`, [
-        '~/Library/Application Support/Cursor/User/workspaceStorage/',
-      ]),
+      _isAllowedPathIn(`${home}/Library/Other/foo`, ['~/.claude/projects/']),
     ).toBe(false);
   });
 
-  it('confirms the production CAPTURED_SOURCES.fs_paths covers the two intended prefixes', () => {
+  it('confirms the production allowlist contains only the two live coding sources', () => {
     const fsPaths = CAPTURED_SOURCES.fs_paths as unknown as string[];
-    expect(fsPaths).toContain(
-      '~/Library/Application Support/Cursor/User/workspaceStorage/',
-    );
-    expect(fsPaths).toContain('~/.claude/projects/');
+    expect(fsPaths).toEqual(['~/.claude/projects/', '~/.codex/sessions/']);
   });
 });
