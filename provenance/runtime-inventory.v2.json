@@ -115,8 +115,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "c7370356d61601ed8590e5d7321dcde6026308ff",
-      "content_sha256": "ad5330b18c9fbe2368efbde6ddd503de4681d2c6ae74d8d41b9679077a5f3fbb",
+      "blob_oid": "3f27215d7d12b783c570261fe1f539e26bac25b6",
+      "content_sha256": "0d5de518338db8f6ec4d0f203957e1eaa7a80a1f536fa972e24148a40f5da404",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
     },
