@@ -28,8 +28,17 @@ describe('projectMatch — content cap', () => {
     expect(m.content.length).toBeLessThanOrEqual(WIRE_SHAPE_CAPS.match_content + 100);
     expect(m.content.startsWith('HEAD_SENTINEL_')).toBe(true);
     expect(m.content.endsWith('_TAIL_SENTINEL')).toBe(true);
-    expect(m.content).toMatch(/\[\d+\s*chars elided\]/);
+    expect(m.content).toMatch(/\[\d+\s*bytes elided\]/);
     expect(m.bytes_elided).toBeGreaterThan(0);
+  });
+
+  it('clips multibyte content by UTF-8 bytes without splitting a code point', () => {
+    const m = projectMatch(ev({ content: '😀'.repeat(2_000) }));
+    expect(Buffer.byteLength(m.content, 'utf8')).toBeLessThanOrEqual(
+      WIRE_SHAPE_CAPS.match_content + 64,
+    );
+    expect(m.content).not.toContain('�');
+    expect(m.content).toMatch(/bytes elided/);
   });
 });
 
@@ -96,6 +105,20 @@ describe('projectMatch — per-metadata-value cap', () => {
     expect(m.metadata!['ok']).toBe('small');
     expect(m.metadata_keys_elided?.sort()).toEqual(['a', 'b']);
     expect(m.metadata_bytes_elided).toBeGreaterThan(0);
+  });
+
+  it('bounds key count while retaining high-signal identity metadata', () => {
+    const noisy = Object.fromEntries(
+      Array.from({ length: 100 }, (_, i) => [`noise_${i.toString().padStart(3, '0')}`, 'small']),
+    );
+    const m = projectMatch(
+      ev({ metadata: { ...noisy, session_id: 'session-1', repo_root: '/repo' } }),
+    );
+    expect(m.metadata?.['session_id']).toBe('session-1');
+    expect(m.metadata?.['repo_root']).toBe('/repo');
+    expect(Object.keys(m.metadata ?? {})).toHaveLength(WIRE_SHAPE_CAPS.metadata_keys);
+    expect(m.metadata_keys_omitted).toBe(70);
+    expect(m.truncations).toContain('metadata');
   });
 });
 

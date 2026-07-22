@@ -139,8 +139,8 @@ describe('startMcpServer', () => {
 
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toBeDefined();
-    expect(result.structuredContent?.['query']).toBeUndefined();
-    expect(result.structuredContent?.['result_caps']).toBeUndefined();
+    expect(result.structuredContent?.['query']).toBeDefined();
+    expect(result.structuredContent?.['result_caps']).toBeDefined();
     expect(result.structuredContent?.['clusters']).toBeDefined();
   });
 

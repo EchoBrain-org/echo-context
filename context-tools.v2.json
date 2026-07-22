@@ -1,0 +1,14 @@
+{
+  "count": 7,
+  "note": "Exactly the seven read-only context retrieval tools registered by src/mcp/server.ts. get_recent_work_context was removed from MCP; agents use find_clusters then get_atoms. POST /v1/clusters remains a service API endpoint, not an MCP tool. No coord/product/loop tools. Capture is service-only (POST /v1/capture).",
+  "schema": "context-tools.v2",
+  "tools": [
+    "echo_ping",
+    "echo_resolve_mru",
+    "find_clusters",
+    "get_atom",
+    "get_atoms",
+    "search_memories",
+    "wait_for_new_turns"
+  ]
+}

@@ -16,7 +16,7 @@ export function registerEchoPing(server: McpServer): void {
     {
       description:
         'Connectivity check: returns pong with the received message and a timestamp.',
-      inputSchema: { message: z.string().optional() },
+      inputSchema: { message: z.string().max(1024).optional() },
       outputSchema: echoPingOutputSchema,
       annotations: { readOnlyHint: true },
     },

@@ -263,25 +263,24 @@ describe('get_atoms', () => {
     expect(JSON.stringify(compact).length).toBeLessThanOrEqual(25_000);
   });
 
-  it('first projected atom alone exceeds 25k → atoms=[], all IDs dropped, warning surfaced', async () => {
+  it('many individually-small metadata keys are bounded before one atom can exceed 25k', async () => {
     const store = new MemoryStorage();
-    // Build an atom with metadata that even after projection still
-    // dominates the budget. content cap is 2k, but multiple per-key
-    // metadata values projected to large structures will dominate.
+    // Reproduce the former hole: many values individually fit the per-key
+    // cap but collectively exceeded the result budget.
     const huge: Record<string, unknown> = {};
     // 40 metadata keys, each with a ~960B structured value just under the
-    // per-key cap (passes verbatim) — total payload ~38KB, well over the
-    // 25k response ceiling, so even this single atom alone overflows.
+    // per-key cap. The whole-metadata cap must now keep the atom usable.
     for (let i = 0; i < 40; i++) {
       huge[`key_${i.toString().padStart(2, '0')}`] = { payload: 'a'.repeat(950) };
     }
     const id1 = await store.append(evShape(1, { content: 'small', metadata: huge }));
 
     const r = await getAtoms(store, { atom_ids: [id1] });
-    expect(r.atoms).toEqual([]);
-    expect(r.atoms_dropped).toBe(1);
-    expect(r.atoms_dropped_ids).toEqual([id1]);
-    expect(r.warnings.some((w) => w.includes('first projected atom'))).toBe(true);
+    expect(r.atoms).toHaveLength(1);
+    expect(r.atoms[0]?.metadata_keys_omitted).toBeGreaterThan(0);
+    expect(r.atoms[0]?.truncations).toContain('metadata');
+    expect(r.atoms_dropped).toBe(0);
+    expect(Buffer.byteLength(JSON.stringify(r), 'utf8')).toBeLessThanOrEqual(25_000);
   });
 
   it('REGRESSION (post-build review): final envelope respects 25k ceiling even with many missing IDs after a near-ceiling accepted prefix', async () => {

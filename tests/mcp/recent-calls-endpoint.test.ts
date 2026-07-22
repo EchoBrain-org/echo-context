@@ -59,8 +59,6 @@ function minimalArgs(tool: string): Record<string, unknown> {
       return { message: 'audit-smoke' };
     case 'search_memories':
       return { query: 'no-match', limit: 1 };
-    case 'get_recent_work_context':
-      return { limit: 1, format: 'skeleton' };
     case 'find_clusters':
       return {};
     case 'get_atoms':

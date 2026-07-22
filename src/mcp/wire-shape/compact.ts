@@ -2,6 +2,7 @@ export type ViewMode = 'compact' | 'rich';
 
 export interface CompactClusterInput {
   cluster_id: string;
+  rank?: number;
   rank_reason?: readonly string[];
   atom_ids: string[];
   atom_ids_truncated?: true;
@@ -20,6 +21,7 @@ export type CompactRankReason =
 
 export interface CompactCluster {
   cluster_id: string;
+  rank?: number;
   atom_ids: string[];
   source_breakdown: Record<string, number>;
   time_range: { from: string; to: string };
@@ -69,6 +71,7 @@ export function compactCluster(cluster: CompactClusterInput): CompactCluster {
     time_range: cluster.time_range,
     open_loop_hints: cluster.open_loop_hints,
   };
+  if (cluster.rank !== undefined) out.rank = cluster.rank;
   if (cluster.label !== undefined) {
     out.label = UUID_FALLBACK_LABEL.test(cluster.label) ? null : cluster.label;
   }

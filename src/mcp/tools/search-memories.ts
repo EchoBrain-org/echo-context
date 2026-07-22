@@ -19,17 +19,23 @@ import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, isoString, TZ_NAIVE_WARNING } from '../util/iso8601.js';
 import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
-import { projectMatch } from '../wire-shape/match.js';
+import { jsonByteLength } from '../wire-shape/bytes.js';
+import { clipString } from '../wire-shape/clip.js';
+import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
 import { CursorDecodeError, decodeCursor, emitCursor, encodeCursor } from './_cursor.js';
 // Re-export for any pre-existing callers / tests that imported the cursor
 // helpers from search-memories. New callers should import from `_cursor.ts`.
 export { CursorDecodeError, decodeCursor, encodeCursor, type DecodedCursor } from './_cursor.js';
 
 export const SEARCH_MEMORIES_DESCRIPTION =
-  "Search the user's captured ECHO memories (historical Cursor records, live Claude Code and Codex conversations, git commits, Granola meeting notes, and derived Granola signal atoms) by free-text query, app, source prefix, or time range. Returns the most recent matching events. Three-way source selection (more-specific wins): `source` (exact match — single session JSONL, git repo encoding, or API surface) > `source_prefix` (LIKE — path-precise filter, e.g. a single workspaceStorage subdir) > `source_app` (`cursor` | `claude_code` | `codex` | `git` | `granola`, expands to the canonical encoded prefix). All three are independently optional and may co-occur; the most-specific wins. Free-text `query` is matched as a case-insensitive literal substring against event content and `metadata.canonical_subject`; this is NOT a semantic / KNN search. Use exact tokens (file paths, SHAs, error codes) rather than paraphrased questions. Pass `repo_path=<absolute repo root>` (item 037) to scope results to atoms whose capture-side `metadata.repo_root` matches — works across source_apps with repo metadata; Granola normally has no repo_root and is resolved without repo_path. For `source_app='git'`, `repo_path` matches `metadata.repo_root` only; legacy git atoms without that metadata are reachable via `source_prefix='git:<path>'`. For `source_app='granola'`, the canonical prefix is `api:granola`. Pass `metadata_match={key: value, ...}` (item 038 + Granola signals) for an arbitrary AND-joined filter; a scalar value means equality and an array value means membership. Storage-forwarded keys remain `workspace_id`, `composer_id`, `session_id`, and `repo_root`; signal filters (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied in the tool before pagination. Passing BOTH `repo_path` and `metadata_match.repo_root` with conflicting values is rejected (isError). Derived Granola signal retrieval returns only the current manifest run for each note. For result sets exceeding `limit`, the response carries an opaque `next_cursor` string — pass it back verbatim as `cursor` on the next call to page through; do not construct one client-side. `next_cursor` is `null` when there are no more rows.";
+  "Search the user's captured ECHO memories with case-insensitive literal substring matching; this is NOT a semantic search. Use exact phrases, paths, SHAs, IDs, or error text. Results are newest first and the complete JSON result is capped at 25,000 UTF-8 bytes.\n\n" +
+  'Choose at most one source selector: `source` (one exact captured source), `source_prefix` (all sources beginning with a prefix), or `source_app` (`cursor`, `claude_code`, `codex`, `git`, `granola`). `cursor` covers historical Cursor records; this runtime does not capture new ones. For compatibility, multiple selectors still use `source > source_prefix > source_app` and emit a warning naming ignored selectors. `repo_path` and `metadata_match` add AND filters.\n\n' +
+  'Pass `next_cursor` back unchanged as `cursor`. A non-null cursor can mean more matches, a bounded scan continuation, or response-budget trimming; inspect coded `warnings`. `next_cursor: null` means the scanned window ended, but a manifest-cap warning can still make older Granola coverage incomplete. Per-match `truncations` and metadata omission fields are trust signals; use `get_atom(id)` when exact raw detail is needed.';
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
+export const SEARCH_RESPONSE_BYTE_CEILING = 25_000;
+export const SEARCH_QUERY_ECHO_BYTE_CEILING = 4_096;
 // Hard work budget for paths that need post-storage filtering (literal
 // substring search, array-valued metadata filters, and current-Granola-run
 // filtering). A request inspects at most PAGE_ROWS * MAX_PAGES rows and stops
@@ -83,6 +89,8 @@ export interface SearchMatch {
    *  Original shape is opaque on the wire; consumers wanting depth must
    *  hydrate via a follow-up call (deferred V1.6 deep-dive primitive). */
   metadata_keys_elided?: string[];
+  /** Count of keys omitted by the per-match whole-metadata budget. */
+  metadata_keys_omitted?: number;
   /** V1.5.6.1: keys whose value was RESHAPED to a smaller useful
    *  representation (NOT opaqued). Today: `["tool_calls"]` when the
    *  original ToolCall[] was projected to its name trajectory. The
@@ -132,6 +140,8 @@ export interface SearchResult {
   warnings: string[];
 }
 
+type SearchQueryEcho = SearchResult['query_echo'];
+
 export interface SearchMemoriesParams {
   query?: string;
   source_app?: SourceApp;
@@ -162,6 +172,77 @@ function clampLimit(input: number | undefined): number {
   if (input === undefined) return DEFAULT_LIMIT;
   const floored = Math.floor(input);
   return Math.min(Math.max(1, floored), MAX_LIMIT);
+}
+
+function clipJsonString(value: string, jsonBudget: number): string {
+  if (jsonByteLength(value) <= jsonBudget) return value;
+  let retainedBytes = Math.max(16, Math.floor(jsonBudget / 2));
+  let clipped = clipString(value, retainedBytes).value;
+  while (jsonByteLength(clipped) > jsonBudget && retainedBytes > 16) {
+    retainedBytes = Math.max(16, Math.floor(retainedBytes / 2));
+    clipped = clipString(value, retainedBytes).value;
+  }
+  return clipped;
+}
+
+function boundQueryEcho(full: SearchQueryEcho): { echo: SearchQueryEcho; capped: boolean } {
+  if (jsonByteLength(full) <= SEARCH_QUERY_ECHO_BYTE_CEILING) {
+    return { echo: full, capped: false };
+  }
+  const clipNullable = (value: string | null): string | null =>
+    value === null ? null : clipJsonString(value, 384);
+  const echo: SearchQueryEcho = {
+    query: clipNullable(full.query),
+    source_app: full.source_app,
+    source_prefix: clipNullable(full.source_prefix),
+    source: clipNullable(full.source),
+    since: clipNullable(full.since),
+    until: clipNullable(full.until),
+    cursor: clipNullable(full.cursor),
+    limit: full.limit,
+    repo_path: clipNullable(full.repo_path),
+    metadata_match: full.metadata_match === null ? null : {},
+  };
+  if (full.metadata_match !== null) {
+    const bounded: Record<string, MetadataMatchValue> = {};
+    const entries = Object.entries(full.metadata_match).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    for (const [key, value] of entries) {
+      const projected = Array.isArray(value)
+        ? value.slice(0, 8).map((entry) => clipJsonString(entry, 128))
+        : clipJsonString(value, 384);
+      const candidate = { ...bounded, [key]: projected };
+      const candidateEcho = { ...echo, metadata_match: candidate };
+      if (jsonByteLength(candidateEcho) > SEARCH_QUERY_ECHO_BYTE_CEILING) break;
+      bounded[key] = projected;
+    }
+    echo.metadata_match = bounded;
+  }
+  return { echo, capped: true };
+}
+
+function responseCursorAfter(event: CaptureEvent): string {
+  return encodeCursor({ timestamp: event.timestamp, id: event.id });
+}
+
+function identityStub(event: CaptureEvent): ProjectedMatch {
+  const source = clipJsonString(event.source, 1_024);
+  const truncations = ['content', 'metadata'];
+  if (source !== event.source) truncations.unshift('source');
+  return {
+    id: event.id,
+    source,
+    timestamp: event.timestamp,
+    content: '',
+    ...(event.content.length > 0
+      ? { bytes_elided: Buffer.byteLength(event.content, 'utf8') }
+      : {}),
+    ...(event.metadata !== undefined
+      ? { metadata_keys_omitted: Object.keys(event.metadata).length }
+      : {}),
+    truncations,
+  };
 }
 
 function sortDesc(events: CaptureEvent[]): CaptureEvent[] {
@@ -641,6 +722,18 @@ export async function searchMemories(
   // non-UTC machines without breaking callers that pass naive strings on
   // purpose.
   const warnings: string[] = [];
+  const sourceSelectors = [
+    source !== undefined ? 'source' : null,
+    source_prefix !== undefined ? 'source_prefix' : null,
+    source_app !== undefined ? 'source_app' : null,
+  ].filter((selector): selector is string => selector !== null);
+  if (sourceSelectors.length > 1) {
+    const applied = source !== undefined ? 'source' : 'source_prefix';
+    const ignored = sourceSelectors.filter((selector) => selector !== applied);
+    warnings.push(
+      `[SOURCE_SELECTOR_PRECEDENCE] applied ${applied}; ignored ${ignored.join(', ')}. Pass one source selector per call.`,
+    );
+  }
   if (
     (since !== undefined && !hasTzMarker(since)) ||
     (until !== undefined && !hasTzMarker(until))
@@ -649,34 +742,76 @@ export async function searchMemories(
   }
   if (scanBudgetExhausted) {
     warnings.push(
-      `search scan budget reached (${SEARCH_SCAN_MAX_ROWS} rows / ${SEARCH_SCAN_MAX_BYTES} bytes / ${SEARCH_SCAN_MAX_PAGES} pages maximum per request); pass next_cursor to continue incrementally`,
+      `[SEARCH_SCAN_BUDGET] scan budget reached: ${SEARCH_SCAN_MAX_ROWS} rows / ${SEARCH_SCAN_MAX_BYTES} bytes / ${SEARCH_SCAN_MAX_PAGES} pages maximum; pass next_cursor to continue`,
     );
   }
   if (manifestWindowTruncated) {
     warnings.push(
-      `Granola manifest lookup reached its bounded ${SEARCH_MANIFEST_PAGE_ROWS * SEARCH_MANIFEST_MAX_PAGES}-row window; narrow the query if an older note's current run is missing`,
+      `[SEARCH_MANIFEST_CAP] Granola manifest lookup reached its bounded ${SEARCH_MANIFEST_PAGE_ROWS * SEARCH_MANIFEST_MAX_PAGES}-row window; older-note coverage may be incomplete`,
     );
   }
 
-  return {
-    matches: kept.map(projectMatch),
-    total_returned: kept.length,
-    limit_applied: limitApplied,
-    next_cursor,
-    query_echo: {
-      query: query ?? null,
-      source_app: source_app ?? null,
-      source_prefix: source_prefix ?? null,
-      source: source ?? null,
-      since: since ?? null,
-      until: until ?? null,
-      cursor: cursor ?? null,
-      limit: limitApplied,
-      repo_path: normalisedRepoPath,
-      metadata_match: metadata_match ?? null,
-    },
-    warnings,
+  const projected = kept.map(projectMatch);
+  const fullEcho: SearchQueryEcho = {
+    query: query ?? null,
+    source_app: source_app ?? null,
+    source_prefix: source_prefix ?? null,
+    source: source ?? null,
+    since: since ?? null,
+    until: until ?? null,
+    cursor: cursor ?? null,
+    limit: limitApplied,
+    repo_path: normalisedRepoPath,
+    metadata_match: metadata_match ?? null,
   };
+  const boundedEcho = boundQueryEcho(fullEcho);
+  if (boundedEcho.capped) {
+    warnings.push(
+      `[SEARCH_QUERY_ECHO_CAP] query_echo was clipped to ${SEARCH_QUERY_ECHO_BYTE_CEILING} UTF-8 JSON bytes; filtering still used the full input`,
+    );
+  }
+
+  const buildResult = (
+    matches: ProjectedMatch[],
+    cursorOut: string | null,
+    extraWarnings: string[] = [],
+  ): SearchResult => ({
+    matches,
+    total_returned: matches.length,
+    limit_applied: limitApplied,
+    next_cursor: cursorOut,
+    query_echo: boundedEcho.echo,
+    warnings: [
+      ...warnings,
+      ...(matches.some((match) => (match.metadata_keys_omitted ?? 0) > 0)
+        ? [
+            '[SEARCH_METADATA_CAP] one or more matches omitted metadata keys; inspect metadata_keys_omitted and use get_atom(id) for exact raw detail',
+          ]
+        : []),
+      ...extraWarnings,
+    ],
+  });
+
+  let returned = [...projected];
+  let result = buildResult(returned, next_cursor);
+  if (jsonByteLength(result) > SEARCH_RESPONSE_BYTE_CEILING && kept.length > 0) {
+    while (returned.length > 0) {
+      const lastRaw = kept[returned.length - 1]!;
+      const responseWarning =
+        `[SEARCH_RESPONSE_CAP] returned newest ${returned.length} of ${projected.length} candidate matches; ` +
+        'next_cursor resumes after the last returned match';
+      result = buildResult(returned, responseCursorAfter(lastRaw), [responseWarning]);
+      if (jsonByteLength(result) <= SEARCH_RESPONSE_BYTE_CEILING) break;
+      returned = returned.slice(0, -1);
+    }
+    if (returned.length === 0) {
+      const stub = identityStub(kept[0]!);
+      result = buildResult([stub], responseCursorAfter(kept[0]!), [
+        '[SEARCH_RESPONSE_CAP] newest match required an identity-only stub; use get_atom(id) for exact raw detail',
+      ]);
+    }
+  }
+  return result;
 }
 
 // Single source-of-truth Zod shape for a captured atom in MCP tool responses.
@@ -694,6 +829,7 @@ export const searchMatchSchema = z.object({
   // values exceeded the per-key cap and were replaced by elision placeholders.
   metadata_bytes_elided: z.number().int().nonnegative().optional(),
   metadata_keys_elided: z.array(z.string()).optional(),
+  metadata_keys_omitted: z.number().int().nonnegative().optional(),
   // V1.5.6.1 — optional, set when one or more metadata values were
   // RESHAPED to a smaller useful representation (e.g. tool_calls → name
   // trajectory). Distinct semantics from metadata_keys_elided.
@@ -738,30 +874,38 @@ export function registerSearchMemories(server: McpServer, storage: Storage): voi
     {
       description: SEARCH_MEMORIES_DESCRIPTION,
       inputSchema: {
-        query: z.string().optional(),
+        query: z.string().max(4096).optional(),
         source_app: z.enum(SOURCE_APP_VALUES).optional(),
-        source_prefix: z.string().optional(),
+        source_prefix: z.string().max(4096).optional(),
         source: z
           .string()
+          .max(4096)
           .optional()
           .describe(
-            'Item 038 / AC0: exact-source filter. 3-way precedence — `source` (exact) > `source_prefix` (LIKE) > `source_app` (canonical app prefix); the most-specific wins. The losing axes are ignored, NOT errored.',
+            'Exact captured-source filter. Pass only one of source, source_prefix, or source_app; legacy mixed calls preserve precedence and emit a warning.',
           ),
         since: isoString.optional(),
         until: isoString.optional(),
-        cursor: z.string().optional(),
-        limit: z.number().optional(),
+        cursor: z.string().max(4096).optional(),
+        limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
         repo_path: z
           .string()
+          .max(4096)
           .optional()
           .describe(
-            'Item 037: absolute filesystem path to a repo root. When set, scopes the result set to atoms whose `metadata.repo_root` (written at capture time for claude_code, codex, and cursor; reachable across repo-aware source_apps) equals the normalised path. For `source_app=git`, matches `metadata.repo_root` only — legacy git atoms without that metadata are reachable via `source_prefix=git:<path>`. Granola atoms normally have no repo_root, so search them without repo_path. Conflicts on `repo_root` with an explicit `metadata_match` entry → isError.',
+            'Absolute repo root. AND-filters atoms by capture-side metadata.repo_root. Conflicting metadata_match.repo_root is rejected.',
           ),
         metadata_match: z
-          .record(z.string(), z.union([z.string(), z.array(z.string()).nonempty()]))
+          .record(
+            z.string(),
+            z.union([
+              z.string().max(4096),
+              z.array(z.string().max(4096)).nonempty().max(50),
+            ]),
+          )
           .optional()
           .describe(
-            'Item 038 / AC0 + Granola signals: arbitrary AND-joined filter. Scalar value means equality; array value means membership. Storage-forwarded keys are `workspace_id`, `composer_id`, `session_id`, `repo_root`; signal/source keys (`source`, `signal_type`, `canonical_subject`, `granola_atom_type`, `note_id`, `dedupe_key`, `parent_dedupe_key`, `extraction_run_id`) are applied before pagination.',
+            'AND-joined allow-listed metadata filters. A string means equality; an array means membership.',
           ),
       },
       outputSchema: searchMemoriesOutputSchema,

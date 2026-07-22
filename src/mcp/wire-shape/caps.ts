@@ -27,6 +27,13 @@ export const WIRE_SHAPE_CAPS = {
    *  (tool_calls, files_referenced, thinking) get clipped. */
   metadata_value: 1_000,
 
+  /** Total serialized metadata retained on one projected atom. Per-value
+   *  clipping alone is insufficient when an adapter emits thousands of
+   *  individually-small keys. The key count is bounded independently so
+   *  object traversal and trust-signal arrays stay predictable. */
+  metadata_total: 4_000,
+  metadata_keys: 32,
+
   /** Minimal-mode `action.input` / `action.output` clip
    *  (get_recent_work_context). Pre-existing as `MINIMAL_CONTENT_CAP` from
    *  item 025; surfaced here so all three tools share one caps table. */

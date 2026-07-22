@@ -13,11 +13,14 @@ import {
   getRecentWorkContext,
   hasTzMarker,
 } from '../../../src/mcp/tools/recent-work-context.js';
-import { startMcpServer, type McpServerHandle } from '../../../src/mcp/server.js';
 import { MemoryStorage } from '../../../src/storage/memory.js';
 import type { CaptureEvent } from '../../../src/storage/interface.js';
 import type { RecentWorkContextResponse } from '../../../src/trace/types.js';
 import { captureStdout } from '../../fixtures/stdout.js';
+import {
+  startLegacyRecentWorkContextServer as startMcpServer,
+  type LegacyRwcServerHandle as McpServerHandle,
+} from '../../fixtures/legacy-rwc-server.js';
 
 interface ToolContent {
   type: string;
@@ -98,7 +101,7 @@ async function seedScenario(store: MemoryStorage): Promise<void> {
   for (const e of events) await store.append(e);
 }
 
-describe('get_recent_work_context (end-to-end via MCP server)', () => {
+describe('get_recent_work_context (test-only legacy wrapper harness)', () => {
   let handle: McpServerHandle | null = null;
   let restoreStdout: () => void;
   let store: MemoryStorage;
@@ -140,7 +143,7 @@ describe('get_recent_work_context (end-to-end via MCP server)', () => {
     expect(found?.description).toContain('Migration:');
   });
 
-  it('exactly the eight context tools are registered (item 135: coord/product/loop tools removed from the standalone echo-context roster)', async () => {
+  it('legacy harness registers the former eight-tool roster for wrapper regression coverage', async () => {
     handle = await startMcpServer(store, { port: 0 });
     const tools = await withClient(handle.url, async (c) => c.listTools());
     const names = tools.tools.map((t) => t.name).sort();
@@ -1551,7 +1554,7 @@ describe('Item 038 / AC3 — recent_work_context shim parity', () => {
     expect(viaShim.query).toEqual(viaEngine.query);
   });
 
-  it('(b) MCP-tool-registration handler still surfaces get_recent_work_context via tools/list with the unchanged description', async () => {
+  it('(b) test-only legacy registration surfaces get_recent_work_context via tools/list', async () => {
     const { restore: restoreStdout } = captureStdout();
     let handle: McpServerHandle | null = null;
     try {
@@ -1574,7 +1577,7 @@ describe('Item 038 / AC3 — recent_work_context shim parity', () => {
     }
   });
 
-  it('(b) MCP-tool-registration handler returns the same RecentWorkContextResponse shape as a direct shim call', async () => {
+  it('(c) test-only legacy handler returns the same response shape as a direct shim call', async () => {
     const { restore: restoreStdout } = captureStdout();
     let handle: McpServerHandle | null = null;
     try {

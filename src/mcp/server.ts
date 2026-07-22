@@ -20,7 +20,6 @@ import { registerEchoResolveMru } from './tools/echo-resolve-mru.js';
 import { registerFindClusters } from './tools/find-clusters.js';
 import { registerGetAtom } from './tools/get-atom.js';
 import { registerGetAtoms } from './tools/get-atoms.js';
-import { registerRecentWorkContext } from './tools/recent-work-context.js';
 import { registerSearchMemories } from './tools/search-memories.js';
 import { registerWaitForNewTurns } from './tools/wait-for-new-turns.js';
 
@@ -202,7 +201,6 @@ export async function startMcpServer(
     instrumentMcpServer(mcp);
     registerEchoPing(mcp);
     registerSearchMemories(mcp, storage);
-    registerRecentWorkContext(mcp, storage);
     registerFindClusters(mcp, storage);
     registerGetAtoms(mcp, storage);
     registerWaitForNewTurns(mcp, storage);

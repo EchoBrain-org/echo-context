@@ -32,6 +32,12 @@ describe('wait_for_new_turns — source resolution', () => {
     expect(r.prefixes).toHaveLength(1);
     expect(r.prefixes[0]).toContain('.codex/sessions');
   });
+
+  it('de-duplicates repeated exact and app selectors before polling', () => {
+    const r = resolveSources(['fs:/exact.jsonl', 'codex', 'fs:/exact.jsonl', 'codex']);
+    expect(r.exact).toEqual(['fs:/exact.jsonl']);
+    expect(r.prefixes).toHaveLength(1);
+  });
 });
 
 describe('wait_for_new_turns — validation', () => {
@@ -55,6 +61,19 @@ describe('wait_for_new_turns — validation', () => {
     await expect(
       waitForNewTurns(store, { sources: ['fs:/x'], since: 'not-a-date' }),
     ).rejects.toThrow(/ISO 8601/);
+  });
+
+  it('stops immediately when the caller cancels', async () => {
+    const store = new MemoryStorage();
+    const controller = new AbortController();
+    controller.abort(new Error('test cancellation'));
+    await expect(
+      waitForNewTurns(
+        store,
+        { sources: ['fs:/x'], since: '2026-05-09T00:00:00.000Z', timeout: 60 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow('test cancellation');
   });
 
   it('rejects invalid ISO calendar since', async () => {

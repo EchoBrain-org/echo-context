@@ -423,10 +423,28 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
       expect(captured.status).toBe(200);
       ids.push(captured.json.id as string);
     }
-    expect((await post('/v1/search', { query: 'response-cap-marker', limit: 10 })).status).toBe(507);
+    const boundedSearch = await post('/v1/search', {
+      query: 'response-cap-marker',
+      limit: 10,
+    });
+    expect(boundedSearch.status).toBe(200);
+    expect(Buffer.byteLength(JSON.stringify(boundedSearch.json), 'utf8')).toBeLessThanOrEqual(
+      25_000,
+    );
+    expect(boundedSearch.json.warnings).toContainEqual(
+      expect.stringContaining('[SEARCH_METADATA_CAP]'),
+    );
     const projected = await post('/v1/atoms', { atom_ids: ids, format: 'minimal' });
     expect(projected.status).toBe(200);
-    expect(projected.json).toMatchObject({ atoms: [], atoms_dropped: 6, atoms_dropped_ids: ids });
+    expect(projected.json).toMatchObject({ atoms_dropped: 0, atoms_dropped_ids: [] });
+    const projectedAtoms = projected.json.atoms;
+    expect(Array.isArray(projectedAtoms)).toBe(true);
+    if (!Array.isArray(projectedAtoms)) throw new Error('projected atoms response is not an array');
+    expect(projectedAtoms).toHaveLength(6);
+    expect(projectedAtoms[0]).toMatchObject({
+      metadata_keys_omitted: expect.any(Number),
+      truncations: expect.arrayContaining(['metadata']),
+    });
   });
 
   it('fails a slow partial body at the committed 5s request deadline', async () => {

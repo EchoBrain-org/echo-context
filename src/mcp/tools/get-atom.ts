@@ -26,6 +26,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Storage } from '../../storage/interface.js';
+import { jsonByteLength } from '../wire-shape/bytes.js';
 import { projectMatch } from '../wire-shape/match.js';
 
 const SCHEMA_VERSION = 1;
@@ -37,21 +38,7 @@ const SCHEMA_VERSION = 1;
 export const GET_ATOM_RESPONSE_BYTE_CEILING = 25_000;
 
 export const GET_ATOM_DESCRIPTION =
-  // discriminator one-liner
-  'Use ONLY when you observed non-empty `truncations` (especially `["content"]`) on a prior `search_memories` / `get_atoms` response AND you need the verbatim content for that specific atom. ' +
-  'The content-recovery escape hatch — bypasses `WIRE_SHAPE_CAPS.match_content` clipping for `content`, while keeping the existing metadata projection (per-key cap + `tool_calls` reshape) and excluding `embedding`. ' +
-  'Pair this with the other retrieval tools (which clip content + metadata for budget reasons): use `find_clusters` + `get_atoms` for routine discovery, and reach for `get_atom` only when you need verbatim content for a specific atom.\n\n' +
-  // cost class
-  'Cost: HIGH. Typical Codex long-turn content is 5-15KB; with metadata projected to ~2KB, response fits the 25k ceiling. ' +
-  'If the atom\'s content alone exceeds ~24KB (rare), the tool returns `{atom: null, error_code: "atom_too_large_for_wire", source: "..."}` so you can read the source path directly. ' +
-  'If the atom ID doesn\'t exist in storage, returns `{atom: null, error_code: "atom_not_found"}` — do NOT retry, the ID is wrong or stale. ' +
-  "Do NOT call `get_atom` in a tight loop — it's the escape hatch, not the discovery primitive.\n\n" +
-  // canonical recovery pattern
-  'PATTERN:\n' +
-  '  const r = await get_atom(id);\n' +
-  '  if (r.error_code === "atom_too_large_for_wire") { /* read r.source directly */ }\n' +
-  '  else if (r.error_code === "atom_not_found") { /* ID is stale; abort */ }\n' +
-  '  else { /* r.atom is the content-verbatim recovery */ }';
+  'Fetch one known atom with verbatim content. Use this only after `search_memories` or `get_atoms` reports truncation; routine hydration belongs in `get_atoms`. Metadata remains bounded/projected and embeddings are omitted. If the full result cannot fit the 25,000-byte budget, `error_code="atom_too_large_for_wire"` returns the source pointer. `atom_not_found` means the ID is stale or invalid.';
 
 export interface GetAtomParams {
   id: string;
@@ -141,7 +128,7 @@ export async function getAtom(storage: Storage, params: GetAtomParams): Promise<
     atom.metadata = projected.metadata;
   }
 
-  const atomBytes = JSON.stringify(atom).length;
+  const atomBytes = jsonByteLength(atom);
 
   const envelope: GetAtomSuccessResult = {
     schema_version: SCHEMA_VERSION,
@@ -150,7 +137,7 @@ export async function getAtom(storage: Storage, params: GetAtomParams): Promise<
     atom_size_bytes: atomBytes,
     warnings: [],
   };
-  const envBytes = JSON.stringify(envelope).length;
+  const envBytes = jsonByteLength(envelope);
 
   if (envBytes > GET_ATOM_RESPONSE_BYTE_CEILING) {
     // Content (alone) is too large to fit even with projected metadata.
@@ -197,7 +184,7 @@ export function registerGetAtom(server: McpServer, storage: Storage): void {
     {
       description: GET_ATOM_DESCRIPTION,
       inputSchema: {
-        id: z.string().min(1),
+        id: z.string().min(1).max(128),
       },
       outputSchema: getAtomOutputSchema,
       annotations: { readOnlyHint: true },

@@ -56,50 +56,8 @@ export const WAIT_MAX_STORAGE_SCAN_WINDOWS = 4;
 const SOURCE_APP_SET = new Set<string>(SOURCE_APP_VALUES);
 
 export const WAIT_FOR_NEW_TURNS_DESCRIPTION =
-  // discriminator one-liner per item 025
-  'Use when you want to BLOCK until new captured atoms land at any of N sources — the missing primitive for group session A (synchronized human-driven multi-agent conversation). Pair with `echo_resolve_mru` / `search_memories` / `find_clusters` for the discovery side.\n\n' +
-  // cost class
-  'Cost: medium-blocking (server holds the request open up to `timeout` seconds, polling storage every 1s; cheap on the daemon, but the call duration is the latency cost). Stateless: no subscriber registry, no per-client state, every call is independent (per item 027).\n\n' +
-  // params
-  'PARAMETERS:\n' +
-  '  • `sources: string[]` — required. Non-empty, ≤ ' +
-  String(WAIT_MAX_SOURCES) +
-  '. Mixed entry types accepted:\n' +
-  '      • Literal source path (e.g. `fs:/Users/.../state.vscdb`, `git:/Users/.../repo`) → EXACT match.\n' +
-  '      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH (matches ALL sessions/atoms of that app — explicitly DIFFERENT from `echo_resolve_mru(sources=[<app>])` which resolves to the MRU exact source). Group session A wants "wake on any session of these apps."\n' +
-  '        `cursor` is retained for historical/migrated records; this runtime does not produce new Cursor atoms.\n' +
-  "  • `since: string` — required. ISO 8601 timestamp; only return turns with timestamp STRICTLY AFTER this (`> since`, not `>=`). Pass the previous call's `next_since` to chain.\n" +
-  '  • `timeout?: number` — seconds; default ' +
-  String(WAIT_DEFAULT_TIMEOUT_SECONDS) +
-  ', max ' +
-  String(WAIT_MAX_TIMEOUT_SECONDS) +
-  '.\n\n' +
-  // behavior — IDs-only contract (item 038 / AC4)
-  'BEHAVIOR: polls echo.db every 1s. Returns immediately on any non-empty result; returns at `timeout` with empty `turn_ids[]`.\n\n' +
-  'CHAINING (lossless — `next_since` is NEVER the server wall clock): when turns are returned, `next_since` = the max timestamp among the RETURNED turns (canonical Z form, as stored); when the call times out empty, `next_since` = your own `since` (canonicalized) echoed back. Always chain with `since = next_since` — safe unconditionally, even after a timeout. Atom timestamps are event times that can land in storage after ingest delay, so a wall-clock watermark would permanently skip late-ingested turns; anchoring `next_since` to delivered data makes the chain lossless.\n\n' +
-  'OVERFLOW PAGING: at most ' +
-  String(WAIT_MAX_RETURNED_TURNS) +
-  ' turns per call. When more match, the call returns the OLDEST page (ascending by timestamp, id) plus a warning in `warnings[]` — chain immediately with `next_since` to page through the backlog. A same-timestamp group is never split across the page boundary: either the page carries the WHOLE group (it may exceed the cap by the tie count), or — when the group cannot be proven complete because a window-full fetch ends at its timestamp — the group is held back entirely and the chained call re-fetches it whole. The one lossy case left: a single same-millisecond group in one source larger than the per-source fetch window ships flagged with an explicit warning. `turn_ids` are ordered oldest→newest.\n\n' +
-  'RESPONSE (item 038 / AC4 — IDs-only): the response now carries `turn_ids: string[]` instead of body-projected `turns[]`. The envelope shrinks dramatically (no body projection in the wait response); the caller composes one extra MCP call per wake (`get_atoms(turn_ids)` for cost-bounded summaries, or `get_atom(turn_ids[i])` for verbatim of one atom) to fetch bodies. No parallel-vocabulary deprecation window — the bodies-bundled shape is removed in the same release that ships the IDs-only shape.\n\n' +
-  // canonical wake → fetch pattern
-  'CANONICAL COMPOSITION:\n' +
-  '  const w = await wait_for_new_turns({sources: [...], since: last});\n' +
-  '  last = w.next_since;  // safe unconditionally — echoes `since` back on timeout\n' +
-  '  if (!w.timed_out) {\n' +
-  '    const atoms = await get_atoms(w.turn_ids);  // summary bodies\n' +
-  '  }\n\n' +
-  // polling fallback
-  'POLLING FALLBACK: if your MCP client has issues with long-running calls (timeout limits, no streaming), poll instead — works on any MCP client:\n' +
-  '\n' +
-  '  last_ts = now\n' +
-  '  while monitoring:\n' +
-  '      result = find_clusters(since=last_ts, format="skeleton")\n' +
-  '      if result.clusters:\n' +
-  '          process(result.clusters)\n' +
-  '          last_ts = max_timestamp(result)\n' +
-  '      sleep(2)\n' +
-  '\n' +
-  'Cost trade-off: polling = N calls/min (poll frequency). Long-poll = 1 call per wake event. Polling adds wake-latency (≤ poll interval) but works on any client.';
+  'Long-poll for newly completed context atoms. Provide non-empty `sources`, non-empty `source_prefix`, or both. In `sources`, app names (`cursor`, `claude_code`, `codex`, `git`, `granola`) match every captured source for that app; other strings are exact sources. `source_prefix` is additive, so combining it with `sources` returns their union. Duplicate selectors are de-duplicated.\n\n' +
+  '`since` is exclusive. The response contains oldest-first `turn_ids`; fetch bodies with `get_atoms`. Always pass the returned `next_since` into the next call, including after an empty timeout. At most 20 IDs normally return per wake, with coded warnings for backlog, timestamp-tie, or storage-scan limits. `timeout` defaults to 30 seconds and is capped at 60. Client cancellation stops polling promptly.';
 
 export interface WaitForNewTurnsParams {
   /** Optional under AC4 (057a). At least one of `sources` (non-empty) or
@@ -152,16 +110,16 @@ interface ResolvedSources {
  *  from `echo_resolve_mru`'s MRU exact-source resolution). */
 export function resolveSources(sources: readonly string[]): ResolvedSources {
   const sourceAppMap = buildSourceAppMap();
-  const exact: string[] = [];
-  const prefixes: string[] = [];
+  const exact = new Set<string>();
+  const prefixes = new Set<string>();
   for (const s of sources) {
     if (SOURCE_APP_SET.has(s)) {
-      prefixes.push(sourceAppMap[s as SourceApp]);
+      prefixes.add(sourceAppMap[s as SourceApp]);
     } else {
-      exact.push(s);
+      exact.add(s);
     }
   }
-  return { exact, prefixes };
+  return { exact: [...exact], prefixes: [...prefixes] };
 }
 
 interface PollPage {
@@ -347,7 +305,32 @@ async function pollOnce(
   return { rows: all.slice(0, end), overflow, scanTruncated };
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error('wait_for_new_turns: request aborted');
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) throw abortReason(signal);
+}
+
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (signal === undefined) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
 
@@ -360,6 +343,8 @@ export interface WaitForNewTurnsOptions {
    *  used for next_since — that is derived from returned-turn timestamps
    *  (or echoes the caller's `since`), never from the wall clock. */
   now?: () => Date;
+  /** MCP request cancellation. Stops the poll/sleep loop promptly. */
+  signal?: AbortSignal;
 }
 
 export async function waitForNewTurns(
@@ -403,6 +388,7 @@ export async function waitForNewTurns(
 
   const pollIntervalMs = options.pollIntervalMs ?? WAIT_DEFAULT_POLL_INTERVAL_MS;
   const now = options.now ?? (() => new Date());
+  const signal = options.signal;
 
   // AC4 (057a): build the resolved query set from `sources[]` (when
   // present) and append a caller-supplied `source_prefix` (when present)
@@ -414,7 +400,9 @@ export async function waitForNewTurns(
     ? resolveSources(params.sources!)
     : { exact: [] as string[], prefixes: [] as string[] };
   if (hasSourcePrefix) {
-    resolved.prefixes.push(params.source_prefix!);
+    if (!resolved.prefixes.includes(params.source_prefix!)) {
+      resolved.prefixes.push(params.source_prefix!);
+    }
   }
   if (resolved.exact.length === 0 && resolved.prefixes.length === 0) {
     // sources[] was non-empty but nothing resolved — caller passed strings
@@ -438,6 +426,7 @@ export async function waitForNewTurns(
   // Initial poll first (no wait) — common case is "content is already
   // there"; the long-poll's whole point is to NOT round-trip the wait
   // when there's nothing newer than `since`.
+  throwIfAborted(signal);
   let page = await pollOnce(storage, resolved, since, normalisedRepoPath);
   while (
     page.rows.length === 0 &&
@@ -448,7 +437,8 @@ export async function waitForNewTurns(
     // overshoot the deadline by up to one poll interval.
     const remaining = deadlineMs - now().getTime();
     if (remaining <= 0) break;
-    await sleep(Math.min(pollIntervalMs, remaining));
+    await sleep(Math.min(pollIntervalMs, remaining), signal);
+    throwIfAborted(signal);
     page = await pollOnce(storage, resolved, since, normalisedRepoPath);
   }
 
@@ -518,31 +508,35 @@ export function registerWaitForNewTurns(server: McpServer, storage: Storage): vo
         // contract. Pre-AC4 callers passing `sources=[...]` are
         // schema-byte-identical (max-length cap preserved; the only
         // change is removal of the .min(1) lower bound).
-        sources: z.array(z.string()).max(WAIT_MAX_SOURCES).optional(),
+        sources: z.array(z.string().min(1).max(4096)).max(WAIT_MAX_SOURCES).optional(),
         source_prefix: z
           .string()
+          .min(1)
+          .max(4096)
           .optional()
           .describe(
-            'AC4 (057a): optional prefix filter, sibling of `sources[]`. Matches any captured atom whose `source` string starts with this prefix. When supplied alongside `sources[]`, the returned `turn_ids` are the UNION of the two filters. At least one of `sources[]` (non-empty) or `source_prefix` (non-empty) MUST be present.',
+            'Prefix filter. When combined with sources, results are the union. At least one non-empty selector is required.',
           ),
         since: isoString,
         timeout: z.number().int().min(0).max(WAIT_MAX_TIMEOUT_SECONDS).optional(),
         repo_path: z
           .string()
+          .max(4096)
           .optional()
           .describe(
-            'Item 037: absolute filesystem path to a repo root. When set, each per-source poll is AND-filtered by `metadata.repo_root = normalize(repo_path)`. For `sources` containing `git` or a `git:` prefix entry, matches `metadata.repo_root` only — legacy git atoms without that metadata are out of scope (omit `repo_path` to widen).',
+            'Absolute repo root. AND-filters each source query by capture-side metadata.repo_root.',
           ),
       },
       outputSchema: waitOutputSchema,
       annotations: { readOnlyHint: true },
     },
-    async (input) => {
+    async (input, extra) => {
       const params = input as WaitForNewTurnsParams;
       let result: WaitForNewTurnsResult;
       try {
-        result = await waitForNewTurns(storage, params);
+        result = await waitForNewTurns(storage, params, { signal: extra.signal });
       } catch (err) {
+        if (extra.signal.aborted) throw err;
         return {
           isError: true,
           content: [{ type: 'text', text: (err as Error).message }],

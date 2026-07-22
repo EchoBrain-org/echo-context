@@ -124,7 +124,7 @@ describe('lean package TypeScript closure', () => {
     expect(builder).not.toContain('a.path.localeCompare(b.path)');
 
     const mixedCasePaths = [
-      'context-tools.v1.json',
+      'context-tools.v2.json',
       'dist/version.js.map',
       'LICENSE',
       'package.json',
@@ -135,7 +135,7 @@ describe('lean package TypeScript closure', () => {
     ).toEqual([
       'LICENSE',
       'README.md',
-      'context-tools.v1.json',
+      'context-tools.v2.json',
       'dist/version.js.map',
       'package.json',
     ]);

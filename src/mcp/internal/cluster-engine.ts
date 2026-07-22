@@ -229,6 +229,7 @@ async function runRecentWorkContextPass(
   // have been silently dropped at the storage layer; surface a single warning
   // so the consumer can raise `limit` or narrow `(since, until)`.
   if (events.length === storageCap) {
+    response.truncation.truncated = true;
     response.warnings.push(
       'storage cap hit (events.length === limit * STORAGE_OVERFETCH); ' +
         'atoms in window may be silently truncated. ' +
@@ -236,6 +237,7 @@ async function runRecentWorkContextPass(
     );
   }
   if (storagePage.scanTruncated) {
+    response.truncation.truncated = true;
     response.warnings.push(
       `[STORAGE_SCAN_BUDGET] cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
     );

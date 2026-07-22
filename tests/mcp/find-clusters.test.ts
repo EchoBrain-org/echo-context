@@ -249,8 +249,8 @@ describe('find_clusters', () => {
       view: 'compact',
     });
 
-    expect(r.query).toBeUndefined();
-    expect(r.result_caps).toBeUndefined();
+    expect(r.query).toMatchObject({ format: 'skeleton', repo_path: null });
+    expect(r.result_caps).toMatchObject({ truncated: false });
     expect(r.warnings).toEqual([]);
     expect(r.clusters.length).toBeGreaterThan(0);
     const cluster = r.clusters[0] as unknown as Record<string, unknown>;
@@ -259,7 +259,7 @@ describe('find_clusters', () => {
     expect(cluster['source_breakdown']).toBeDefined();
     expect(cluster['time_range']).toBeDefined();
     expect(cluster['open_loop_hints']).toBeDefined();
-    expect(cluster['rank']).toBeUndefined();
+    expect(cluster['rank']).toBe(1);
     expect(cluster['rank_reason']).toEqual([
       'has_open_loop',
       'has_unresolved_open_loop',
@@ -411,12 +411,15 @@ describe('find_clusters', () => {
     // Hard ceiling actually enforced.
     const envelopeBytes = JSON.stringify(r).length;
     expect(envelopeBytes).toBeLessThanOrEqual(FIND_CLUSTERS_RESPONSE_BYTE_CEILING);
-    // Some clusters were dropped to fit.
-    expect(r.clusters.length).toBeLessThan(CLUSTERS);
+    // Preserve the cluster headers and shrink membership before dropping a
+    // sibling. (The upstream 500-atom work budget may already omit one.)
+    expect(r.clusters.length).toBe(r.result_caps.clusters_returned);
+    expect(r.clusters.length).toBeGreaterThanOrEqual(CLUSTERS - 1);
+    expect(r.clusters.every((cluster) => cluster.atom_ids.length <= 50)).toBe(true);
     // The signal is surfaced at result_caps.truncated.
     expect(r.result_caps.truncated).toBe(true);
     // Warning surfaced so the consumer knows what happened.
-    expect(r.warnings.some((w) => w.includes('[FIND_CLUSTERS_RESPONSE_CAP]'))).toBe(true);
+    expect(r.warnings.some((w) => w.includes('[FIND_CLUSTERS_ID_BUDGET]'))).toBe(true);
   });
 
   it('view="compact" sizes the response cap after compact projection', async () => {

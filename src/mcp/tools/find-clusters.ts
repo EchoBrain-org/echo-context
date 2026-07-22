@@ -11,10 +11,10 @@
 // machinery is shared. Differences from `get_recent_work_context`'s
 // `format='skeleton'` wire shape:
 //
-//   - atom_ids[] is FULL (un-capped). Skeleton's 50-cap on atom_ids was the
-//     load-bearing breakage — atom_ids is the input to `get_atoms`, so
-//     silently dropping the tail of a >50-atom cluster would silently lose
-//     bodies. The 50-cap stays for `open_loop_hints[]` only.
+//   - atom_ids[] stays complete when the response budget permits. If it does
+//     not, explicit atom_ids_truncated/atom_ids_total signals accompany a
+//     head+tail slice; response shaping shrinks membership before dropping a
+//     sibling cluster header.
 //   - `result_caps` (renamed from `truncation`) describes RESPONSE-LEVEL
 //     budget application. `truncations: string[]` (per-FIELD clipping
 //     inside an atom) lives on `get_atoms` results, not here. Different
@@ -27,6 +27,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Storage } from '../../storage/interface.js';
 import type { Cluster, ResponseFormat } from '../../trace/types.js';
+import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactCluster, type ViewMode } from '../wire-shape/compact.js';
 // Item 038 / AC3: find_clusters calls the canonical cluster engine directly
 // (skeleton wire-shape constants still come from the deprecated tool shim
@@ -53,21 +54,8 @@ export const FIND_CLUSTERS_RESPONSE_BYTE_CEILING = 25_000;
 export const PER_CLUSTER_ATOM_IDS_HARD_CAP = 200;
 
 export const FIND_CLUSTERS_DESCRIPTION =
-  // discriminator one-liner per item 025 MCP best-practices
-  "Use when you need cross-source DISCOVERY of recent work threads — clusters of related events grouped by shared artifacts (files, repos, conversations) — but NOT the atom bodies. Pair with `get_atoms` to materialise bodies for any returned cluster's `atom_ids[]`.\n\n" +
-  // cost class
-  'Cost: cheap. Typical < 10k chars even on full-day windows; the discovery counterpart to the targeted `get_atoms` body fetch. Hard envelope ceiling: 25k chars.\n\n' +
-  // params
-  'PARAMETERS — IMPORTANT distinction (most-common foot-gun):\n' +
-  '  • `window_hours` controls the **maximum cluster-gap** (the temporal gap allowed between atoms in a single cluster), NOT lookback. Default 4h cluster-gap.\n' +
-  '  • `since` / `until` control the **lookback window** (which atoms are considered).\n' +
-  '  Pass `since=now-24h` for a 24h LOOKBACK; passing `window_hours=24` widens the cluster-gap, which is rarely what you want.\n\n' +
-  // no-args resume
-  "NO-ARGS RESUME: when called with neither `since` nor `until`, the default 4h lookback auto-expands to 24h on a single retry if the 4h pass returned 0 clusters OR only single-source-recent clusters (the calling session's own activity from the last 5 minutes); when the single-source-recent expand fires AND prior multi-source work exists in 24h, the single-source-recent cluster is demoted in rank so the prior work appears as clusters[0]. Auto-expand fires a `[AUTO_EXPAND] <trigger>`-prefixed warning (trigger: `empty` or `single-source-recent`) so the implicit widen is visible.\n\n" +
-  // shape
-  'RETURNS: per-cluster {cluster_id, rank, rank_reason, atom_ids[] (FULL, un-capped — feed straight to `get_atoms`), source_breakdown ({source_app: count}), time_range, label?, open_loop_hints? (capped at ' +
-  String(SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP) +
-  ")}. No atom bodies. `result_caps` describes response-level budget application; per-cluster `atom_ids_truncated: true` + `atom_ids_total: N` fires if a single cluster's atom_ids[] would dominate the ceiling.";
+  'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` controls the maximum gap used to join atoms into one cluster; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
+  '`view="rich"` is the default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. `format="skeleton"` is compatibility-only and can be omitted. A cluster may contain more than 50 IDs, so call `get_atoms` in chunks of at most 50. The 25,000-byte result budget preserves cluster headers first, then shrinks ID slices before dropping low-ranked clusters. Inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
 
 const formatSchema = z.enum(['skeleton']);
 const viewSchema = z.enum(['compact', 'rich']);
@@ -129,6 +117,8 @@ export interface FindClustersResult {
     clusters_total: number;
     atoms_returned: number;
     atoms_total_in_window: number;
+    /** Source counts across the scanned window before rank/response caps. */
+    source_breakdown: Record<string, number>;
     truncated: boolean;
   };
   warnings: string[];
@@ -150,7 +140,10 @@ function clipOpenLoopHintsArray<T>(arr: readonly T[], cap: number): { kept: T[];
   };
 }
 
-function projectCluster(c: Cluster): FindClustersCluster {
+function projectCluster(
+  c: Cluster,
+  atomIdCap: number = PER_CLUSTER_ATOM_IDS_HARD_CAP,
+): FindClustersCluster {
   const hints = clipOpenLoopHintsArray(c.open_loop_hints, SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP);
   // Per-cluster atom_ids hard cap. Keep head+tail so the consumer still
   // sees both ends of the cluster (relevant when the consumer paginates
@@ -159,11 +152,11 @@ function projectCluster(c: Cluster): FindClustersCluster {
   let atomIds: string[];
   let atomIdsTruncated: true | undefined;
   let atomIdsTotal: number | undefined;
-  if (c.atom_ids.length <= PER_CLUSTER_ATOM_IDS_HARD_CAP) {
+  if (c.atom_ids.length <= atomIdCap) {
     atomIds = [...c.atom_ids];
   } else {
-    const headN = Math.floor(PER_CLUSTER_ATOM_IDS_HARD_CAP / 2);
-    const tailN = PER_CLUSTER_ATOM_IDS_HARD_CAP - headN;
+    const headN = Math.floor(atomIdCap / 2);
+    const tailN = atomIdCap - headN;
     atomIds = [...c.atom_ids.slice(0, headN), ...c.atom_ids.slice(c.atom_ids.length - tailN)];
     atomIdsTruncated = true;
     atomIdsTotal = c.atom_ids.length;
@@ -221,9 +214,14 @@ export async function findClusters(
     now,
   );
 
-  const richClusters = rwc.clusters.map(projectCluster);
-  const projectedClusters = view === 'compact' ? richClusters.map(compactCluster) : richClusters;
-  const perClusterCapFired = projectedClusters.some((c) => c.atom_ids_truncated === true);
+  const projectClusters = (atomIdCap: number): FindClustersCluster[] => {
+    const rich = rwc.clusters.map((cluster) => projectCluster(cluster, atomIdCap));
+    return view === 'compact'
+      ? (rich.map(compactCluster) as FindClustersCluster[])
+      : rich;
+  };
+  let activeAtomIdCap = PER_CLUSTER_ATOM_IDS_HARD_CAP;
+  let projectedClusters = projectClusters(activeAtomIdCap);
 
   // Apply the response-level envelope ceiling. Trim trailing clusters
   // (lowest-rank first; rwc.clusters is rank-ordered) until the
@@ -232,19 +230,13 @@ export async function findClusters(
   // back over the ceiling. (Codex+Cursor post-build review 2026-05-10:
   // FIND_CLUSTERS_RESPONSE_BYTE_CEILING was previously declared but
   // never enforced.)
-  const CAP_WARNING_RESERVE_BYTES = 300;
+  const CAP_WARNING_RESERVE_BYTES = 1_024;
   const sizeBudget = FIND_CLUSTERS_RESPONSE_BYTE_CEILING - CAP_WARNING_RESERVE_BYTES;
   let clusters = projectedClusters;
   let responseCapFired = false;
+  let idBudgetFired = false;
   const buildResult = (cs: FindClustersCluster[], extraWarnings: string[]): FindClustersResult => {
-    if (view === 'compact') {
-      return {
-        schema_version: SCHEMA_VERSION,
-        tool: 'find_clusters',
-        clusters: cs,
-        warnings: [...rwc.warnings, ...extraWarnings],
-      } as unknown as FindClustersResult;
-    }
+    const perClusterCapFired = cs.some((cluster) => cluster.atom_ids_truncated === true);
     return {
       schema_version: SCHEMA_VERSION,
       tool: 'find_clusters',
@@ -264,30 +256,53 @@ export async function findClusters(
         clusters_total: rwc.truncation.clusters_total,
         atoms_returned: cs.reduce((s, c) => s + c.atom_ids.length, 0),
         atoms_total_in_window: rwc.truncation.atoms_total_in_window,
+        source_breakdown: rwc.truncation.source_breakdown ?? {},
         // truncated reflects ANY truncation: upstream (rwc cluster cap),
         // per-cluster (atom_ids hard cap), or response-level (this trim).
         // Previously only mirrored upstream — consumers relying on this
         // signal couldn't tell when atom_ids[] was clipped per-cluster or
         // when trailing clusters were dropped to fit the envelope.
-        truncated: rwc.truncation.truncated || perClusterCapFired || responseCapFired,
+        truncated:
+          rwc.truncation.truncated || perClusterCapFired || idBudgetFired || responseCapFired,
       },
       warnings: [...rwc.warnings, ...extraWarnings],
     };
   };
 
-  while (
-    clusters.length > 0 &&
-    JSON.stringify(buildResult(clusters as FindClustersCluster[], [])).length > sizeBudget
-  ) {
+  const fits = (candidate: FindClustersCluster[], warnings: string[] = []): boolean =>
+    jsonByteLength(buildResult(candidate, warnings)) <= sizeBudget;
+
+  // Preserve every cluster header before dropping a sibling. Full ID lists
+  // remain intact when they fit; only an over-budget response steps down to
+  // directly hydratable slices and then progressively smaller evidence slices.
+  for (const cap of [50, 25, 12, 6, 3, 1]) {
+    if (fits(clusters)) break;
+    activeAtomIdCap = cap;
+    projectedClusters = projectClusters(activeAtomIdCap);
+    clusters = projectedClusters;
+    idBudgetFired ||= projectedClusters.some((cluster) => cluster.atom_ids_truncated === true);
+  }
+
+  while (clusters.length > 0 && !fits(clusters)) {
     clusters = clusters.slice(0, -1);
     responseCapFired = true;
   }
 
-  const extraWarnings = responseCapFired
-    ? [
-        `[FIND_CLUSTERS_RESPONSE_CAP] response trimmed from ${projectedClusters.length} to ${clusters.length} clusters to stay under the ${FIND_CLUSTERS_RESPONSE_BYTE_CEILING}-char hard ceiling — narrow \`since\`/\`until\` for full coverage.`,
-      ]
-    : [];
+  const extraWarnings: string[] = [];
+  if (idBudgetFired) {
+    extraWarnings.push(
+      `[FIND_CLUSTERS_ID_BUDGET] retained at most ${activeAtomIdCap} IDs per cluster to preserve cluster headers; use atom_ids_total and narrow the time window for full membership`,
+    );
+  } else if (clusters.some((cluster) => cluster.atom_ids_truncated === true)) {
+    extraWarnings.push(
+      `[FIND_CLUSTERS_ID_CAP] a cluster exceeded the ${PER_CLUSTER_ATOM_IDS_HARD_CAP}-ID safety cap; narrow the time window for full membership`,
+    );
+  }
+  if (responseCapFired) {
+    extraWarnings.push(
+      `[FIND_CLUSTERS_RESPONSE_CAP] response retained ${clusters.length} of ${rwc.clusters.length} clusters under the ${FIND_CLUSTERS_RESPONSE_BYTE_CEILING}-byte ceiling; narrow since/until for full coverage`,
+    );
+  }
 
   return buildResult(clusters as FindClustersCluster[], extraWarnings);
 }
@@ -302,8 +317,7 @@ const findClustersOutputSchema = {
       window_hours: z.number(),
       format: z.literal('skeleton'),
       repo_path: z.string().nullable(),
-    })
-    .optional(),
+    }),
   clusters: z.array(z.record(z.string(), z.unknown())),
   result_caps: z
     .object({
@@ -311,9 +325,9 @@ const findClustersOutputSchema = {
       clusters_total: z.number(),
       atoms_returned: z.number(),
       atoms_total_in_window: z.number(),
+      source_breakdown: z.record(z.string(), z.number().int().nonnegative()),
       truncated: z.boolean(),
-    })
-    .optional(),
+    }),
   warnings: z.array(z.string()),
 };
 
@@ -326,13 +340,18 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
         since: isoString.optional(),
         until: isoString.optional(),
         window_hours: z.number().min(0.1).max(168).optional(),
-        format: formatSchema.optional(),
-        view: viewSchema.optional(),
+        format: formatSchema
+          .optional()
+          .describe('Compatibility-only singleton; omit it. Discovery is always bodyless.'),
+        view: viewSchema
+          .optional()
+          .describe('rich (default) or compact; both retain ranking and result_caps.'),
         repo_path: z
           .string()
+          .max(4096)
           .optional()
           .describe(
-            "Item 037: absolute filesystem path to a repo root. When set, scopes the cluster candidate set to atoms whose `metadata.repo_root` matches (cross-source — find_clusters has no source_app gate). Legacy git atoms without that metadata are out of scope when passed; reach them via `source_prefix=git:<path>` on `search_memories`/`wait_for_new_turns`, or `echo_resolve_mru(sources=['git'], repo_path=...)` which has the two-path OR fallback.",
+            'Absolute repo root. Filters candidate atoms by capture-side metadata.repo_root.',
           ),
       },
       outputSchema: findClustersOutputSchema,

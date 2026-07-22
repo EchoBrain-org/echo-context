@@ -47,6 +47,9 @@ export interface ProjectedMatch {
    *  shape is opaque on a projected response — consumers wanting to drill
    *  in must hydrate via a follow-up call (V1.6 `get_atom` tool). */
   metadata_keys_elided?: string[];
+  /** Number of metadata keys omitted by the bounded whole-object projection.
+   *  Names are intentionally not enumerated so the signal stays bounded. */
+  metadata_keys_omitted?: number;
   /** Keys whose value was RESHAPED to a smaller useful representation
    *  (not opaqued out). Today this is `["tool_calls"]` when the original
    *  array was projected to its name trajectory. The consumer can read
@@ -121,13 +124,22 @@ export function projectMatch(e: CaptureEvent): ProjectedMatch {
 
     // Step 2: standard per-key cap on what remains. Small values pass
     // verbatim; oversize values get the {__elided:true} placeholder.
-    const md = clipMetadataValues(preprocessed, WIRE_SHAPE_CAPS.metadata_value);
+    const md = clipMetadataValues(
+      preprocessed,
+      WIRE_SHAPE_CAPS.metadata_value,
+      WIRE_SHAPE_CAPS.metadata_total,
+      WIRE_SHAPE_CAPS.metadata_keys,
+    );
     m.metadata = md.metadata;
 
     const totalElided = projectedBytes + md.bytes_elided;
     if (totalElided > 0) m.metadata_bytes_elided = totalElided;
     if (md.keys_elided.length > 0) m.metadata_keys_elided = md.keys_elided;
-    if (projectedKeys.length > 0) m.metadata_keys_projected = projectedKeys;
+    if (md.keys_omitted > 0) m.metadata_keys_omitted = md.keys_omitted;
+    const retainedProjectedKeys = projectedKeys.filter((key) =>
+      Object.prototype.hasOwnProperty.call(md.metadata, key),
+    );
+    if (retainedProjectedKeys.length > 0) m.metadata_keys_projected = retainedProjectedKeys;
 
     // V1.6 truncations vocabulary: emit one entry per per-key event.
     // Cap-elision keys are LOSSY (`metadata.<k>`); projector keys are
@@ -135,7 +147,8 @@ export function projectMatch(e: CaptureEvent): ProjectedMatch {
     // tell "the body got clipped" from "the body got rewritten by a
     // known projector with a documented schema."
     for (const k of md.keys_elided) truncations.push(`metadata.${k}`);
-    for (const k of projectedKeys) truncations.push(`metadata.${k}:projected`);
+    if (md.keys_omitted > 0) truncations.push('metadata');
+    for (const k of retainedProjectedKeys) truncations.push(`metadata.${k}:projected`);
   }
   return m;
 }

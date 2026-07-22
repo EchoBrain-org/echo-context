@@ -123,7 +123,7 @@ try {
   const listing = run('/usr/bin/tar', ['-tzf', artifact]);
   for (const required of [
     'package/npm-shrinkwrap.json',
-    'package/context-tools.v1.json',
+    'package/context-tools.v2.json',
     'package/schemas/service-api.v1.json',
     'package/dist/artifact-manifest.json',
     'package/dist/storage/migrations/0005_source_match_key.sql',
@@ -139,7 +139,10 @@ try {
 
   const packageRoot = join(prefix, 'lib', 'node_modules', 'echo-context');
   const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  const seal = JSON.parse(readFileSync(join(packageRoot, 'context-tools.v1.json'), 'utf8'));
+  const seal = JSON.parse(readFileSync(join(packageRoot, 'context-tools.v2.json'), 'utf8'));
+  if (seal.schema !== 'context-tools.v2' || seal.count !== seal.tools.length) {
+    throw new Error(`invalid MCP roster seal: ${JSON.stringify(seal)}`);
+  }
   const imported = await import(pathToFileURL(join(packageRoot, 'dist', 'index.js')).href);
   if (imported.ECHO_CONTEXT_VERSION !== packageJson.version) {
     throw new Error('installed package import/version mismatch');
@@ -290,6 +293,24 @@ try {
   ) {
     throw new Error(`installed service search failed: ${JSON.stringify(serviceSearch)}`);
   }
+  const clustersResponse = await fetch(`${url}/v1/clusters`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      since: '2026-07-19T00:00:00.000Z',
+      until: '2026-07-21T00:00:00.000Z',
+      format: 'skeleton',
+    }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  const serviceClusters = await clustersResponse.json();
+  if (
+    !clustersResponse.ok ||
+    serviceClusters.tool !== 'get_recent_work_context' ||
+    !JSON.stringify(serviceClusters).includes(captured.id)
+  ) {
+    throw new Error(`installed service clusters failed: ${JSON.stringify(serviceClusters)}`);
+  }
   const initialize = await rpc(url, 'initialize', {
     protocolVersion: '2024-11-05',
     capabilities: {},
@@ -301,7 +322,10 @@ try {
   const tools = await rpc(url, 'tools/list', {});
   const actualNames = tools.tools.map((tool) => tool.name).sort();
   const expectedNames = [...seal.tools].sort();
-  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames) || actualNames.length !== 8) {
+  if (
+    JSON.stringify(actualNames) !== JSON.stringify(expectedNames) ||
+    actualNames.length !== seal.count
+  ) {
     throw new Error(`MCP roster mismatch: ${JSON.stringify(actualNames)}`);
   }
   const ping = await rpc(url, 'tools/call', {

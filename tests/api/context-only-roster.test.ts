@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { startMcpServer, type McpServerHandle } from '../../src/mcp/server.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
 
-// AC3: the standalone echo-context MCP roster is EXACTLY these eight read-only
+// The standalone echo-context MCP roster is exactly these seven read-only
 // context tools — no coord/product/loop extras, and capture is service-only.
 const EXPECTED_TOOLS = [
   'echo_ping',
@@ -13,7 +13,6 @@ const EXPECTED_TOOLS = [
   'find_clusters',
   'get_atom',
   'get_atoms',
-  'get_recent_work_context',
   'search_memories',
   'wait_for_new_turns',
 ];
@@ -44,7 +43,7 @@ async function withClient<T>(url: string, use: (client: Client) => Promise<T>): 
 }
 
 describe('AC3 — context-only MCP roster', () => {
-  it('exposes exactly the eight context tools and no product/loop tools', async () => {
+  it('exposes exactly the seven current context tools and no deprecated/product tools', async () => {
     handle = await startMcpServer(new MemoryStorage(), { port: 0 });
     const names = await listToolNames(handle.url);
     expect(names).toEqual(EXPECTED_TOOLS);
@@ -90,15 +89,6 @@ describe('AC3 — context-only MCP roster', () => {
       },
       { name: 'get_atom', arguments: { id: atomId } },
       { name: 'get_atoms', arguments: { atom_ids: [atomId], format: 'minimal' } },
-      {
-        name: 'get_recent_work_context',
-        arguments: {
-          since: '2026-07-21T11:00:00.000Z',
-          until: '2026-07-21T13:00:00.000Z',
-          limit: 10,
-          format: 'minimal',
-        },
-      },
       { name: 'search_memories', arguments: { query: 'alpha', limit: 10 } },
       {
         name: 'wait_for_new_turns',
@@ -134,11 +124,21 @@ describe('AC3 — context-only MCP roster', () => {
       'find_clusters',
       'get_atom',
       'get_atoms',
-      'get_recent_work_context',
       'search_memories',
       'wait_for_new_turns',
     ]) {
       expect(JSON.stringify(results.get(tool)), tool).toContain(atomId);
     }
+  });
+
+  it('does not advertise or execute the removed compound retrieval tool', async () => {
+    handle = await startMcpServer(new MemoryStorage(), { port: 0 });
+    await withClient(handle.url, async (client) => {
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).not.toContain('get_recent_work_context');
+      const result = await client.callTool({ name: 'get_recent_work_context', arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toMatch(/not found/i);
+    });
   });
 });

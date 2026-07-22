@@ -220,16 +220,6 @@ function projectArgs(tool: string, args: unknown): Record<string, unknown> {
       return { ...base, id_present: isPresent(obj['id']) };
     case 'echo_ping':
       return { ...base, message_length: stringLength(obj['message']) };
-    case 'get_recent_work_context':
-      return {
-        ...base,
-        since: stringValue(obj['since']),
-        until: stringValue(obj['until']),
-        limit: numberValue(obj['limit']),
-        format: stringValue(obj['format']),
-        repo_path_present: isPresent(obj['repo_path']),
-        source_app: stringValue(obj['source_app']),
-      };
     case 'wait_for_new_turns':
       return {
         ...base,
@@ -332,14 +322,6 @@ function projectResult(tool: string, result: unknown): Record<string, unknown> {
         result_type: 'echo_ping',
         pong_present: isPresent(structured['pong']),
         received_present: isPresent(structured['received']),
-        content_text_length: contentTextLength,
-      };
-    case 'get_recent_work_context':
-      return {
-        result_type: 'get_recent_work_context',
-        cluster_count: arrayLength(structured['clusters']),
-        atom_count: objectKeyCount(structured['atoms']),
-        warnings_count: arrayLength(structured['warnings']),
         content_text_length: contentTextLength,
       };
     case 'wait_for_new_turns':

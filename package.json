@@ -1,9 +1,9 @@
 {
   "name": "echo-context",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "private": true,
   "type": "module",
-  "description": "Standalone ECHO context daemon and package: bounded capture, append-only SQLite storage, retrieval, health, and eight read-only MCP tools.",
+  "description": "Standalone ECHO context daemon and package: bounded capture, append-only SQLite storage, retrieval, health, and a sealed read-only MCP roster.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -18,7 +18,7 @@
   "files": [
     "dist/",
     "npm-shrinkwrap.json",
-    "context-tools.v1.json",
+    "context-tools.v2.json",
     "schemas/service-api.v1.json",
     "README.md",
     "LICENSE"

@@ -28,18 +28,7 @@ export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
 export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
 
 export const ECHO_RESOLVE_MRU_DESCRIPTION =
-  'Resolve the most-recently-active source under one or more predicates → returns a `search_memories`-ready descriptor per resolved source. IDs-only / source-only; no atom bodies fetched here.\n\n' +
-  'PARAMETERS:\n' +
-  '  • `sources: string[]` — required. Non-empty, ≤ ' +
-  String(ECHO_RESOLVE_MRU_MAX_SOURCES) +
-  '. Mixed entry types accepted (same shape as `wait_for_new_turns`):\n' +
-  '      • Source-app name (`cursor` | `claude_code` | `codex` | `git` | `granola`) → PREFIX MATCH on the canonical app prefix; resolves to the newest non-fs source under that prefix.\n' +
-  '      • Literal source path (e.g. `fs:/Users/.../session.jsonl`, `git:/Users/.../repo`) → EXACT match; descriptor returned only if the source has at least one non-fs atom.\n' +
-  "  • `repo_path?: string` — optional absolute repo root. When set, only sources whose newest non-fs atom matches the repo are eligible. Source-app entries, including historical Cursor atoms, filter via `metadata.repo_root`; older Cursor atoms without that metadata remain discoverable only without `repo_path`. `git` uses a two-path OR (metadata.repo_root OR `source=git:<repo_path>`) to recover legacy git atoms by path; `granola` normally resolves only when repo_path is omitted because meeting-note atoms have no repo_root.\n\n" +
-  "RETURNS: `{ sources: Record<string, ResolvedSourceDescriptor | null>, repo_path?: string, warnings: string[] }`. Each descriptor has shape `{ source, filter: { metadata_match?, repo_path? } }` and is ready to spread into `search_memories`.\n\n" +
-  'CANONICAL COMPOSITIONS:\n' +
-  "  • Tail (search_memories): `r = echo_resolve_mru({sources: ['codex'], repo_path: X})` → if `r.sources['codex'] !== null`, `search_memories({source: desc.source, ...desc.filter, limit: N})`.\n" +
-  '  • Live watch (wait_for_new_turns): `wait_for_new_turns({sources: [desc.source], repo_path: desc.filter.repo_path, since: now})`.';
+  'Resolve each requested app or exact source to one most-recently-active exact source; no bodies are fetched. App names (`cursor`, `claude_code`, `codex`, `git`, `granola`) search across that app, while other strings are exact-source lookups. Optional `repo_path` restricts eligible activity. Each non-null result is a `search_memories` descriptor: pass its `source` and spread its `filter`. This tool selects one newest source; use `wait_for_new_turns` when you need to watch all sessions for an app.';
 
 /** The descriptor returned for a resolved source. `filter` encodes the
  *  scoping predicates the caller MUST spread through to `search_memories`
@@ -218,8 +207,9 @@ export async function echoResolveMru(
   const result: Record<string, ResolvedSourceDescriptor | null> = {};
   const scanState: ScanState = { truncated: false };
   // Per-entry parallel resolution — each entry's storage query is independent.
+  const uniqueSources = [...new Set(params.sources)];
   await Promise.all(
-    params.sources.map(async (entry) => {
+    uniqueSources.map(async (entry) => {
       if (isSourceAppName(entry)) {
         result[entry] = await resolveAppNameEntry(
           storage,
@@ -272,12 +262,16 @@ export function registerEchoResolveMru(server: McpServer, storage: Storage): voi
     {
       description: ECHO_RESOLVE_MRU_DESCRIPTION,
       inputSchema: {
-        sources: z.array(z.string()).min(1).max(ECHO_RESOLVE_MRU_MAX_SOURCES),
+        sources: z
+          .array(z.string().min(1).max(4096))
+          .min(1)
+          .max(ECHO_RESOLVE_MRU_MAX_SOURCES),
         repo_path: z
           .string()
+          .max(4096)
           .optional()
           .describe(
-            'Absolute filesystem path to a repo root. When set, only sources whose newest non-fs atom matches the repo (per the source-app-specific rules above) are eligible.',
+            'Absolute repo root. Restricts eligible activity to matching capture metadata.',
           ),
       },
       outputSchema: echoResolveMruOutputSchema,

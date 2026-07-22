@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  SEARCH_RESPONSE_BYTE_CEILING,
   SEARCH_SCAN_PAGE_ROWS,
   searchMemories,
   type SearchResult,
@@ -271,7 +272,7 @@ describe('searchMemories (pure handler)', () => {
 //
 // Contract: each match's `content` is capped at PER_MATCH_CONTENT_CAP chars
 // total. When elided, the content becomes head + elision marker + tail, and
-// `bytes_elided` carries the dropped char count so the consumer can size the
+// `bytes_elided` carries the dropped UTF-8 byte count so the consumer can size the
 // remainder.
 describe('searchMemories Bug A — per-match content envelope cap', () => {
   it('content under cap is returned verbatim with no bytes_elided field', async () => {
@@ -289,7 +290,7 @@ describe('searchMemories Bug A — per-match content envelope cap', () => {
     expect(r.matches[0]!.truncations).toEqual([]);
   });
 
-  it('content over cap is elided to head + marker + tail; bytes_elided reports dropped chars', async () => {
+  it('content over cap is elided to head + marker + tail; bytes_elided reports dropped bytes', async () => {
     const store = new MemoryStorage();
     // 100 KB of repeating text — mirrors the 15:54 PDT real-world ~100KB
     // Codex match shape that motivated this fix.
@@ -314,8 +315,8 @@ describe('searchMemories Bug A — per-match content envelope cap', () => {
     // strings without reading the middle.
     expect(m.content.startsWith('HEAD_SENTINEL_')).toBe(true);
     expect(m.content.endsWith('_TAIL_SENTINEL')).toBe(true);
-    // Elision marker is present and references a positive char count.
-    expect(m.content).toMatch(/\[\d+\s*chars elided\]/);
+    // Elision marker is present and references a positive byte count.
+    expect(m.content).toMatch(/\[\d+\s*bytes elided\]/);
     // bytes_elided is exposed as a top-level field on the match for
     // programmatic consumers, and its value plus retained content equals the
     // original byte length.
@@ -401,6 +402,99 @@ describe('searchMemories Bug A — per-match content envelope cap', () => {
     // Per-KEY semantics: small structured metadata neighbours pass verbatim.
     expect(r.matches.every((m) => m.metadata?.['session_id'] !== undefined)).toBe(true);
     expect(r.matches.every((m) => m.metadata?.['git_state'] !== undefined)).toBe(true);
+  });
+});
+
+describe('searchMemories — whole-response UTF-8 budget', () => {
+  it('bounds thousands of individually-small metadata keys and keeps the atom identity', async () => {
+    const store = new MemoryStorage();
+    const metadata: Record<string, unknown> = {};
+    for (let i = 0; i < 2_500; i += 1) {
+      metadata[`key_${i.toString().padStart(4, '0')}`] = 'x'.repeat(900);
+    }
+    const id = await store.append({
+      source: 'fs:/tmp/adversarial-metadata.jsonl',
+      timestamp: '2026-05-08T23:00:00.000Z',
+      content: 'bounded metadata regression',
+      metadata,
+    });
+
+    const result = await searchMemories(store, { limit: 1 });
+
+    expect(result.matches[0]?.id).toBe(id);
+    expect(result.matches[0]?.metadata_keys_omitted).toBeGreaterThan(2_400);
+    expect(result.matches[0]?.truncations).toContain('metadata');
+    expect(result.warnings.some((warning) => warning.startsWith('[SEARCH_METADATA_CAP]'))).toBe(
+      true,
+    );
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(
+      SEARCH_RESPONSE_BYTE_CEILING,
+    );
+  });
+
+  it('pages every emoji-heavy match exactly once when the response budget trims pages', async () => {
+    const store = new MemoryStorage();
+    const ids: string[] = [];
+    const timestamp = '2026-05-08T23:30:00.000Z';
+    for (let i = 0; i < 50; i += 1) {
+      ids.push(
+        await store.append({
+          source: `fs:/tmp/emoji-${i}.jsonl`,
+          timestamp,
+          content: `emoji-${i} ` + '😀'.repeat(2_000),
+        }),
+      );
+    }
+    const expected = [...ids].sort((left, right) => (left < right ? 1 : left > right ? -1 : 0));
+    const observed: string[] = [];
+    let cursor: string | undefined;
+    let sawResponseCap = false;
+
+    for (let page = 0; page < 30; page += 1) {
+      const result = await searchMemories(store, { limit: 50, ...(cursor ? { cursor } : {}) });
+      expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(
+        SEARCH_RESPONSE_BYTE_CEILING,
+      );
+      observed.push(...result.matches.map((match) => match.id));
+      sawResponseCap ||= result.warnings.some((warning) =>
+        warning.startsWith('[SEARCH_RESPONSE_CAP]'),
+      );
+      if (result.next_cursor === null) break;
+      cursor = result.next_cursor;
+    }
+
+    expect(sawResponseCap).toBe(true);
+    expect(observed).toEqual(expected);
+    expect(new Set(observed).size).toBe(50);
+  });
+
+  it('returns a bounded identity stub and advances past an escape-heavy source', async () => {
+    const store = new MemoryStorage();
+    const hugeSource = 'fs:/' + '\\"'.repeat(7_000);
+    const id = await store.append({
+      source: hugeSource,
+      timestamp: '2026-05-08T23:45:00.000Z',
+      content: 'identity fallback',
+    });
+
+    const first = await searchMemories(store, { source: hugeSource, limit: 1 });
+    expect(first.matches[0]?.id).toBe(id);
+    expect(first.matches[0]?.truncations).toContain('source');
+    expect(first.warnings.some((warning) => warning.startsWith('[SEARCH_QUERY_ECHO_CAP]'))).toBe(
+      true,
+    );
+    expect(Buffer.byteLength(JSON.stringify(first), 'utf8')).toBeLessThanOrEqual(
+      SEARCH_RESPONSE_BYTE_CEILING,
+    );
+
+    const second = await searchMemories(store, {
+      source: hugeSource,
+      cursor: first.next_cursor ?? undefined,
+      limit: 1,
+    });
+    expect(first.next_cursor).not.toBeNull();
+    expect(second.matches).toEqual([]);
+    expect(second.next_cursor).toBeNull();
   });
 });
 

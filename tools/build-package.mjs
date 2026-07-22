@@ -60,7 +60,7 @@ const manifestPath = join(dist, 'artifact-manifest.json');
 const packageFiles = [
   join(root, 'package.json'),
   join(root, 'npm-shrinkwrap.json'),
-  join(root, 'context-tools.v1.json'),
+  join(root, 'context-tools.v2.json'),
   join(root, 'schemas', 'service-api.v1.json'),
   join(root, 'README.md'),
   join(root, 'LICENSE'),

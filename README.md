@@ -2,8 +2,8 @@
 
 `echo-context` is ECHO's standalone context-layer package and daemon. It owns
 coding-session capture, normalization, append-only SQLite storage, bounded
-retrieval, readiness health, and exactly the eight read-only context MCP tools
-sealed in `context-tools.v1.json`.
+retrieval, readiness health, and the seven read-only context MCP tools sealed in
+`context-tools.v2.json`.
 
 It intentionally does **not** contain product coordination, Slack, backlog
 workers, enrichment loops, or permanent raw filesystem-change capture.
@@ -70,13 +70,13 @@ npm run test:ci
 npm run verify:inventory
 
 REVIEWED_COMMIT="$(git rev-parse HEAD)"
-RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.2-$REVIEWED_COMMIT"
+RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.3-$REVIEWED_COMMIT"
 INSTALL_PREFIX="$RELEASE_ROOT/prefix"
 PROMOTION_RESULT="$RELEASE_ROOT/promotion-result.json"
 mkdir -p "$RELEASE_ROOT"
 npm pack --pack-destination "$RELEASE_ROOT"
 npm run --silent smoke:package -- \
-  "$RELEASE_ROOT/echo-context-0.1.0-beta.2.tgz" \
+  "$RELEASE_ROOT/echo-context-0.1.0-beta.3.tgz" \
   --prefix "$INSTALL_PREFIX" > "$PROMOTION_RESULT"
 cat "$PROMOTION_RESULT"
 ```
@@ -84,7 +84,7 @@ cat "$PROMOTION_RESULT"
 `npm pack` invokes the clean-tree package build; do not run a second build. The
 smoke command installs the existing tarball as a prefix-scoped global package,
 then verifies package import, migrations, manifest integrity, daemon health,
-the bounded service API, the sealed eight-tool MCP roster, one tool call, and
+the bounded service API, the sealed seven-tool MCP roster, one tool call, and
 clean shutdown. It creates the receipt directory before hashing the installed
 tree, excludes only the receipt file from that tree, writes canonical receipt
 bytes, and restarts the daemon under that exact receipt-bound identity. Only
@@ -161,7 +161,7 @@ FOUNDER_HOME="$HOME/.echo-context-founder-live"
 "$EXACT_CLI" status --port 39478
 ```
 
-Exercise health, the service API, all eight MCP tools, capture catch-up, bounded
+Exercise health, the service API, all seven MCP tools, capture catch-up, bounded
 queries, and memory use. After founder acceptance, unload only the candidate;
 preserve its database and test evidence:
 

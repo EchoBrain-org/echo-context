@@ -58,6 +58,7 @@
         "metadata": { "type": "object" },
         "metadata_bytes_elided": { "type": "integer", "minimum": 0 },
         "metadata_keys_elided": { "type": "array", "items": { "type": "string" } },
+        "metadata_keys_omitted": { "type": "integer", "minimum": 0 },
         "metadata_keys_projected": { "type": "array", "items": { "type": "string" } },
         "truncations": { "type": "array", "items": { "type": "string" } }
       },
@@ -275,7 +276,8 @@
         "metadata": { "type": "object" },
         "truncations": { "type": "array", "items": { "type": "string" } },
         "content_bytes_elided": { "type": "integer", "minimum": 0 },
-        "metadata_bytes_elided": { "type": "integer", "minimum": 0 }
+        "metadata_bytes_elided": { "type": "integer", "minimum": 0 },
+        "metadata_keys_omitted": { "type": "integer", "minimum": 0 }
       },
       "required": ["id", "source", "timestamp", "truncations"]
     }

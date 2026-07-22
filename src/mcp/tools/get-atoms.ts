@@ -14,6 +14,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CaptureEvent, Storage } from '../../storage/interface.js';
+import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactAtom, type CompactAtom, type ViewMode } from '../wire-shape/compact.js';
 import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
 
@@ -31,24 +32,8 @@ export const GET_ATOMS_RESPONSE_BYTE_CEILING = 25_000;
 export const GET_ATOMS_MAX_IDS = 50;
 
 export const GET_ATOMS_DESCRIPTION =
-  // discriminator one-liner per item 025
-  "Use when you have a specific list of atom IDs (from `find_clusters.clusters[].atom_ids[]` or `search_memories.matches[].id`) and want their bodies. The targeted body-fetch counterpart to `find_clusters`' cheap discovery.\n\n" +
-  // cost class
-  'Cost: medium. Each returned atom passes through the same wire-shape projector as `search_memories` (per-content cap, per-key metadata cap, projector reshapes). Hard envelope ceiling: 25k chars; deterministic prefix-drop on overflow (see below).\n\n' +
-  // shape
-  'PARAMETERS:\n' +
-  '  • `atom_ids: string[]` — required. Non-empty, ≤ ' +
-  String(GET_ATOMS_MAX_IDS) +
-  '. Atoms are returned in REQUESTED ORDER by default.\n' +
-  '  • `fields?: string[]` — optional projection. When present, only the listed top-level fields are returned per atom (always-on: `id`, `source`, `timestamp`, `truncations`). Useful for cost reduction.\n' +
-  '  • `format?: "minimal"` — V1.6 only ships "minimal" (applies WIRE_SHAPE_CAPS to content + per-key metadata). A future debug-only "full" mode is a separate item if real demand surfaces.\n' +
-  '  • `prefer?: "as_requested" | "newest_first"` — default `"as_requested"` preserves the existing contract (atoms returned in input order; duplicate input IDs returned as repeated entries). Pass `"newest_first"` for resume-style queries: atoms are sorted by `CaptureEvent.timestamp` DESCENDING (newest first; ties resolve in input order), duplicate IDs are de-duplicated to first occurrence BEFORE sorting (NEW behavior — opt-in only), and missing IDs (not in storage) land at the END of the iteration order. Under the deterministic prefix-drop budget, that END is the FIRST thing dropped — so the freshest atoms survive overflow, matching the resume-call intent. If you have already ordered `atom_ids` intentionally, pass `"as_requested"` (or omit `prefer`) — `"newest_first"` will override your order.\n\n' +
-  // truncations
-  'TRUST SIGNAL — `truncations: string[]` is on EVERY returned atom. `[]` ⟺ everything verbatim. `["content"]` ⟺ content was clipped to the wire-shape cap. `["metadata.<key>"]` ⟺ per-key cap fired (LOSSY — opaqued out). `["metadata.<key>:projected"]` ⟺ projector reshaped (REFORMATTED, not clipped — e.g. tool_calls → trajectory). `["fields_omitted"]` ⟺ caller passed `fields[]` excluding some.\n\n' +
-  // drop rule
-  'DROP RULE — when the response would exceed 25k chars: deterministic prefix-drop. Atoms are appended in PROCESS ORDER (= requested order under `prefer="as_requested"` (default); = newest-first-then-missing under `prefer="newest_first"`) until the next atom would push the envelope over the ceiling; that atom AND every remaining ID in process order are dropped (NOT a hole in the middle). `atoms_dropped: N` + `atoms_dropped_ids: string[]` carry the omitted IDs in that same process order. Missing IDs (not in storage) are also reported in `atoms_dropped_ids`; under `prefer="newest_first"` they sort to the END of the process order so they are dropped first when the budget tightens.\n\n' +
-  // when-too-big
-  'If even a single projected atom alone would exceed 25k, the response is `{atoms: [], atoms_dropped: input_count, atoms_dropped_ids: [all]}` plus a warning telling the caller to retry with a narrower `fields[]` projection. We do NOT raise WIRE_SHAPE_CAPS to make this pass.';
+  'Fetch bodies for known atom IDs from `find_clusters` or `search_memories`. Send 1–50 IDs per call; chunk larger cluster lists. The default `prefer="as_requested"` preserves input order and duplicates. Use `prefer="newest_first"` for resume flows; it de-duplicates, sorts newest first, and puts missing IDs last.\n\n' +
+  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic prefix and reports all omitted or missing IDs in `atoms_dropped_ids`; inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one exact raw atom is required.';
 
 const formatSchema = z.enum(['minimal']);
 const preferSchema = z.enum(['as_requested', 'newest_first']);
@@ -82,6 +67,8 @@ export interface GetAtomsAtom {
   content_bytes_elided?: number;
   /** Optional metadata-bytes elided count (sum across cap + projector). */
   metadata_bytes_elided?: number;
+  /** Count of metadata keys omitted by the whole-metadata budget. */
+  metadata_keys_omitted?: number;
 }
 
 export interface GetAtomsResult {
@@ -132,6 +119,9 @@ function projectAtom(
   if (projected.metadata_bytes_elided !== undefined) {
     atom.metadata_bytes_elided = projected.metadata_bytes_elided;
   }
+  if (projected.metadata_keys_omitted !== undefined) {
+    atom.metadata_keys_omitted = projected.metadata_keys_omitted;
+  }
 
   // Populate content / metadata, then narrow by fields[] if present.
   const fullContent = projected.content;
@@ -158,7 +148,7 @@ function projectAtom(
 
   const shaped: GetAtomsAtom =
     view === 'compact' ? applyCompactFields(compactAtom(atom), fields) : atom;
-  const bytes = JSON.stringify(shaped).length;
+  const bytes = jsonByteLength(shaped);
   return { atom: shaped, bytes };
 }
 
@@ -250,6 +240,13 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
   if (atom_ids.length > GET_ATOMS_MAX_IDS) {
     throw new Error(`get_atoms: atom_ids exceeds max ${GET_ATOMS_MAX_IDS} per call`);
   }
+  if (fields !== undefined) {
+    for (const field of fields) {
+      if (field !== 'content' && field !== 'metadata') {
+        throw new Error('get_atoms: fields entries must be "content" or "metadata"');
+      }
+    }
+  }
   // V1.6 only ships 'minimal' — `format` is essentially a future-proofing
   // marker today.
   void format;
@@ -271,6 +268,11 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
   const atomsDroppedIds: string[] = [];
   const warnings: string[] = [];
   let firstAtomOversize = false;
+  let responseCapFired = false;
+  const missingCount = processOrder.reduce(
+    (count, id) => count + (fetchedById.has(id) ? 0 : 1),
+    0,
+  );
 
   // Build the response in PROCESS ORDER (which equals REQUESTED ORDER under
   // `as_requested`, and equals [newest…oldest, then missing] under
@@ -310,8 +312,8 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       atoms_dropped_ids: worstCaseDroppedIds,
       warnings,
     };
-    const envBytes = JSON.stringify(tentative).length;
-    if (envBytes > GET_ATOMS_RESPONSE_BYTE_CEILING) {
+    const envBytes = jsonByteLength(tentative);
+    if (envBytes > GET_ATOMS_RESPONSE_BYTE_CEILING - 512) {
       // Roll back this atom AND every remaining ID per spec §2 step 4 —
       // deterministic prefix drop in PROCESS order.
       atoms.pop();
@@ -324,15 +326,22 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       if (atoms.length === 0) {
         firstAtomOversize = true;
       }
+      responseCapFired = true;
       break;
     }
   }
 
   if (firstAtomOversize) {
     warnings.push(
-      'get_atoms: even the first projected atom alone exceeded the 25k response ceiling. ' +
-        'Retry with a narrower `fields[]` projection (e.g. `fields=["content"]` to drop metadata).',
+      '[GET_ATOMS_RESPONSE_CAP] even the first projected atom exceeded the response budget; retry with fields=["content"] or fields=["metadata"]',
     );
+  } else if (responseCapFired) {
+    warnings.push(
+      `[GET_ATOMS_RESPONSE_CAP] returned a process-order prefix; ${atomsDroppedIds.length} IDs were omitted or missing`,
+    );
+  }
+  if (missingCount > 0) {
+    warnings.push(`[GET_ATOMS_MISSING_IDS] ${missingCount} requested ID entries were not found`);
   }
 
   return {
@@ -354,6 +363,7 @@ const getAtomsAtomSchema = z.object({
   truncations: z.array(z.string()),
   content_bytes_elided: z.number().int().nonnegative().optional(),
   metadata_bytes_elided: z.number().int().nonnegative().optional(),
+  metadata_keys_omitted: z.number().int().nonnegative().optional(),
 });
 
 const getAtomsOutputSchema = {
@@ -371,11 +381,17 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
     {
       description: GET_ATOMS_DESCRIPTION,
       inputSchema: {
-        atom_ids: z.array(z.string()).min(1).max(GET_ATOMS_MAX_IDS),
-        fields: z.array(z.string()).optional(),
-        format: formatSchema.optional(),
-        prefer: preferSchema.optional(),
-        view: viewSchema.optional(),
+        atom_ids: z.array(z.string().min(1).max(128)).min(1).max(GET_ATOMS_MAX_IDS),
+        fields: z.array(z.enum(['content', 'metadata'])).max(2).optional(),
+        format: formatSchema
+          .optional()
+          .describe('Compatibility-only singleton; omit it. Minimal projection is always applied.'),
+        prefer: preferSchema
+          .optional()
+          .describe('as_requested (default) or newest_first for resume-style hydration.'),
+        view: viewSchema
+          .optional()
+          .describe('rich (default) or compact to retain only high-signal metadata.'),
       },
       outputSchema: getAtomsOutputSchema,
       annotations: { readOnlyHint: true },
