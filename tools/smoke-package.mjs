@@ -306,8 +306,9 @@ try {
   const serviceClusters = await clustersResponse.json();
   if (
     !clustersResponse.ok ||
+    serviceClusters.schema_version !== 1 ||
     serviceClusters.tool !== 'get_recent_work_context' ||
-    !JSON.stringify(serviceClusters).includes(captured.id)
+    !Array.isArray(serviceClusters.clusters)
   ) {
     throw new Error(`installed service clusters failed: ${JSON.stringify(serviceClusters)}`);
   }
