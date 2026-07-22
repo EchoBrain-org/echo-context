@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "e676a0930069daff356870998a465033a37be024",
-      "content_sha256": "724c35a811994c79bd1f5f09458e6d0dcdbe1bdb3e1d579b729aab764dfb326a",
+      "blob_oid": "35923d70c44f42238fa62242430cf04c449a80fb",
+      "content_sha256": "3c530b5fb5a36595b6c174cfba819969c37aaf6791908ba0b9be337a07aa438c",
       "mode": "100644",
       "path": "tools/build-package.mjs"
     },
@@ -115,8 +115,8 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "d6a94db8b6759340a9a547e8f6aff090a0005ee6",
-      "content_sha256": "c929d78c99405e7c4f3fc34bbcdd51cc5757cb2cbdcfba64aece77a7394b0046",
+      "blob_oid": "c7370356d61601ed8590e5d7321dcde6026308ff",
+      "content_sha256": "ad5330b18c9fbe2368efbde6ddd503de4681d2c6ae74d8d41b9679077a5f3fbb",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
     },
@@ -157,7 +157,7 @@
       "path": "vitest.operator.config.ts"
     }
   ],
-  "lock_sha256": "e7dc05fff5e9c51b3135f290fab4eb78bf82094350b8a2a767b780c6e410f9e8",
+  "lock_sha256": "349e7fb45efdba8faf5537da02eb0dd1d3b7b7d41aefe13a789f73e2442d5f33",
   "npm_closure": [
     {
       "cpu": [
@@ -6069,7 +6069,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "062c759f26a20b216e52d5d5674415f2fb3cc287e8a81f1a5dc5cd821e754503",
+  "package_json_sha256": "a80204cbc979134a85617728c228da21199d7283bdc60d62b2586f8e02423242",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
