@@ -30,7 +30,7 @@ export { CursorDecodeError, decodeCursor, encodeCursor, type DecodedCursor } fro
 export const SEARCH_MEMORIES_DESCRIPTION =
   "Search the user's captured ECHO memories with case-insensitive literal substring matching; this is NOT a semantic search. Use exact phrases, paths, SHAs, IDs, or error text. Results are newest first and the complete JSON result is capped at 25,000 UTF-8 bytes.\n\n" +
   'Choose at most one source selector: `source` (one exact captured source), `source_prefix` (all sources beginning with a prefix), or `source_app` (`cursor`, `claude_code`, `codex`, `git`, `granola`). `cursor` covers historical Cursor records; this runtime does not capture new ones. For compatibility, multiple selectors still use `source > source_prefix > source_app` and emit a warning naming ignored selectors. `repo_path` and `metadata_match` add AND filters.\n\n' +
-  'Pass `next_cursor` back unchanged as `cursor`. A non-null cursor can mean more matches, a bounded scan continuation, or response-budget trimming; inspect coded `warnings`. `next_cursor: null` means the scanned window ended, but a manifest-cap warning can still make older Granola coverage incomplete. Per-match `truncations` and metadata omission fields are trust signals; use `get_atom(id)` when exact raw detail is needed.';
+  'Pass `next_cursor` back unchanged as `cursor`. A non-null cursor can mean more matches, a bounded scan continuation, or response-budget trimming; inspect coded `warnings`. `next_cursor: null` means the scanned window ended, but a manifest-cap warning can still make older Granola coverage incomplete. Per-match `truncations` and metadata omission fields are trust signals; use `get_atom(id)` for verbatim content when it fits, but remember its metadata remains projected.';
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
@@ -785,7 +785,7 @@ export async function searchMemories(
       ...warnings,
       ...(matches.some((match) => (match.metadata_keys_omitted ?? 0) > 0)
         ? [
-            '[SEARCH_METADATA_CAP] one or more matches omitted metadata keys; inspect metadata_keys_omitted and use get_atom(id) for exact raw detail',
+            '[SEARCH_METADATA_CAP] one or more matches omitted metadata keys; inspect metadata_keys_omitted. get_atom(id) can recover verbatim content when it fits, but metadata remains projected; read the captured source when exact metadata is required',
           ]
         : []),
       ...extraWarnings,
@@ -807,7 +807,7 @@ export async function searchMemories(
     if (returned.length === 0) {
       const stub = identityStub(kept[0]!);
       result = buildResult([stub], responseCursorAfter(kept[0]!), [
-        '[SEARCH_RESPONSE_CAP] newest match required an identity-only stub; use get_atom(id) for exact raw detail',
+        '[SEARCH_RESPONSE_CAP] newest match required an identity-only stub; use get_atom(id) for verbatim content when it fits, but metadata remains projected',
       ]);
     }
   }

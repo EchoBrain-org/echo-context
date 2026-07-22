@@ -432,6 +432,7 @@
           "atoms": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/getAtomsAtom" } },
           "atoms_dropped": { "type": "integer", "minimum": 0, "maximum": 50 },
           "atoms_dropped_ids": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
+          "atoms_dropped_ids_omitted": { "type": "integer", "minimum": 0, "maximum": 50 },
           "warnings": { "type": "array", "items": { "type": "string" } }
         },
         "required": ["schema_version", "tool", "atoms", "atoms_dropped", "atoms_dropped_ids", "warnings"]

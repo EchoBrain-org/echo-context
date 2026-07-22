@@ -33,7 +33,7 @@ export const GET_ATOMS_MAX_IDS = 50;
 
 export const GET_ATOMS_DESCRIPTION =
   'Fetch bodies for known atom IDs from `find_clusters` or `search_memories`. Send 1–50 IDs per call; chunk larger cluster lists. The default `prefer="as_requested"` preserves input order and duplicates. Use `prefer="newest_first"` for resume flows; it de-duplicates, sorts newest first, and puts missing IDs last.\n\n' +
-  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic prefix and reports all omitted or missing IDs in `atoms_dropped_ids`; inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one exact raw atom is required.';
+  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic atom prefix. `atoms_dropped` is always exact; `atoms_dropped_ids` is a bounded process-order prefix and `atoms_dropped_ids_omitted`, when present, counts ID values excluded from that list. Inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one atom’s verbatim content is required; its metadata remains projected.';
 
 const formatSchema = z.enum(['minimal']);
 const preferSchema = z.enum(['as_requested', 'newest_first']);
@@ -81,7 +81,45 @@ export interface GetAtomsResult {
    *  processed/newest-first order under "newest_first"). Includes both missing
    *  IDs (not in storage) and budget-dropped IDs. */
   atoms_dropped_ids: string[];
+  /** Number of dropped ID values excluded from `atoms_dropped_ids` solely
+   *  to keep the complete response inside its hard byte ceiling. The exact
+   *  dropped-entry count remains available in `atoms_dropped`. */
+  atoms_dropped_ids_omitted?: number;
   warnings: string[];
+}
+
+/** Shape a result while prioritizing useful atom bodies over an arbitrarily
+ *  expensive echo of caller-supplied ID strings. `atoms_dropped` remains
+ *  exact; only the tail of the redundant dropped-ID value list may be
+ *  omitted. JSON escaping can make a 128-character ID cost up to 768 bytes,
+ *  so character-count input limits alone cannot enforce the wire ceiling. */
+function buildBoundedResult(
+  atoms: GetAtomsAtom[],
+  allDroppedIds: readonly string[],
+  warnings: readonly string[],
+  byteCeiling: number,
+): GetAtomsResult {
+  const result: GetAtomsResult = {
+    schema_version: SCHEMA_VERSION,
+    tool: 'get_atoms',
+    atoms: [...atoms],
+    atoms_dropped: allDroppedIds.length,
+    atoms_dropped_ids: [...allDroppedIds],
+    warnings: [...warnings],
+  };
+
+  if (jsonByteLength(result) <= byteCeiling) return result;
+  if (result.atoms_dropped_ids.length === 0) return result;
+
+  result.warnings.push(
+    '[GET_ATOMS_DROPPED_ID_CAP] atoms_dropped_ids is a bounded process-order prefix; atoms_dropped and atoms_dropped_ids_omitted retain exact omission counts',
+  );
+  result.atoms_dropped_ids_omitted = 0;
+  while (result.atoms_dropped_ids.length > 0 && jsonByteLength(result) > byteCeiling) {
+    result.atoms_dropped_ids.pop();
+    result.atoms_dropped_ids_omitted += 1;
+  }
+  return result;
 }
 
 const ALWAYS_KEEP_FIELDS = new Set(['id', 'source', 'timestamp', 'truncations']);
@@ -304,14 +342,12 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
     // quoting) can exceed 25k post-check (Cursor + Codex post-build
     // review, 2026-05-10).
     const worstCaseDroppedIds = atomsDroppedIds.concat(processOrder.slice(i + 1));
-    const tentative: GetAtomsResult = {
-      schema_version: SCHEMA_VERSION,
-      tool: 'get_atoms',
+    const tentative = buildBoundedResult(
       atoms,
-      atoms_dropped: worstCaseDroppedIds.length,
-      atoms_dropped_ids: worstCaseDroppedIds,
+      worstCaseDroppedIds,
       warnings,
-    };
+      GET_ATOMS_RESPONSE_BYTE_CEILING - 512,
+    );
     const envBytes = jsonByteLength(tentative);
     if (envBytes > GET_ATOMS_RESPONSE_BYTE_CEILING - 512) {
       // Roll back this atom AND every remaining ID per spec §2 step 4 —
@@ -344,14 +380,12 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
     warnings.push(`[GET_ATOMS_MISSING_IDS] ${missingCount} requested ID entries were not found`);
   }
 
-  return {
-    schema_version: SCHEMA_VERSION,
-    tool: 'get_atoms',
+  return buildBoundedResult(
     atoms,
-    atoms_dropped: atomsDroppedIds.length,
-    atoms_dropped_ids: atomsDroppedIds,
+    atomsDroppedIds,
     warnings,
-  };
+    GET_ATOMS_RESPONSE_BYTE_CEILING,
+  );
 }
 
 const getAtomsAtomSchema = z.object({
@@ -372,6 +406,7 @@ const getAtomsOutputSchema = {
   atoms: z.array(getAtomsAtomSchema),
   atoms_dropped: z.number().int().nonnegative(),
   atoms_dropped_ids: z.array(z.string()),
+  atoms_dropped_ids_omitted: z.number().int().nonnegative().optional(),
   warnings: z.array(z.string()),
 };
 

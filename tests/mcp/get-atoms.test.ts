@@ -27,6 +27,7 @@ describe('get_atoms', () => {
     expect(r.atoms.map((a) => a.id)).toEqual([id3, id1, id2]);
     expect(r.atoms_dropped).toBe(0);
     expect(r.atoms_dropped_ids).toEqual([]);
+    expect(r.atoms_dropped_ids_omitted).toBeUndefined();
   });
 
   it('missing IDs are reported in atoms_dropped_ids (in requested order)', async () => {
@@ -322,6 +323,26 @@ describe('get_atoms', () => {
     // Final envelope MUST respect the ceiling — this is the load-bearing
     // assertion that was previously not actually enforced.
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(25_000);
+  });
+
+  it('bounds an all-missing response whose valid IDs are expensive to JSON-escape', async () => {
+    const store = new MemoryStorage();
+    const ids = Array.from(
+      { length: GET_ATOMS_MAX_IDS },
+      (_, i) => '\u0001'.repeat(126) + i.toString().padStart(2, '0'),
+    );
+
+    const r = await getAtoms(store, { atom_ids: ids });
+
+    expect(r.atoms).toEqual([]);
+    expect(r.atoms_dropped).toBe(GET_ATOMS_MAX_IDS);
+    expect(r.atoms_dropped_ids_omitted).toBeGreaterThan(0);
+    expect(r.atoms_dropped_ids.length + (r.atoms_dropped_ids_omitted ?? 0)).toBe(
+      GET_ATOMS_MAX_IDS,
+    );
+    expect(r.atoms_dropped_ids).toEqual(ids.slice(0, r.atoms_dropped_ids.length));
+    expect(r.warnings).toContainEqual(expect.stringContaining('[GET_ATOMS_DROPPED_ID_CAP]'));
+    expect(Buffer.byteLength(JSON.stringify(r), 'utf8')).toBeLessThanOrEqual(25_000);
   });
 
   // V1.6 (item 032) AC4 — prefer='newest_first' resume-friendly ordering.
