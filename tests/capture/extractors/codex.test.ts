@@ -875,6 +875,15 @@ describe("extractCodexTurns (pure)", () => {
         history_mode: "legacy",
         agent_depth: 2,
       }),
+      // Current Codex subagent files copy the root session header directly
+      // after the authoritative physical child header. The copied header is
+      // history, not a replacement for this file's child identity.
+      sessionMeta({
+        id: rootId,
+        ts: "2026-07-22T18:44:05.001Z",
+        session_id: rootId,
+        thread_source: "user",
+      }),
       userMsg(
         "copied parent question",
         "2026-07-22T18:44:08.000Z",
@@ -921,6 +930,59 @@ describe("extractCodexTurns (pure)", () => {
         thread_kind: "subagent",
         agent_path: childPath,
         agent_depth: 2,
+      },
+    });
+  });
+
+  it("preserves physical child lineage when a copied root header arrives after a nonzero checkpoint", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const inheritedId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 2,
+      }),
+    ]);
+
+    const first = await extractCodexTurns(path, 0);
+    expect(first.turns).toEqual([]);
+    expect(first.codex).toMatchObject({
+      root_thread_id: rootId,
+      parent_thread_id: parentId,
+      thread_kind: "subagent",
+      agent_path: childPath,
+    });
+
+    appendJsonl(path, [
+      sessionMeta({
+        id: rootId,
+        ts: "2026-07-22T18:44:05.001Z",
+        session_id: rootId,
+        thread_source: "user",
+      }),
+      userMsg("copied question", "2026-07-22T18:44:08.000Z", inheritedId),
+      assistantMsg("copied answer", "2026-07-22T18:44:08.001Z", inheritedId),
+      taskComplete("2026-07-22T18:44:09.000Z"),
+    ]);
+
+    const second = await extractCodexTurns(path, first.newOffset, {
+      lastKnownCodex: first.codex,
+    });
+    expect(second.turns).toHaveLength(1);
+    expect(second.turns[0]).toMatchObject({
+      logical_turn_id: inheritedId,
+      observation_kind: "inherited",
+      codex: {
+        root_thread_id: rootId,
+        parent_thread_id: parentId,
+        thread_kind: "subagent",
+        agent_path: childPath,
       },
     });
   });
@@ -1010,6 +1072,55 @@ describe("extractCodexTurns (pure)", () => {
     expect(result.codex).not.toHaveProperty("parent_thread_id");
     expect(result.codex).not.toHaveProperty("agent_path");
   });
+
+  it.each([
+    {
+      name: "malformed",
+      laterHeader: {
+        timestamp: "2026-07-22T18:44:05.001Z",
+        type: "session_meta",
+        payload: { id: "", session_id: "untrusted-root", cwd: "/Users/x/proj" },
+      },
+    },
+    {
+      name: "contradictory",
+      laterHeader: sessionMeta({
+        id: "019f85c3-f6b4-7022-b0bd-241fd489616c",
+        ts: "2026-07-22T18:44:05.001Z",
+        session_id: "019f85c3-f6b4-7022-b0bd-241fd489616c",
+        thread_source: "user",
+      }),
+    },
+  ])(
+    "replaces prior lineage atomically with unknown after $name later evidence",
+    async ({ laterHeader }) => {
+      const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+      const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+      const childPath = "/root/reviewer";
+      const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+      writeJsonl(path, [
+        sessionMeta({
+          ts: "2026-07-22T18:44:05.000Z",
+          session_id: rootId,
+          parent_thread_id: parentId,
+          thread_source: "subagent",
+          agent_path: childPath,
+          agent_depth: 2,
+        }),
+        laterHeader,
+        userMsg("ambiguous source", "2026-07-22T18:44:15.000Z", turnId),
+        assistantMsg("keep physical", "2026-07-22T18:44:16.000Z", turnId),
+        taskComplete("2026-07-22T18:44:17.000Z"),
+      ]);
+
+      const result = await extractCodexTurns(path, 0);
+
+      expect(result.turns).toHaveLength(1);
+      expect(result.turns[0]?.observation_kind).toBe("unknown");
+      expect(result.turns[0]?.codex).toEqual({ thread_kind: "unknown" });
+      expect(result.codex).toEqual({ thread_kind: "unknown" });
+    },
+  );
 
   it("fails contradictory user and assistant turn ids closed", async () => {
     const userId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
@@ -1221,6 +1332,99 @@ describe("extractCodexTurns (pure)", () => {
       },
     });
   });
+
+  it("does not let an unrelated turn consume a stale inter-agent trigger", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const humanId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const agentId = "019f8b25-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 1,
+      }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      userMsg("unrelated human turn", "2026-07-22T18:44:15.001Z", humanId),
+      assistantMsg("human answer", "2026-07-22T18:44:16.000Z", humanId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+      agentMessage(
+        "must require a fresh marker",
+        childPath,
+        agentId,
+        "2026-07-22T18:44:18.000Z",
+      ),
+      assistantMsg("must remain orphaned", "2026-07-22T18:44:19.000Z", agentId),
+      taskComplete("2026-07-22T18:44:20.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      user_message: "unrelated human turn",
+      logical_turn_id: humanId,
+      initiator: "unknown",
+    });
+    expect(result.turns.some((turn) => turn.initiator === "agent")).toBe(false);
+  });
+
+  it.each([
+    {
+      name: "assistant message",
+      interruption: assistantMsg(
+        "unrelated assistant output",
+        "2026-07-22T18:44:15.001Z",
+      ),
+    },
+    {
+      name: "other record",
+      interruption: {
+        timestamp: "2026-07-22T18:44:15.001Z",
+        type: "event_msg",
+        payload: { type: "task_started" },
+      },
+    },
+  ])(
+    "invalidates a pending agent trigger on an incompatible $name",
+    async ({ interruption }) => {
+      const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+      const childPath = "/root/reviewer";
+      const agentId = "019f8b25-7fd7-79d2-831e-ebeb897a19a7";
+      writeJsonl(path, [
+        sessionMeta({
+          ts: "2026-07-22T18:44:05.000Z",
+          session_id: rootId,
+          parent_thread_id: rootId,
+          thread_source: "subagent",
+          agent_path: childPath,
+          agent_depth: 1,
+        }),
+        interAgentTrigger("2026-07-22T18:44:15.000Z"),
+        interruption,
+        agentMessage(
+          "must require a fresh marker",
+          childPath,
+          agentId,
+          "2026-07-22T18:44:16.000Z",
+        ),
+        assistantMsg(
+          "must remain orphaned",
+          "2026-07-22T18:44:17.000Z",
+          agentId,
+        ),
+        taskComplete("2026-07-22T18:44:18.000Z"),
+      ]);
+
+      const result = await extractCodexTurns(path, 0);
+
+      expect(result.turns).toEqual([]);
+    },
+  );
 
   it("does not let a system injection replace a pending human prompt", async () => {
     const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";

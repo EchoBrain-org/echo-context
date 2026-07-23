@@ -296,7 +296,6 @@ interface ClusterLaneScan {
   filter: QueryFilter;
   maxWindows: number;
   order: 'asc' | 'desc';
-  retainOnlyInWindow: boolean;
 }
 
 /** Retrieve cluster input through two bounded physical-time lanes. The first
@@ -328,7 +327,6 @@ async function queryClusterEvents(
 
   const appendUnique = (
     rows: readonly CaptureEvent[],
-    retainOnlyInWindow: boolean,
   ): ClusterInputTruncationReason | undefined => {
     for (const storedEvent of rows) {
       if (seen.has(storedEvent.id)) continue;
@@ -338,7 +336,12 @@ async function queryClusterEvents(
       );
       const inspection = inspectLogicalCandidate(event, candidateWindow);
       seen.add(event.id);
-      if (retainOnlyInWindow && !inspection.inWindow) continue;
+      // Physical timestamp filters select observations; clustering selects
+      // logical work. An inherited observation captured inside the indexed
+      // lane can describe work that occurred outside the requested window.
+      // Reject it before either retained-input ceiling is charged so an
+      // irrelevant large-copy burst cannot evict valid in-window work.
+      if (!inspection.inWindow) continue;
       if (events.length >= CLUSTER_MAX_RAW_OBSERVATIONS) {
         return 'raw_observations';
       }
@@ -360,8 +363,7 @@ async function queryClusterEvents(
   ): Promise<ClusterInputTruncationReason | undefined> => {
     let cursor = lane.order === 'desc' ? lane.filter.before : lane.filter.after;
     let byteSafePageRows = CLUSTER_STORAGE_PAGE_ROWS;
-    const consume: ClusterRowConsumer = (rows) =>
-      appendUnique(rows, lane.retainOnlyInWindow);
+    const consume: ClusterRowConsumer = appendUnique;
 
     for (let window = 0; window < lane.maxWindows; window += 1) {
       const remaining = requested - logicalCandidates.size;
@@ -424,7 +426,6 @@ async function queryClusterEvents(
     filter: onTimeFilter,
     maxWindows: CLUSTER_MAX_STORAGE_SCAN_WINDOWS,
     order: 'desc',
-    retainOnlyInWindow: false,
   });
 
   let delayedTruncationReason: ClusterInputTruncationReason | undefined;
@@ -445,7 +446,6 @@ async function queryClusterEvents(
       filter: delayedFilter,
       maxWindows: CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS,
       order: 'asc',
-      retainOnlyInWindow: true,
     });
   }
 

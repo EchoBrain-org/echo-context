@@ -13,6 +13,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { StorageBudgetExceededError } from '../../storage/budgets.js';
 import type { CaptureEvent, Storage } from '../../storage/interface.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactAtom, type CompactAtom, type ViewMode } from '../wire-shape/compact.js';
@@ -265,6 +266,34 @@ function buildProcessOrder(
   return [...decorated.map((d) => d.id), ...missing];
 }
 
+/** SQLite rejects an exact-fetch batch whose combined stored payload exceeds
+ * its fixed query budget even when every individual atom is admissible.
+ * Split only that expected aggregate-budget failure; concatenating the two
+ * halves preserves the storage contract's requested order and duplicates. */
+async function getByIdsByteAdaptive(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent[]> {
+  if (ids.length === 0) return [];
+  try {
+    return await storage.getByIds(ids);
+  } catch (error) {
+    if (
+      !(error instanceof StorageBudgetExceededError) ||
+      error.code !== 'request_too_large' ||
+      error.operation !== 'getByIds' ||
+      ids.length <= 1
+    ) {
+      throw error;
+    }
+    const middle = Math.floor(ids.length / 2);
+    return [
+      ...(await getByIdsByteAdaptive(storage, ids.slice(0, middle))),
+      ...(await getByIdsByteAdaptive(storage, ids.slice(middle))),
+    ];
+  }
+}
+
 export async function getAtoms(storage: Storage, params: GetAtomsParams): Promise<GetAtomsResult> {
   const { atom_ids, fields, format, prefer: preferIn } = params;
   // Schema-side validation runs at registerTool boundary; defense-in-depth
@@ -294,7 +323,7 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
 
   const fieldsSet = fields !== undefined && fields.length > 0 ? new Set(fields) : undefined;
 
-  const fetched = await storage.getByIds(atom_ids);
+  const fetched = await getByIdsByteAdaptive(storage, atom_ids);
   const fetchedById = new Map<string, CaptureEvent>();
   for (const e of fetched) {
     fetchedById.set(e.id, e);

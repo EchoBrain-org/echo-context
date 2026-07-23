@@ -820,6 +820,125 @@ function codexLineagePatch(
   };
 }
 
+const CODEX_LINEAGE_KEYS = [
+  "thread_id",
+  "root_thread_id",
+  "parent_thread_id",
+  "forked_from_id",
+  "thread_kind",
+  "agent_path",
+  "agent_depth",
+  "agent_nickname",
+  "history_mode",
+  "session_started_at",
+] as const satisfies readonly (keyof CodexSessionMeta)[];
+
+/** Lineage is one trust unit. Replacing it field-by-field can combine a new
+ * classification with identifiers left behind by older contradictory
+ * evidence, so clear the entire unit before accepting one source. */
+function replaceCodexLineage(
+  base: CodexSessionMeta | undefined,
+  source: CodexSessionMeta | Partial<CodexSessionMeta> | undefined,
+): CodexSessionMeta | undefined {
+  const next: CodexSessionMeta = { ...(base ?? {}) };
+  const mutableNext = next as Record<keyof CodexSessionMeta, CodexMetaValue>;
+  for (const key of CODEX_LINEAGE_KEYS) delete mutableNext[key];
+  if (source !== undefined) {
+    for (const key of CODEX_LINEAGE_KEYS) {
+      const value = source[key];
+      if (value !== undefined) mutableNext[key] = value;
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function samePhysicalCodexSession(
+  current: Partial<CodexSessionMeta>,
+  incoming: Partial<CodexSessionMeta>,
+): boolean {
+  return (
+    (current.thread_kind === "root" || current.thread_kind === "subagent") &&
+    current.thread_kind === incoming.thread_kind &&
+    current.thread_id !== undefined &&
+    current.thread_id === incoming.thread_id &&
+    current.root_thread_id !== undefined &&
+    current.root_thread_id === incoming.root_thread_id
+  );
+}
+
+function hasCodexLineageConflict(
+  current: Partial<CodexSessionMeta>,
+  incoming: Partial<CodexSessionMeta>,
+): boolean {
+  return CODEX_LINEAGE_KEYS.some((key) => {
+    const before = current[key];
+    const after = incoming[key];
+    return before !== undefined && after !== undefined && before !== after;
+  });
+}
+
+/** A subagent JSONL starts with its physical child header, then may contain
+ * copied session_meta records from inherited ancestry. Those records are
+ * history and must not replace the identity of the file being captured. */
+function isCopiedCodexAncestor(
+  current: Partial<CodexSessionMeta>,
+  incoming: Partial<CodexSessionMeta>,
+): boolean {
+  if (
+    current.thread_kind !== "subagent" ||
+    current.root_thread_id === undefined
+  ) {
+    return false;
+  }
+  if (incoming.thread_kind === "root") {
+    return (
+      incoming.thread_id === current.root_thread_id &&
+      incoming.root_thread_id === current.root_thread_id
+    );
+  }
+  if (
+    incoming.thread_kind !== "subagent" ||
+    incoming.root_thread_id !== current.root_thread_id ||
+    incoming.thread_id === undefined
+  ) {
+    return false;
+  }
+  return (
+    incoming.thread_id === current.parent_thread_id ||
+    incoming.thread_id === current.forked_from_id
+  );
+}
+
+function mergeCodexSessionMeta(
+  current: CodexSessionMeta | undefined,
+  incoming: Partial<CodexSessionMeta>,
+): CodexSessionMeta | undefined {
+  const merged = mergeCodexMeta(current, incoming);
+  const currentLineage = codexLineagePatch(current);
+  const incomingLineage = codexLineagePatch(incoming);
+
+  if (currentLineage.thread_kind === undefined) {
+    return replaceCodexLineage(merged, incomingLineage);
+  }
+  if (
+    currentLineage.thread_kind === "unknown" ||
+    incomingLineage.thread_kind === undefined ||
+    incomingLineage.thread_kind === "unknown"
+  ) {
+    return replaceCodexLineage(merged, { thread_kind: "unknown" });
+  }
+  if (isCopiedCodexAncestor(currentLineage, incomingLineage)) {
+    return replaceCodexLineage(merged, currentLineage);
+  }
+  if (
+    samePhysicalCodexSession(currentLineage, incomingLineage) &&
+    !hasCodexLineageConflict(currentLineage, incomingLineage)
+  ) {
+    return replaceCodexLineage(merged, currentLineage);
+  }
+  return replaceCodexLineage(merged, { thread_kind: "unknown" });
+}
+
 function gitStateFromCodexGit(
   git: CodexGitMeta | undefined,
   timestamp: string,
@@ -889,6 +1008,11 @@ export async function extractCodexTurns(
     ) {
       confirmedThroughOffset = offset;
     }
+  }
+
+  function clearPendingAgentTrigger(): void {
+    nextAgentMessageTriggersTurn = false;
+    triggerMarkerStartOffset = undefined;
   }
 
   function emitPendingIfComplete(): void {
@@ -971,6 +1095,7 @@ export async function extractCodexTurns(
       lineIndex === 0 ? firstLineOffset : lineEndOffsets[lineIndex - 1]!;
     const parsed = parseLine(line);
     if (parsed === null) {
+      clearPendingAgentTrigger();
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -978,7 +1103,7 @@ export async function extractCodexTurns(
     if (parsed.kind === "session_meta") {
       if (parsed.cwd !== undefined) cwd = parsed.cwd;
       if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
-      codexMeta = mergeCodexMeta(codexMeta, codexMetaPatch(parsed));
+      codexMeta = mergeCodexSessionMeta(codexMeta, codexMetaPatch(parsed));
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -1045,6 +1170,14 @@ export async function extractCodexTurns(
       }
       markSafeThrough(lineEndOffset);
       continue;
+    }
+
+    // A true marker targets the next agent_message only. Configuration may be
+    // interposed across a read boundary, but any other record begins or
+    // continues incompatible work and must make the marker impossible to
+    // consume later.
+    if (parsed.kind !== "message" || parsed.role !== "agent") {
+      clearPendingAgentTrigger();
     }
 
     if (parsed.kind === "tool_call") {
@@ -1134,8 +1267,7 @@ export async function extractCodexTurns(
         : []),
     );
     if (parsed.role === "agent") {
-      nextAgentMessageTriggersTurn = false;
-      triggerMarkerStartOffset = undefined;
+      clearPendingAgentTrigger();
     }
     if (parsed.role === "agent" && !isTriggeredAgentInput) {
       // A targeted-turn marker/context followed by an ineligible agent message
@@ -1442,9 +1574,12 @@ async function backfillLegacyCodexLineage(
   if (header.git !== undefined) {
     enriched.git = { ...header.git, ...(enriched.git ?? {}) };
   }
-  enriched.codex = mergeCodexMeta(header.codex, enriched.codex ?? {});
+  enriched.codex = replaceCodexLineage(
+    mergeCodexMeta(header.codex, enriched.codex ?? {}),
+    codexLineagePatch(header.codex),
+  );
   if (enriched.page_start !== undefined) {
-    const pageStartCodex = mergeCodexMeta(
+    const pageStartCodex = replaceCodexLineage(
       enriched.page_start.codex,
       codexLineagePatch(header.codex),
     );

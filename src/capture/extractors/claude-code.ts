@@ -365,6 +365,23 @@ function classifyClaudeThreadKind(input: {
   return "unknown";
 }
 
+function hasClaudeLineageConflict(
+  expected: {
+    sessionId: string | undefined;
+    isSidechain: boolean | undefined;
+    agentId: string | undefined;
+  },
+  observed: ParsedLine,
+): boolean {
+  return (
+    (observed.sessionId !== undefined &&
+      observed.sessionId !== expected.sessionId) ||
+    (observed.isSidechain !== undefined &&
+      observed.isSidechain !== expected.isSidechain) ||
+    (observed.agentId !== undefined && observed.agentId !== expected.agentId)
+  );
+}
+
 export async function extractClaudeCodeTurns(
   jsonlPath: string,
   lastByteOffset: number,
@@ -454,6 +471,26 @@ export async function extractClaudeCodeTurns(
     }
   }
 
+  function reconcilePendingLineage(parsed: ParsedLine): void {
+    if (pending === null || pending.threadKind === "unknown") return;
+    if (
+      hasClaudeLineageConflict(
+        {
+          sessionId: pending.rawSessionId,
+          isSidechain: pending.isSidechain,
+          agentId: pending.agentId,
+        },
+        parsed,
+      )
+    ) {
+      // UUID identifies one physical record, so it is intentionally excluded
+      // from this comparison. Conflicting stable session evidence makes the
+      // whole turn's lineage unusable and must never be recovered by a later
+      // matching record in the same cluster.
+      pending.threadKind = "unknown";
+    }
+  }
+
   function emitPendingIfComplete(): void {
     if (pending === null) return;
     if (pending.assistantTexts.length === 0) return;
@@ -529,6 +566,7 @@ export async function extractClaudeCodeTurns(
       // the open cluster if there is one; otherwise into the "between" buffers
       // so they fold into whatever cluster opens next.
       if (pending !== null) {
+        reconcilePendingLineage(parsed);
         if (parsed.hasTool) pending.hadTool = true;
         if (parsed.files.length > 0) pending.files.push(...parsed.files);
         if (parsed.toolUses.length > 0)
@@ -589,6 +627,7 @@ export async function extractClaudeCodeTurns(
         pending.initiator !== "system" &&
         initiator === "system"
       ) {
+        reconcilePendingLineage(parsed);
         lineStartOffset = lineEndOffset;
         continue;
       }
@@ -649,6 +688,7 @@ export async function extractClaudeCodeTurns(
         log.warn("orphan_assistant", { session_id });
         markSafeThrough(lineEndOffset);
       } else {
+        reconcilePendingLineage(parsed);
         pending.assistantTexts.push(parsed.text);
         pending.assistantLastLineEndOffset = lineEndOffset;
         if (parsed.timestamp !== undefined)

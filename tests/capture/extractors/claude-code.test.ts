@@ -448,6 +448,100 @@ describe("extractClaudeCodeTurns (pure)", () => {
     }
   });
 
+  it("fails conflicting assistant session lineage closed without comparing record UUIDs", async () => {
+    const cases: Array<{
+      name: string;
+      makeUser: () => JsonlLine;
+      mutateAssistant: (line: JsonlLine) => void;
+    }> = [
+      {
+        name: "session-id",
+        makeUser: () => {
+          const line = userText("root-session", "user-record", "root task");
+          line.isSidechain = false;
+          return line;
+        },
+        mutateAssistant: (line) => {
+          line.sessionId = "different-session";
+          line.isSidechain = false;
+        },
+      },
+      {
+        name: "sidechain-marker",
+        makeUser: () => {
+          const line = userText("root-session", "user-record", "root task");
+          line.isSidechain = false;
+          return line;
+        },
+        mutateAssistant: (line) => {
+          line.isSidechain = true;
+        },
+      },
+      {
+        name: "agent-id",
+        makeUser: () => {
+          const line = userText(
+            "root-session",
+            "user-record",
+            '<teammate-message teammate_id="reviewer">Review.</teammate-message>',
+          );
+          line.isSidechain = true;
+          line.agentId = "reviewer@team";
+          return line;
+        },
+        mutateAssistant: (line) => {
+          line.isSidechain = true;
+          line.agentId = "different-agent@team";
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const path = join(dir, `assistant-conflict-${testCase.name}.jsonl`);
+      const user = testCase.makeUser();
+      const assistant = assistantEndTurn(
+        "root-session",
+        "different-assistant-record",
+        "observed",
+      );
+      testCase.mutateAssistant(assistant);
+      writeJsonlFresh(path, [user, assistant]);
+
+      const { turns } = await extractClaudeCodeTurns(path, 0);
+
+      expect(turns, testCase.name).toHaveLength(1);
+      expect(turns[0]?.logical_turn_id, testCase.name).toBe("user-record");
+      expect(turns[0]?.thread_kind, testCase.name).toBe("unknown");
+      expect(turns[0]?.observation_kind, testCase.name).toBe("unknown");
+      expect(turns[0]?.thread_id, testCase.name).toBeUndefined();
+      expect(turns[0]?.root_thread_id, testCase.name).toBeUndefined();
+      expect(turns[0]?.agent_id, testCase.name).toBeUndefined();
+    }
+  });
+
+  it("keeps a turn failed closed after conflicting tool-only lineage", async () => {
+    const path = join(dir, "tool-lineage-conflict.jsonl");
+    const user = userText("root-session", "user-record", "run the tool");
+    user.isSidechain = false;
+    const toolUse = assistantToolUse("different-session", "tool-record");
+    toolUse.isSidechain = false;
+    const answer = assistantEndTurn("root-session", "answer-record", "done");
+    answer.isSidechain = false;
+    writeJsonlFresh(path, [user, toolUse, answer]);
+
+    const { turns } = await extractClaudeCodeTurns(path, 0);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      logical_turn_id: "user-record",
+      thread_kind: "unknown",
+      observation_kind: "unknown",
+    });
+    expect(turns[0]).not.toHaveProperty("thread_id");
+    expect(turns[0]).not.toHaveProperty("root_thread_id");
+    expect(turns[0]).not.toHaveProperty("agent_id");
+  });
+
   it("does not let a system reminder replace a pending human prompt", async () => {
     const path = join(dir, "human-reminder.jsonl");
     writeJsonlFresh(path, [

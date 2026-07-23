@@ -8,6 +8,8 @@ import {
 } from '../../src/mcp/internal/cluster-engine.js';
 import { echoResolveMru } from '../../src/mcp/tools/echo-resolve-mru.js';
 import { findClusters } from '../../src/mcp/tools/find-clusters.js';
+import { getAtoms } from '../../src/mcp/tools/get-atoms.js';
+import { searchMemories } from '../../src/mcp/tools/search-memories.js';
 import { waitForNewTurns } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { StorageScanBudgetExceededError } from '../../src/storage/budgets.js';
 import type { CaptureEvent, QueryFilter } from '../../src/storage/interface.js';
@@ -530,6 +532,89 @@ describe('bounded sparse-scan MCP consumers', () => {
       expect(result.warnings.join('\n')).toMatch(
         /STORAGE_INPUT_BUDGET.*retained bytes/,
       );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it('does not charge out-of-window logical copies to the indexed cluster lane', async () => {
+    const storage = new SqliteStorage(':memory:');
+    try {
+      const targetId = await storage.append(
+        codexTurn({
+          logicalId: 'valid-in-window-target',
+          timestamp: '2026-05-09T09:49:00.000Z',
+        }),
+      );
+      for (let index = 0; index < 9; index += 1) {
+        await storage.append(
+          codexTurn({
+            logicalId: `irrelevant-large-copy-${index}`,
+            timestamp: `2026-05-09T09:5${index}:00.000Z`,
+            occurredAt: `2026-05-08T09:0${index}:00.000Z`,
+            observationKind: 'inherited',
+            content: LARGE_TURN_CONTENT,
+          }),
+        );
+      }
+
+      const result = await getRecentWorkContext(storage, {
+        since: '2026-05-09T09:00:00.000Z',
+        until: '2026-05-09T10:00:00.000Z',
+      });
+
+      expect(Object.keys(result.atoms)).toEqual([targetId]);
+      expect(result.warnings.join('\n')).not.toMatch(/STORAGE_INPUT_BUDGET/);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it('paginates byte-heavy SQLite search results without surfacing a storage error', async () => {
+    const storage = new SqliteStorage(':memory:');
+    try {
+      const expectedIds = await appendLargeInheritedTurns(storage, 9);
+      const returnedIds: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      let reachedEnd = false;
+
+      while (pages < 10) {
+        const result = await searchMemories(storage, {
+          source: 'fs:/repo/.codex/sessions/2026/05/09/root-thread.jsonl',
+          limit: 10,
+          ...(cursor !== undefined ? { cursor } : {}),
+        });
+        returnedIds.push(...result.matches.map((match) => match.id));
+        pages += 1;
+        if (result.next_cursor === null) {
+          reachedEnd = true;
+          break;
+        }
+        cursor = result.next_cursor;
+      }
+
+      expect(reachedEnd).toBe(true);
+      expect(pages).toBeGreaterThan(1);
+      expect(returnedIds).toHaveLength(expectedIds.length);
+      expect(new Set(returnedIds)).toEqual(new Set(expectedIds));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it('splits byte-heavy SQLite get_atoms hydration while preserving request order', async () => {
+    const storage = new SqliteStorage(':memory:');
+    try {
+      const ids = await appendLargeInheritedTurns(storage, 9);
+
+      const result = await getAtoms(storage, {
+        atom_ids: ids,
+        fields: ['metadata'],
+      });
+
+      expect(result.atoms.map((atom) => atom.id)).toEqual(ids);
+      expect(result.atoms_dropped).toBe(0);
     } finally {
       storage.close();
     }

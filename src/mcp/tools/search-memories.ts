@@ -13,6 +13,7 @@ import {
 } from '../../storage/interface.js';
 import {
   STORAGE_GET_BY_IDS_MAX_IDS,
+  StorageBudgetExceededError,
   StorageScanBudgetExceededError,
 } from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
@@ -291,37 +292,84 @@ interface ManifestWindow {
 
 interface StorageQueryPage {
   rows: CaptureEvent[];
+  rowLimit: number;
   resume: QueryFilter['before'];
   scanBudgetExhausted: boolean;
 }
 
+function isRequestTooLarge(
+  error: unknown,
+  operation: 'query' | 'getByIds',
+): error is StorageBudgetExceededError {
+  return (
+    error instanceof StorageBudgetExceededError &&
+    error.code === 'request_too_large' &&
+    error.operation === operation
+  );
+}
+
+async function hydrateSearchIdBatch(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent[]> {
+  if (ids.length === 0) return [];
+  try {
+    return await storage.getByIds(ids);
+  } catch (error) {
+    if (!isRequestTooLarge(error, 'getByIds') || ids.length <= 1) throw error;
+    const middle = Math.floor(ids.length / 2);
+    return [
+      ...(await hydrateSearchIdBatch(storage, ids.slice(0, middle))),
+      ...(await hydrateSearchIdBatch(storage, ids.slice(middle))),
+    ];
+  }
+}
+
+async function hydrateSearchMatches(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<CaptureEvent[]> {
+  const rows: CaptureEvent[] = [];
+  for (let offset = 0; offset < ids.length; offset += STORAGE_GET_BY_IDS_MAX_IDS) {
+    rows.push(
+      ...(await hydrateSearchIdBatch(
+        storage,
+        ids.slice(offset, offset + STORAGE_GET_BY_IDS_MAX_IDS),
+      )),
+    );
+  }
+  return rows;
+}
+
+/** Retry one keyset page at the same cursor with a smaller row limit when
+ * SQLite's aggregate stored-byte budget rejects an otherwise count-safe
+ * request. The caller advances only after a successful page, so adaptive
+ * paging cannot skip rows. */
 async function queryStoragePage(
   storage: Storage,
   filter: QueryFilter,
+  rowLimit = filter.limit ?? SEARCH_SCAN_PAGE_ROWS,
 ): Promise<StorageQueryPage> {
   try {
     return {
-      rows: sortDesc(await storage.query(filter)),
+      rows: sortDesc(await storage.query({ ...filter, limit: rowLimit })),
+      rowLimit,
       resume: undefined,
       scanBudgetExhausted: false,
     };
   } catch (err) {
+    if (isRequestTooLarge(err, 'query') && rowLimit > 1) {
+      return queryStoragePage(storage, filter, Math.max(1, Math.floor(rowLimit / 2)));
+    }
     if (!(err instanceof StorageScanBudgetExceededError) || err.order !== 'desc') throw err;
     if (err.matched_ids.length > SEARCH_SCAN_PAGE_ROWS) {
       throw new RangeError(
         `storage scan returned ${err.matched_ids.length} matches for a ${SEARCH_SCAN_PAGE_ROWS}-row page`,
       );
     }
-    const rows: CaptureEvent[] = [];
-    for (let offset = 0; offset < err.matched_ids.length; offset += STORAGE_GET_BY_IDS_MAX_IDS) {
-      rows.push(
-        ...(await storage.getByIds(
-          err.matched_ids.slice(offset, offset + STORAGE_GET_BY_IDS_MAX_IDS),
-        )),
-      );
-    }
     return {
-      rows: sortDesc(rows),
+      rows: sortDesc(await hydrateSearchMatches(storage, err.matched_ids)),
+      rowLimit,
       resume: err.resume_cursor,
       scanBudgetExhausted: true,
     };
@@ -331,15 +379,23 @@ async function queryStoragePage(
 async function loadBoundedManifestWindow(storage: Storage): Promise<ManifestWindow> {
   const events: CaptureEvent[] = [];
   let before: QueryFilter['before'];
+  let byteSafePageRows = SEARCH_MANIFEST_PAGE_ROWS;
   for (let page = 0; page < SEARCH_MANIFEST_MAX_PAGES; page += 1) {
-    const rows = await storage.query({
-      source: GRANOLA_SIGNAL_INDEX_SOURCE,
-      limit: SEARCH_MANIFEST_PAGE_ROWS,
-      ...(before !== undefined ? { before } : {}),
-    });
-    const ordered = sortDesc(rows);
+    const storagePage = await queryStoragePage(
+      storage,
+      {
+        source: GRANOLA_SIGNAL_INDEX_SOURCE,
+        ...(before !== undefined ? { before } : {}),
+      },
+      byteSafePageRows,
+    );
+    byteSafePageRows = Math.min(byteSafePageRows, storagePage.rowLimit);
+    const ordered = storagePage.rows;
     events.push(...ordered);
-    if (ordered.length < SEARCH_MANIFEST_PAGE_ROWS) {
+    if (storagePage.scanBudgetExhausted) {
+      return { events, truncated: true };
+    }
+    if (ordered.length < storagePage.rowLimit) {
       return { events, truncated: false };
     }
     const last = ordered[ordered.length - 1]!;
@@ -361,17 +417,22 @@ async function scanFilteredPages(
   let bytesScanned = 0;
   let pagesScanned = 0;
   let reachedEnd = false;
+  let byteSafePageRows = SEARCH_SCAN_PAGE_ROWS;
 
   while (
     pagesScanned < SEARCH_SCAN_MAX_PAGES &&
     rowsScanned < SEARCH_SCAN_MAX_ROWS &&
     bytesScanned < SEARCH_SCAN_MAX_BYTES
   ) {
-    const storagePage = await queryStoragePage(storage, {
-      ...baseFilter,
-      ...(before !== undefined ? { before } : {}),
-      limit: SEARCH_SCAN_PAGE_ROWS,
-    });
+    const storagePage = await queryStoragePage(
+      storage,
+      {
+        ...baseFilter,
+        ...(before !== undefined ? { before } : {}),
+      },
+      byteSafePageRows,
+    );
+    byteSafePageRows = Math.min(byteSafePageRows, storagePage.rowLimit);
     const rows = storagePage.rows;
     pagesScanned += 1;
     if (rows.length === 0) {
@@ -449,7 +510,7 @@ async function scanFilteredPages(
     }
 
     if (pagePartiallyConsumed) break;
-    if (rows.length < SEARCH_SCAN_PAGE_ROWS) {
+    if (rows.length < storagePage.rowLimit) {
       reachedEnd = true;
       break;
     }
@@ -683,7 +744,8 @@ export async function searchMemories(
   let manifestWindowTruncated = false;
 
   if (!requiresFullWindowFilter) {
-    filter.limit = limitApplied + 1;
+    const requestedRowLimit = limitApplied + 1;
+    filter.limit = requestedRowLimit;
     const storagePage = await queryStoragePage(storage, filter);
     ({ kept, next_cursor } = emitCursor(storagePage.rows, limitApplied));
     if (
@@ -692,6 +754,14 @@ export async function searchMemories(
       storagePage.resume !== undefined
     ) {
       next_cursor = encodeCursor(storagePage.resume);
+    } else if (
+      next_cursor === null &&
+      !storagePage.scanBudgetExhausted &&
+      storagePage.rowLimit < requestedRowLimit &&
+      storagePage.rows.length === storagePage.rowLimit
+    ) {
+      const last = storagePage.rows[storagePage.rows.length - 1];
+      if (last !== undefined) next_cursor = responseCursorAfter(last);
     }
     scanBudgetExhausted = storagePage.scanBudgetExhausted;
   } else {
