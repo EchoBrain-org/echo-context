@@ -1089,6 +1089,338 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
+  it("walks a depth-3 copied ancestor chain without replacing the physical child", async () => {
+    const physicalId = "019de2b0-6551-7682-a51b-2affaa0a7bbf";
+    const parentId = "019f8bb6-a520-7261-b19f-fb8a2e3cc782";
+    const grandparentId = "019f8b9e-72ae-7923-89e3-876d674785d0";
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const childPath = "/root/architecture/reviewer/depth_probe";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const headers = [
+      sessionMeta({
+        id: physicalId,
+        ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/physical-child",
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        forked_from_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 3,
+        git: {
+          commit_hash: "physical-sha",
+          branch: "feat/physical-child",
+          repository_url: "https://example.test/physical.git",
+        },
+      }),
+      sessionMeta({
+        id: parentId,
+        ts: "2026-07-22T18:44:05.001Z",
+        cwd: "/Users/x/copied-parent",
+        cli_version: "0.03.0-parent",
+        model_provider: "parent-provider",
+        session_id: rootId,
+        parent_thread_id: grandparentId,
+        forked_from_id: grandparentId,
+        thread_source: "subagent",
+        agent_path: "/root/architecture/reviewer",
+        agent_depth: 2,
+        git: { commit_hash: "parent-sha", branch: "stale/parent" },
+      }),
+      sessionMeta({
+        id: grandparentId,
+        ts: "2026-07-22T18:44:05.002Z",
+        cwd: "/Users/x/copied-grandparent",
+        cli_version: "0.02.0-grandparent",
+        model_provider: "grandparent-provider",
+        session_id: rootId,
+        parent_thread_id: rootId,
+        forked_from_id: rootId,
+        thread_source: "subagent",
+        agent_path: "/root/architecture",
+        agent_depth: 1,
+        git: {
+          commit_hash: "grandparent-sha",
+          branch: "stale/grandparent",
+        },
+      }),
+      sessionMeta({
+        id: rootId,
+        ts: "2026-07-22T18:44:05.003Z",
+        cwd: "/Users/x/copied-root",
+        source: "cli",
+        cli_version: "0.01.0-root",
+        model_provider: "root-provider",
+        session_id: rootId,
+        thread_source: "user",
+        git: { commit_hash: "root-sha", branch: "stale/root" },
+      }),
+    ];
+    const localTurn = [
+      turnContext({ turn_id: localId }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "probe the depth-three child",
+        childPath,
+        localId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("depth preserved", "2026-07-22T18:44:16.000Z", localId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ];
+    writeJsonl(path, [...headers, ...localTurn]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      logical_turn_id: localId,
+      observation_kind: "original",
+      initiator: "agent",
+      cwd: "/Users/x/physical-child",
+      git: {
+        sha: "physical-sha",
+        branch: "feat/physical-child",
+        origin_url: "https://example.test/physical.git",
+      },
+      codex: {
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
+        thread_id: physicalId,
+        root_thread_id: rootId,
+        parent_thread_id: parentId,
+        forked_from_id: parentId,
+        thread_kind: "subagent",
+        agent_path: childPath,
+        agent_depth: 3,
+      },
+    });
+  });
+
+  it("replays a bounded depth-3 ancestor frontier across every header split", async () => {
+    const physicalId = "019de2b0-6551-7682-a51b-2affaa0a7bbf";
+    const parentId = "019f8bb6-a520-7261-b19f-fb8a2e3cc782";
+    const grandparentId = "019f8b9e-72ae-7923-89e3-876d674785d0";
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const childPath = "/root/architecture/reviewer/depth_probe";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const headers = [
+      sessionMeta({
+        id: physicalId,
+        ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/physical-child",
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        forked_from_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 3,
+        git: { commit_hash: "physical-sha", branch: "feat/physical-child" },
+      }),
+      sessionMeta({
+        id: parentId,
+        ts: "2026-07-22T18:44:05.001Z",
+        cwd: "/Users/x/copied-parent",
+        cli_version: "0.03.0-parent",
+        session_id: rootId,
+        parent_thread_id: grandparentId,
+        forked_from_id: grandparentId,
+        thread_source: "subagent",
+        agent_path: "/root/architecture/reviewer",
+        agent_depth: 2,
+        git: { commit_hash: "parent-sha", branch: "stale/parent" },
+      }),
+      sessionMeta({
+        id: grandparentId,
+        ts: "2026-07-22T18:44:05.002Z",
+        cwd: "/Users/x/copied-grandparent",
+        cli_version: "0.02.0-grandparent",
+        session_id: rootId,
+        parent_thread_id: rootId,
+        forked_from_id: rootId,
+        thread_source: "subagent",
+        agent_path: "/root/architecture",
+        agent_depth: 1,
+        git: {
+          commit_hash: "grandparent-sha",
+          branch: "stale/grandparent",
+        },
+      }),
+      sessionMeta({
+        id: rootId,
+        ts: "2026-07-22T18:44:05.003Z",
+        cwd: "/Users/x/copied-root",
+        source: "cli",
+        cli_version: "0.01.0-root",
+        session_id: rootId,
+        thread_source: "user",
+        git: { commit_hash: "root-sha", branch: "stale/root" },
+      }),
+    ];
+    const localTurn = [
+      turnContext({ turn_id: localId }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "resume the depth-three child",
+        childPath,
+        localId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("resume preserved", "2026-07-22T18:44:16.000Z", localId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ];
+    writeJsonl(path, [...headers, ...localTurn]);
+    const onePass = await extractCodexTurns(path, 0);
+    const physicalBoundary = Buffer.byteLength(
+      `${JSON.stringify(headers[0])}\n`,
+    );
+
+    for (const headerCount of [1, 2, 3, 4]) {
+      const splitPath = join(dir, `depth-three-split-${headerCount}.jsonl`);
+      writeJsonl(splitPath, headers.slice(0, headerCount));
+      const prefix = await extractCodexTurns(splitPath, 0);
+      expect(prefix.newOffset, `split ${headerCount}`).toBe(physicalBoundary);
+      appendJsonl(splitPath, [...headers.slice(headerCount), ...localTurn]);
+      const suffix = await extractCodexTurns(splitPath, prefix.newOffset, {
+        lastKnownCwd: prefix.cwd,
+        lastKnownGit: prefix.git,
+        lastKnownCodex: prefix.codex,
+      });
+
+      expect(
+        suffix.turns.map((turn) => ({
+          id: turn.logical_turn_id,
+          kind: turn.observation_kind,
+          initiator: turn.initiator,
+          cwd: turn.cwd,
+          branch: turn.git?.branch,
+          thread: turn.codex?.thread_id,
+        })),
+        `split ${headerCount}`,
+      ).toEqual(
+        onePass.turns.map((turn) => ({
+          id: turn.logical_turn_id,
+          kind: turn.observation_kind,
+          initiator: turn.initiator,
+          cwd: turn.cwd,
+          branch: turn.git?.branch,
+          thread: turn.codex?.thread_id,
+        })),
+      );
+    }
+  });
+
+  it("fails a same-root sibling and divergent parent/fork evidence closed", async () => {
+    const physicalId = "019de2b0-6551-7682-a51b-2affaa0a7bbf";
+    const parentId = "019f8bb6-a520-7261-b19f-fb8a2e3cc782";
+    const conflictingForkId = "019f8b9e-72ae-7923-89e3-876d674785d0";
+    const siblingId = "019f8b9e-72ae-7923-89e3-876d674785d1";
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const childPath = "/root/architecture/reviewer/depth_probe";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const physicalHeader = sessionMeta({
+      id: physicalId,
+      ts: "2026-07-22T18:44:05.000Z",
+      cwd: "/Users/x/physical-child",
+      cli_version: "0.99.0-child",
+      session_id: rootId,
+      parent_thread_id: parentId,
+      forked_from_id: parentId,
+      thread_source: "subagent",
+      agent_path: childPath,
+      agent_depth: 3,
+      git: { commit_hash: "physical-sha", branch: "feat/physical-child" },
+    });
+    const targetedTurn = [
+      turnContext({ turn_id: localId }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "must remain fail closed",
+        childPath,
+        localId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("not promoted", "2026-07-22T18:44:16.000Z", localId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ];
+    const scenarios = [
+      {
+        name: "same-root sibling",
+        lines: [
+          physicalHeader,
+          sessionMeta({
+            id: parentId,
+            ts: "2026-07-22T18:44:05.001Z",
+            cwd: "/Users/x/copied-parent",
+            cli_version: "0.02.0-parent",
+            session_id: rootId,
+            parent_thread_id: conflictingForkId,
+            forked_from_id: conflictingForkId,
+            thread_source: "subagent",
+            agent_path: "/root/architecture/reviewer",
+            agent_depth: 2,
+            git: { commit_hash: "parent-sha", branch: "stale/parent" },
+          }),
+          sessionMeta({
+            id: siblingId,
+            ts: "2026-07-22T18:44:05.002Z",
+            cwd: "/Users/x/copied-sibling",
+            cli_version: "0.01.0-sibling",
+            session_id: rootId,
+            parent_thread_id: rootId,
+            forked_from_id: rootId,
+            thread_source: "subagent",
+            agent_path: "/root/unrelated-sibling",
+            agent_depth: 1,
+            git: { commit_hash: "sibling-sha", branch: "stale/sibling" },
+          }),
+          ...targetedTurn,
+        ],
+      },
+      {
+        name: "divergent parent/fork",
+        lines: [
+          sessionMeta({
+            id: physicalId,
+            ts: "2026-07-22T18:44:05.000Z",
+            cwd: "/Users/x/physical-child",
+            cli_version: "0.99.0-child",
+            session_id: rootId,
+            parent_thread_id: parentId,
+            forked_from_id: conflictingForkId,
+            thread_source: "subagent",
+            agent_path: childPath,
+            agent_depth: 3,
+            git: {
+              commit_hash: "physical-sha",
+              branch: "feat/physical-child",
+            },
+          }),
+          ...targetedTurn,
+        ],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      writeJsonl(path, scenario.lines);
+      const result = await extractCodexTurns(path, 0);
+
+      expect(result.turns, scenario.name).toEqual([]);
+      expect(result.git, scenario.name).toMatchObject({
+        sha: "physical-sha",
+        branch: "feat/physical-child",
+      });
+      expect(result.codex, scenario.name).toEqual({
+        cli_version: "0.99.0-child",
+        thread_kind: "unknown",
+      });
+    }
+  });
+
   it("uses nested thread_spawn lineage for a targeted subagent turn", async () => {
     const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
     const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";

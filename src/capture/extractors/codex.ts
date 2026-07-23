@@ -950,6 +950,7 @@ type CodexSessionMetaDisposition =
 interface CodexSessionMetaMerge {
   codex: CodexSessionMeta | undefined;
   disposition: CodexSessionMetaDisposition;
+  ancestorFrontier: readonly string[];
 }
 
 function hasCodexLineageConflict(
@@ -963,54 +964,75 @@ function hasCodexLineageConflict(
   });
 }
 
-/** A subagent JSONL starts with its physical child header, then may contain
- * copied session_meta records from inherited ancestry. Those records are
- * history and must not replace the identity of the file being captured. */
-function isCopiedCodexAncestor(
+/** Codex can spell the next ancestor as parent_thread_id, forked_from_id, or
+ * both when they agree. Parsing fails a divergent pair closed before here. */
+function codexAncestorFrontier(
+  meta: Partial<CodexSessionMeta> | undefined,
+): readonly string[] {
+  if (meta?.thread_kind !== "subagent") return [];
+  return dedupStrings(
+    [meta.parent_thread_id, meta.forked_from_id].filter(isNonEmptyString),
+  ).slice(0, 2);
+}
+
+/** A subagent JSONL starts with its physical child header, then may copy the
+ * full ancestor header chain. Accept only an exact next hop declared by the
+ * preceding accepted node; the root may also be recognized directly because
+ * the physical child independently pins its root ID. A same-root sibling is
+ * not ancestry. The returned frontier is fixed-size, so arbitrarily deep
+ * chains do not grow memory. */
+function advanceCopiedCodexAncestor(
   current: Partial<CodexSessionMeta>,
   incoming: Partial<CodexSessionMeta>,
-): boolean {
+  frontier: readonly string[],
+): readonly string[] | undefined {
   if (
     current.thread_kind !== "subagent" ||
-    current.root_thread_id === undefined
+    current.root_thread_id === undefined ||
+    incoming.thread_id === undefined ||
+    incoming.root_thread_id !== current.root_thread_id
   ) {
-    return false;
+    return undefined;
   }
   if (incoming.thread_kind === "root") {
-    return (
-      incoming.thread_id === current.root_thread_id &&
-      incoming.root_thread_id === current.root_thread_id
-    );
+    return incoming.thread_id === current.root_thread_id ? [] : undefined;
   }
   if (
     incoming.thread_kind !== "subagent" ||
-    incoming.root_thread_id !== current.root_thread_id ||
-    incoming.thread_id === undefined
+    !frontier.includes(incoming.thread_id)
   ) {
-    return false;
+    return undefined;
   }
-  return (
-    incoming.thread_id === current.parent_thread_id ||
-    incoming.thread_id === current.forked_from_id
-  );
+  const next = codexAncestorFrontier(incoming);
+  if (
+    next.length === 0 ||
+    next.includes(incoming.thread_id) ||
+    next.includes(current.thread_id ?? "")
+  ) {
+    return undefined;
+  }
+  return next;
 }
 
 function mergeCodexSessionMeta(
   current: CodexSessionMeta | undefined,
   incoming: Partial<CodexSessionMeta>,
   expectedPhysicalThreadId: string | undefined,
+  ancestorFrontier: readonly string[] | undefined,
 ): CodexSessionMetaMerge {
   const merged = mergeCodexMeta(current, incoming);
   const currentLineage = codexLineagePatch(current);
   const incomingLineage = codexLineagePatch(incoming);
 
   if (currentLineage.thread_kind === undefined) {
+    const codex = reconcileCodexPhysicalSession(
+      replaceCodexLineage(merged, incomingLineage),
+      expectedPhysicalThreadId,
+    );
     return {
-      codex: reconcileCodexPhysicalSession(
-        replaceCodexLineage(merged, incomingLineage),
-        expectedPhysicalThreadId,
-      ),
+      codex,
       disposition: "initial",
+      ancestorFrontier: codexAncestorFrontier(codex),
     };
   }
   if (
@@ -1021,29 +1043,45 @@ function mergeCodexSessionMeta(
     return {
       codex: replaceCodexLineage(current, { thread_kind: "unknown" }),
       disposition: "conflict",
+      ancestorFrontier: [],
     };
   }
-  if (isCopiedCodexAncestor(currentLineage, incomingLineage)) {
+  const nextAncestorFrontier =
+    ancestorFrontier === undefined
+      ? undefined
+      : advanceCopiedCodexAncestor(
+          currentLineage,
+          incomingLineage,
+          ancestorFrontier,
+        );
+  if (nextAncestorFrontier !== undefined) {
     // The complete copied session_meta record belongs to inherited history.
     // Its cwd/git/config are no more authoritative for this physical child
     // than its lineage, so the caller must ignore the whole record.
-    return { codex: current, disposition: "copied_ancestor" };
+    return {
+      codex: current,
+      disposition: "copied_ancestor",
+      ancestorFrontier: nextAncestorFrontier,
+    };
   }
   if (
     samePhysicalCodexSession(currentLineage, incomingLineage) &&
     !hasCodexLineageConflict(currentLineage, incomingLineage)
   ) {
+    const codex = replaceCodexLineage(
+      merged,
+      mergeCodexMeta(currentLineage as CodexSessionMeta, incomingLineage),
+    );
     return {
-      codex: replaceCodexLineage(
-        merged,
-        mergeCodexMeta(currentLineage as CodexSessionMeta, incomingLineage),
-      ),
+      codex,
       disposition: "same_physical",
+      ancestorFrontier: codexAncestorFrontier(codex),
     };
   }
   return {
     codex: replaceCodexLineage(current, { thread_kind: "unknown" }),
     disposition: "conflict",
+    ancestorFrontier: [],
   };
 }
 
@@ -1102,6 +1140,8 @@ export async function extractCodexTurns(
     input.lastKnownCodex,
     expectedPhysicalThreadId,
   );
+  let ancestorHeaderChainOpen = true;
+  let ancestorFrontier = codexAncestorFrontier(codexMeta);
   // Tracks the END of the last line that contributed to an EMITTED turn.
   // Pending-cluster lines (user + assistants without a closing next-user) are
   // intentionally NOT past confirmedThroughOffset, so the next pass re-reads
@@ -1221,6 +1261,8 @@ export async function extractCodexTurns(
       // A malformed record is an opaque boundary. Do not let either a trigger
       // marker or an unassociated turn identity cross it and attach to later
       // work whose relationship we cannot prove.
+      ancestorHeaderChainOpen = false;
+      ancestorFrontier = [];
       invalidatePendingAgentTrigger(true);
       markSafeThrough(lineEndOffset);
       continue;
@@ -1231,8 +1273,16 @@ export async function extractCodexTurns(
         codexMeta,
         codexMetaPatch(parsed),
         expectedPhysicalThreadId,
+        ancestorHeaderChainOpen ? ancestorFrontier : undefined,
       );
       codexMeta = sessionMetaMerge.codex;
+      ancestorFrontier = sessionMetaMerge.ancestorFrontier;
+      if (
+        sessionMetaMerge.disposition === "copied_ancestor" &&
+        ancestorFrontier.length === 0
+      ) {
+        ancestorHeaderChainOpen = false;
+      }
       if (
         sessionMetaMerge.disposition === "initial" ||
         sessionMetaMerge.disposition === "same_physical"
@@ -1240,9 +1290,17 @@ export async function extractCodexTurns(
         if (parsed.cwd !== undefined) cwd = parsed.cwd;
         if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
       }
-      markSafeThrough(lineEndOffset);
+      // Keep copied ancestry behind the durable boundary. If a read or restart
+      // splits this chain, replay begins at the physical-header checkpoint and
+      // reconstructs the fixed-size frontier before advancing again.
+      if (sessionMetaMerge.disposition !== "copied_ancestor") {
+        markSafeThrough(lineEndOffset);
+      }
       continue;
     }
+
+    ancestorHeaderChainOpen = false;
+    ancestorFrontier = [];
 
     if (parsed.kind === "inter_agent_metadata") {
       if (parsed.trigger_turn === true) {
