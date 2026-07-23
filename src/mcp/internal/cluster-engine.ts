@@ -44,6 +44,7 @@ export const MAX_LIMIT = 500;
 export const DEFAULT_WINDOW_HOURS = 4;
 export const STORAGE_OVERFETCH = 10;
 export const CLUSTER_MAX_STORAGE_SCAN_WINDOWS = 16;
+export const CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS = 4;
 export const CLUSTER_STORAGE_PAGE_ROWS = 500;
 export const CLUSTER_MAX_RAW_OBSERVATIONS = 4_000;
 export const CLUSTER_MAX_RAW_STORED_BYTES = 32 * 1024 * 1024;
@@ -103,9 +104,9 @@ function clampLimit(input: number | undefined): number {
 
 interface ClusterStoragePage {
   events: CaptureEvent[];
-  scanTruncated: boolean;
   logicalCandidateCount: number;
-  inputTruncationReason?: 'storage_windows' | 'raw_observations' | 'raw_bytes';
+  onTimeTruncationReason?: ClusterInputTruncationReason;
+  delayedTruncationReason?: ClusterInputTruncationReason;
 }
 
 interface CandidateWindow {
@@ -156,33 +157,47 @@ function normalizeLegacyProjectObservation(
   };
 }
 
-function logicalCandidateKey(
+interface LogicalCandidateInspection {
+  inWindow: boolean;
+  logicalKey?: string;
+}
+
+function inspectLogicalCandidate(
   event: CaptureEvent,
   window: CandidateWindow,
-): string | undefined {
+): LogicalCandidateInspection {
   let atom: NormalizedContextEvent | null;
   try {
     atom = normalizeEvent(event);
   } catch {
-    return undefined;
+    return { inWindow: false };
   }
-  if (atom === null) return undefined;
+  if (atom === null) return { inWindow: false };
 
   const occurredMs = Date.parse(atom.time.occurred_at);
-  if (Number.isNaN(occurredMs)) return undefined;
-  if (window.sinceMs !== undefined && occurredMs < window.sinceMs) return undefined;
-  if (window.untilMs !== undefined && occurredMs >= window.untilMs) return undefined;
+  if (Number.isNaN(occurredMs)) return { inWindow: false };
+  if (window.sinceMs !== undefined && occurredMs < window.sinceMs) {
+    return { inWindow: false };
+  }
+  if (window.untilMs !== undefined && occurredMs >= window.untilMs) {
+    return { inWindow: false };
+  }
   // Retain inherited rows in the projection buffer, but do not let a newer
   // copy satisfy the early-stop target before an older stored original can be
   // fetched. Inherited-only groups are emitted if the scan reaches exhaustion
   // or a truthful bounded-input warning.
-  if (atom.conversation?.observation_kind === 'inherited') return undefined;
+  if (atom.conversation?.observation_kind === 'inherited') {
+    return { inWindow: true };
+  }
   const conversation = atom.conversation;
   const logicalTurnId = conversation?.logical_turn_id;
   if (conversation !== undefined && logicalTurnId !== undefined) {
-    return `${conversation.provider}\u0000${logicalTurnId}`;
+    return {
+      inWindow: true,
+      logicalKey: `${conversation.provider}\u0000${logicalTurnId}`,
+    };
   }
-  return `raw\u0000${event.id}`;
+  return { inWindow: true, logicalKey: `raw\u0000${event.id}` };
 }
 
 function isRequestTooLarge(
@@ -221,7 +236,8 @@ async function queryClusterPage(
   }
 }
 
-type ClusterInputTruncationReason = NonNullable<ClusterStoragePage['inputTruncationReason']>;
+type ClusterInputTruncationReason =
+  'storage_windows' | 'raw_observations' | 'raw_bytes';
 type ClusterRowConsumer = (
   rows: readonly CaptureEvent[],
 ) => ClusterInputTruncationReason | undefined;
@@ -276,10 +292,22 @@ function captureEventStoredBytes(event: CaptureEvent): number {
   });
 }
 
-/** Continue a descending cluster query across a finite number of sparse
- * descriptor windows. This consumes the storage adapter's lossless
- * `matched_ids + resume_cursor` contract without exposing the hard scan
- * boundary as an MCP failure. */
+interface ClusterLaneScan {
+  filter: QueryFilter;
+  maxWindows: number;
+  order: 'asc' | 'desc';
+  retainOnlyInWindow: boolean;
+}
+
+/** Retrieve cluster input through two bounded physical-time lanes. The first
+ * lane is the indexed, authoritative `[since, until)` observation window. It
+ * always runs first, so an unbounded tail of newer observations cannot evict
+ * historical on-time results. Once that lane is exhausted, a smaller
+ * ascending lane scans observations captured at or after `until` and retains
+ * only those whose normalized occurrence time belongs to the requested
+ * window. Both lanes consume sparse-storage resume cursors and share the same
+ * retained row/byte ceilings; irrelevant delayed rows consume only the
+ * delayed scan-window budget, never the retained-input budget. */
 async function queryClusterEvents(
   storage: Storage,
   filter: QueryFilter,
@@ -289,103 +317,147 @@ async function queryClusterEvents(
   const seen = new Set<string>();
   const logicalCandidates = new Set<string>();
   const candidateWindow: CandidateWindow = {
-    ...(filter.since !== undefined ? { sinceMs: Date.parse(filter.since) } : {}),
-    ...(filter.until !== undefined ? { untilMs: Date.parse(filter.until) } : {}),
+    ...(filter.since !== undefined
+      ? { sinceMs: Date.parse(filter.since) }
+      : {}),
+    ...(filter.until !== undefined
+      ? { untilMs: Date.parse(filter.until) }
+      : {}),
   };
-  // CaptureEvent.timestamp orders physical observations. The public window is
-  // defined over normalized occurrence time, so forwarding either bound to
-  // storage would silently drop delayed observations before normalization.
-  // Walk the observation ledger newest-first without temporal predicates;
-  // the finite window/count/byte budgets below keep this scan bounded and
-  // surface an explicit partial-coverage warning when it cannot exhaust the
-  // relevant storage scope.
-  const storageFilter: QueryFilter = { ...filter };
-  delete storageFilter.since;
-  delete storageFilter.until;
   let retainedBytes = 0;
-  let before = storageFilter.before;
-  let byteSafePageRows = CLUSTER_STORAGE_PAGE_ROWS;
-
-  const finish = (
-    scanTruncated: boolean,
-    inputTruncationReason?: ClusterStoragePage['inputTruncationReason'],
-  ): ClusterStoragePage => {
-    events.sort(compareCaptureEventsNewestFirst);
-    return {
-      events,
-      scanTruncated,
-      logicalCandidateCount: logicalCandidates.size,
-      ...(inputTruncationReason !== undefined ? { inputTruncationReason } : {}),
-    };
-  };
 
   const appendUnique = (
     rows: readonly CaptureEvent[],
-  ): ClusterStoragePage['inputTruncationReason'] => {
+    retainOnlyInWindow: boolean,
+  ): ClusterInputTruncationReason | undefined => {
     for (const storedEvent of rows) {
       if (seen.has(storedEvent.id)) continue;
+      const event = normalizeLegacyProjectObservation(
+        storedEvent,
+        filter.project_key,
+      );
+      const inspection = inspectLogicalCandidate(event, candidateWindow);
+      seen.add(event.id);
+      if (retainOnlyInWindow && !inspection.inWindow) continue;
       if (events.length >= CLUSTER_MAX_RAW_OBSERVATIONS) {
         return 'raw_observations';
       }
-      const event = normalizeLegacyProjectObservation(
-        storedEvent,
-        storageFilter.project_key,
-      );
       const storedBytes = captureEventStoredBytes(event);
       if (retainedBytes + storedBytes > CLUSTER_MAX_RAW_STORED_BYTES) {
         return 'raw_bytes';
       }
-      seen.add(event.id);
       events.push(event);
       retainedBytes += storedBytes;
-      const logicalKey = logicalCandidateKey(event, candidateWindow);
-      if (logicalKey !== undefined) logicalCandidates.add(logicalKey);
+      if (inspection.logicalKey !== undefined) {
+        logicalCandidates.add(inspection.logicalKey);
+      }
     }
     return undefined;
   };
 
-  for (let window = 0; window < CLUSTER_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
-    const remaining = requested - logicalCandidates.size;
-    if (remaining <= 0) {
-      return finish(false);
-    }
-    const pageLimit = Math.min(
-      byteSafePageRows,
-      CLUSTER_STORAGE_PAGE_ROWS,
-      Math.max(remaining, Math.min(requested, 100)),
-    );
-    try {
-      const page = await queryClusterPage(storage, { ...storageFilter, before }, pageLimit);
-      byteSafePageRows = Math.min(byteSafePageRows, page.rowLimit);
-      const rows = page.rows;
-      const truncationReason = appendUnique(rows);
-      if (truncationReason !== undefined) {
-        const truncated = logicalCandidates.size < requested;
-        return finish(truncated, truncated ? truncationReason : undefined);
-      }
-      if (logicalCandidates.size >= requested || rows.length < page.rowLimit) {
-        return finish(false);
-      }
-      const last = rows[rows.length - 1];
-      if (last === undefined) break;
-      before = { timestamp: last.timestamp, id: last.id };
-    } catch (error) {
-      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      const truncationReason = await hydrateClusterMatches(
-        storage,
-        error.matched_ids,
-        appendUnique,
+  const scanLane = async (
+    lane: ClusterLaneScan,
+  ): Promise<ClusterInputTruncationReason | undefined> => {
+    let cursor = lane.order === 'desc' ? lane.filter.before : lane.filter.after;
+    let byteSafePageRows = CLUSTER_STORAGE_PAGE_ROWS;
+    const consume: ClusterRowConsumer = (rows) =>
+      appendUnique(rows, lane.retainOnlyInWindow);
+
+    for (let window = 0; window < lane.maxWindows; window += 1) {
+      const remaining = requested - logicalCandidates.size;
+      if (remaining <= 0) return undefined;
+      const pageLimit = Math.min(
+        byteSafePageRows,
+        CLUSTER_STORAGE_PAGE_ROWS,
+        Math.max(remaining, Math.min(requested, 100)),
       );
-      if (truncationReason !== undefined) {
-        const truncated = logicalCandidates.size < requested;
-        return finish(truncated, truncated ? truncationReason : undefined);
+      try {
+        const page = await queryClusterPage(
+          storage,
+          {
+            ...lane.filter,
+            ...(lane.order === 'desc' ? { before: cursor } : { after: cursor }),
+          },
+          pageLimit,
+        );
+        byteSafePageRows = Math.min(byteSafePageRows, page.rowLimit);
+        const truncationReason = consume(page.rows);
+        if (truncationReason !== undefined) {
+          return logicalCandidates.size < requested
+            ? truncationReason
+            : undefined;
+        }
+        if (
+          logicalCandidates.size >= requested ||
+          page.rows.length < page.rowLimit
+        ) {
+          return undefined;
+        }
+        const last = page.rows[page.rows.length - 1];
+        if (last === undefined) return undefined;
+        cursor = { timestamp: last.timestamp, id: last.id };
+      } catch (error) {
+        if (!(error instanceof StorageScanBudgetExceededError)) throw error;
+        const truncationReason = await hydrateClusterMatches(
+          storage,
+          error.matched_ids,
+          consume,
+        );
+        if (truncationReason !== undefined) {
+          return logicalCandidates.size < requested
+            ? truncationReason
+            : undefined;
+        }
+        cursor = error.resume_cursor;
       }
-      before = error.resume_cursor;
     }
+
+    return logicalCandidates.size < requested ? 'storage_windows' : undefined;
+  };
+
+  const onTimeFilter: QueryFilter = {
+    ...filter,
+    order: 'desc',
+  };
+  delete onTimeFilter.after;
+  const onTimeTruncationReason = await scanLane({
+    filter: onTimeFilter,
+    maxWindows: CLUSTER_MAX_STORAGE_SCAN_WINDOWS,
+    order: 'desc',
+    retainOnlyInWindow: false,
+  });
+
+  let delayedTruncationReason: ClusterInputTruncationReason | undefined;
+  if (
+    onTimeTruncationReason === undefined &&
+    logicalCandidates.size < requested &&
+    filter.until !== undefined
+  ) {
+    const delayedFilter: QueryFilter = {
+      ...filter,
+      since: filter.until,
+      order: 'asc',
+    };
+    delete delayedFilter.until;
+    delete delayedFilter.before;
+    delete delayedFilter.after;
+    delayedTruncationReason = await scanLane({
+      filter: delayedFilter,
+      maxWindows: CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS,
+      order: 'asc',
+      retainOnlyInWindow: true,
+    });
   }
 
-  const truncated = logicalCandidates.size < requested;
-  return finish(truncated, truncated ? 'storage_windows' : undefined);
+  events.sort(compareCaptureEventsNewestFirst);
+  return {
+    events,
+    logicalCandidateCount: logicalCandidates.size,
+    ...(onTimeTruncationReason !== undefined ? { onTimeTruncationReason } : {}),
+    ...(delayedTruncationReason !== undefined
+      ? { delayedTruncationReason }
+      : {}),
+  };
 }
 
 function compareCaptureEventsNewestFirst(left: CaptureEvent, right: CaptureEvent): number {
@@ -469,19 +541,35 @@ async function runRecentWorkContextPass(
         'Raise limit or narrow (since, until) to retain them.',
     );
   }
-  if (storagePage.scanTruncated) {
+  if (storagePage.onTimeTruncationReason !== undefined) {
     response.truncation.truncated = true;
-    if (storagePage.inputTruncationReason === 'storage_windows') {
+    if (storagePage.onTimeTruncationReason === 'storage_windows') {
       response.warnings.push(
-        `[STORAGE_SCAN_BUDGET] cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
+        `[STORAGE_SCAN_BUDGET] indexed on-time cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
       );
     } else {
       const budget =
-        storagePage.inputTruncationReason === 'raw_bytes'
+        storagePage.onTimeTruncationReason === 'raw_bytes'
           ? `${CLUSTER_MAX_RAW_STORED_BYTES} retained bytes`
           : `${CLUSTER_MAX_RAW_OBSERVATIONS} raw observations`;
       response.warnings.push(
-        `[STORAGE_INPUT_BUDGET] cluster input reached its bounded ${budget}; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
+        `[STORAGE_INPUT_BUDGET] indexed on-time cluster input reached its bounded ${budget}; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
+      );
+    }
+  }
+  if (storagePage.delayedTruncationReason !== undefined) {
+    response.truncation.truncated = true;
+    if (storagePage.delayedTruncationReason === 'storage_windows') {
+      response.warnings.push(
+        `[DELAYED_OBSERVATION_SCAN_BUDGET] delayed-observation recovery exhausted ${CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS} bounded storage windows captured at or after the requested until. Indexed on-time results are preserved, but later-captured observations whose occurrence belongs to this window may be omitted. Use repo_path where available or inspect later capture ranges for complete delayed coverage.`,
+      );
+    } else {
+      const budget =
+        storagePage.delayedTruncationReason === 'raw_bytes'
+          ? `${CLUSTER_MAX_RAW_STORED_BYTES} retained bytes`
+          : `${CLUSTER_MAX_RAW_OBSERVATIONS} raw observations`;
+      response.warnings.push(
+        `[DELAYED_OBSERVATION_INPUT_BUDGET] delayed-observation recovery reached the shared bounded ${budget}. Indexed on-time results are preserved, but later-captured observations whose occurrence belongs to this window may be omitted. Use repo_path where available or inspect later capture ranges for complete delayed coverage.`,
       );
     }
   }

@@ -21,7 +21,10 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
+import {
+  StorageBudgetExceededError,
+  StorageScanBudgetExceededError,
+} from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { canonicalizeTimestamp } from '../../util/timestamp.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
@@ -125,7 +128,7 @@ export function resolveSources(sources: readonly string[]): ResolvedSources {
 
 interface PollPage {
   /** Oldest-first (timestamp ASC, id ASC) page of matched rows. */
-  rows: CaptureEvent[];
+  rows: WaitRow[];
   /** True when more rows matched than the page carries — caller should
    *  chain immediately with next_since to page through the backlog. */
   overflow: boolean;
@@ -140,8 +143,15 @@ interface PollPage {
 }
 
 interface SourcePollPage {
-  rows: CaptureEvent[];
+  rows: WaitRow[];
   scanTruncated: boolean;
+}
+
+type WaitRow = Pick<CaptureEvent, 'id' | 'timestamp'>;
+
+interface WaitCandidatePage {
+  rows: CaptureEvent[];
+  rowLimit: number;
 }
 
 /** Freshness is an observation-level concern for this raw-storage tool.
@@ -155,15 +165,74 @@ function isWakeEligibleObservation(event: CaptureEvent): boolean {
   return event.metadata?.['observation_kind'] !== 'inherited';
 }
 
+function compactWakeRow(event: CaptureEvent): WaitRow {
+  return { id: event.id, timestamp: event.timestamp };
+}
+
+async function hydrateEligibleIdBatch(
+  storage: Storage,
+  ids: readonly string[],
+): Promise<WaitRow[]> {
+  if (ids.length === 0) return [];
+  try {
+    return (await storage.getByIds(ids))
+      .filter(isWakeEligibleObservation)
+      .map(compactWakeRow);
+  } catch (error) {
+    if (
+      !(error instanceof StorageBudgetExceededError) ||
+      error.code !== 'request_too_large' ||
+      error.operation !== 'getByIds' ||
+      ids.length <= 1
+    ) {
+      throw error;
+    }
+    const middle = Math.floor(ids.length / 2);
+    return [
+      ...(await hydrateEligibleIdBatch(storage, ids.slice(0, middle))),
+      ...(await hydrateEligibleIdBatch(storage, ids.slice(middle))),
+    ];
+  }
+}
+
 async function hydrateScanMatches(
   storage: Storage,
   ids: readonly string[],
-): Promise<CaptureEvent[]> {
-  const rows: CaptureEvent[] = [];
+): Promise<WaitRow[]> {
+  const rows: WaitRow[] = [];
   for (let offset = 0; offset < ids.length; offset += 100) {
-    rows.push(...(await storage.getByIds(ids.slice(offset, offset + 100))));
+    rows.push(...(await hydrateEligibleIdBatch(storage, ids.slice(offset, offset + 100))));
   }
   return rows;
+}
+
+async function queryWaitCandidatePage(
+  storage: Storage,
+  filter: QueryFilter,
+  after: QueryFilter['after'],
+  rowLimit: number,
+): Promise<WaitCandidatePage> {
+  try {
+    return {
+      rows: await storage.query({ ...filter, after, limit: rowLimit }),
+      rowLimit,
+    };
+  } catch (error) {
+    if (
+      error instanceof StorageBudgetExceededError &&
+      error.code === 'request_too_large' &&
+      error.operation === 'query' &&
+      rowLimit > 1
+    ) {
+      return queryWaitCandidatePage(
+        storage,
+        filter,
+        after,
+        Math.max(1, Math.floor(rowLimit / 2)),
+      );
+    }
+    throw error;
+  }
 }
 
 /** Query one wait source through a finite sequence of resumable sparse-scan
@@ -171,30 +240,35 @@ async function hydrateScanMatches(
  * next window resumes strictly after the storage cursor. */
 async function queryPollSource(storage: Storage, filter: QueryFilter): Promise<SourcePollPage> {
   const requested = filter.limit ?? WAIT_PER_POLL_LIMIT_PER_SOURCE;
-  const rows: CaptureEvent[] = [];
+  const rows: WaitRow[] = [];
   let after = filter.after;
+  let byteSafePageRows = requested;
 
   for (let window = 0; window < WAIT_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
     const remaining = requested - rows.length;
     if (remaining <= 0) return { rows: rows.slice(0, requested), scanTruncated: false };
-    let candidates: CaptureEvent[];
+    let page: WaitCandidatePage;
     try {
-      candidates = await storage.query({ ...filter, after, limit: remaining });
+      page = await queryWaitCandidatePage(
+        storage,
+        filter,
+        after,
+        Math.min(byteSafePageRows, remaining),
+      );
     } catch (error) {
       if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      candidates = await hydrateScanMatches(storage, error.matched_ids);
-      for (const candidate of candidates) {
-        if (isWakeEligibleObservation(candidate)) rows.push(candidate);
-      }
+      rows.push(...(await hydrateScanMatches(storage, error.matched_ids)));
       if (rows.length >= requested) {
         return { rows: rows.slice(0, requested), scanTruncated: false };
       }
       after = error.resume_cursor;
       continue;
     }
+    byteSafePageRows = Math.min(byteSafePageRows, page.rowLimit);
+    const candidates = page.rows;
 
     for (const candidate of candidates) {
-      if (isWakeEligibleObservation(candidate)) rows.push(candidate);
+      if (isWakeEligibleObservation(candidate)) rows.push(compactWakeRow(candidate));
     }
     if (rows.length >= requested) {
       return { rows: rows.slice(0, requested), scanTruncated: false };
@@ -204,7 +278,7 @@ async function queryPollSource(storage: Storage, filter: QueryFilter): Promise<S
     // page containing inherited copies does not: continue strictly after its
     // last physical observation so a genuine turn behind the copies can wake
     // the caller without letting the copies satisfy the early-stop target.
-    if (candidates.length < remaining) {
+    if (candidates.length < page.rowLimit) {
       rows.sort((left, right) => {
         if (left.timestamp < right.timestamp) return -1;
         if (left.timestamp > right.timestamp) return 1;
@@ -275,7 +349,7 @@ async function pollOnce(
   // since=last_returned_ts would re-deliver the boundary turn on every
   // wake. Drop rows at exactly `since` here so the contract `> since`
   // holds. Spec §3 strict-after-boundary semantic (acceptance #3).
-  const merged = new Map<string, CaptureEvent>();
+  const merged = new Map<string, WaitRow>();
   for (const result of results) {
     for (const r of result.rows) {
       if (r.timestamp <= since) continue;

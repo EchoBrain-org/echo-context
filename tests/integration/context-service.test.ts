@@ -365,6 +365,59 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
     expect(defaultElapsed).toBeLessThan(2_000);
   });
 
+  it('projects normalized coding events onto the frozen service-v1 cluster atom shape', async () => {
+    const codexCapture = await post('/v1/capture', {
+      source: `fs:${running!.home}/.codex/sessions/2026/07/01/rollout-service-v1.jsonl`,
+      timestamp: '2026-07-01T01:00:00.000Z',
+      content: 'USER: preserve the frozen API\n\nASSISTANT: Added the boundary projection.',
+      metadata: {
+        session_id: 'service-v1-codex-session',
+        turn_index: 7,
+        repo_root: '/svc',
+        canonical_root: '/svc',
+        project_key: 'local:workspace:/svc',
+        logical_turn_id: 'service-v1-codex-turn',
+        parent_logical_turn_id: 'service-v1-parent-turn',
+        thread_id: 'service-v1-child-thread',
+        root_thread_id: 'service-v1-root-thread',
+        parent_thread_id: 'service-v1-parent-thread',
+        thread_kind: 'subagent',
+        agent_path: 'reviewer/child',
+        agent_depth: 1,
+        initiator: 'agent',
+        observation_kind: 'original',
+        occurred_at: '2026-07-01T01:00:00.000Z',
+        observed_at: '2026-07-01T01:00:01.000Z',
+      },
+    });
+    expect(codexCapture.status).toBe(200);
+    const codexId = codexCapture.json.id as string;
+
+    const clusters = await post('/v1/clusters', {
+      since: '2026-07-01T00:59:00.000Z',
+      until: '2026-07-01T01:01:00.000Z',
+      limit: 10,
+      format: 'minimal',
+    });
+
+    // A 200 response proves the strict committed response schema accepted the
+    // projected atom. Assert the compatibility-sensitive nested shapes too.
+    expect(clusters.status).toBe(200);
+    const atom = (clusters.json.atoms as Record<string, Record<string, unknown>>)[codexId];
+    expect(atom).toBeDefined();
+    expect(atom).not.toHaveProperty('project');
+    expect(atom?.conversation).toEqual({
+      provider: 'codex',
+      session_id: 'service-v1-codex-session',
+      turn_index: 7,
+    });
+    expect(atom?.provenance).toMatchObject({
+      source_event_id: codexId,
+      extractor_version: 'codex@2',
+    });
+    expect(atom?.provenance).not.toHaveProperty('raw_observation_count');
+  });
+
   it('rejects schema violations before storage and enforces content type/ID caps', async () => {
     expect((await post('/v1/capture', { source: 'x', content: 'missing timestamp' })).status).toBe(400);
     expect((await post('/v1/search', { query: 'x', not_a_field: true })).status).toBe(400);

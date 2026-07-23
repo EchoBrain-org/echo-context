@@ -254,6 +254,7 @@ function sessionMeta(
 
 function turnContext(
   opts: {
+    turn_id?: unknown;
     cwd?: string;
     model?: string;
     effort?: string;
@@ -270,9 +271,8 @@ function turnContext(
     file_system_sandbox_kind?: string;
   } = {},
 ): CodexLine {
-  const payload: Record<string, unknown> = {
-    turn_id: "019de2b0-6551-7682-a51b-2affaa0a7bbf",
-  };
+  const payload: Record<string, unknown> = {};
+  if (opts.turn_id !== undefined) payload["turn_id"] = opts.turn_id;
   if (opts.cwd !== undefined) payload["cwd"] = opts.cwd;
   if (opts.model !== undefined) payload["model"] = opts.model;
   if (opts.effort !== undefined) payload["effort"] = opts.effort;
@@ -925,6 +925,92 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
+  it("uses nested thread_spawn lineage for a targeted subagent turn", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const header = sessionMeta({
+      ts: "2026-07-22T18:44:05.000Z",
+      session_id: rootId,
+      parent_thread_id: parentId,
+      agent_path: childPath,
+      agent_depth: 2,
+    });
+    // Current Codex subagent records carry these fields in
+    // source.subagent.thread_spawn; the top-level aliases are not required.
+    delete header.payload["parent_thread_id"];
+    delete header.payload["agent_path"];
+    writeJsonl(path, [
+      header,
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "review the topology",
+        childPath,
+        localId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("review complete", "2026-07-22T18:44:16.000Z", localId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      logical_turn_id: localId,
+      observation_kind: "original",
+      initiator: "agent",
+      codex: {
+        root_thread_id: rootId,
+        parent_thread_id: parentId,
+        thread_kind: "subagent",
+        agent_path: childPath,
+        agent_depth: 2,
+      },
+    });
+  });
+
+  it("fails contradictory top-level and nested thread_spawn lineage closed", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const topParentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const nestedParentId = "019f88f9-3aba-77f0-9683-18fae4a82acc";
+    const childPath = "/root/reviewer";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const header = sessionMeta({
+      ts: "2026-07-22T18:44:05.000Z",
+      session_id: rootId,
+      parent_thread_id: topParentId,
+      agent_path: childPath,
+      agent_depth: 2,
+    });
+    const source = header.payload["source"] as Record<string, unknown>;
+    const subagent = source["subagent"] as Record<string, unknown>;
+    const spawn = subagent["thread_spawn"] as Record<string, unknown>;
+    spawn["parent_thread_id"] = nestedParentId;
+    writeJsonl(path, [
+      header,
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "must not be promoted",
+        childPath,
+        localId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("orphaned", "2026-07-22T18:44:16.000Z", localId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toEqual([]);
+    expect(result.codex).toMatchObject({ thread_kind: "unknown" });
+    expect(result.codex).not.toHaveProperty("thread_id");
+    expect(result.codex).not.toHaveProperty("root_thread_id");
+    expect(result.codex).not.toHaveProperty("parent_thread_id");
+    expect(result.codex).not.toHaveProperty("agent_path");
+  });
+
   it("fails contradictory user and assistant turn ids closed", async () => {
     const userId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
     const assistantId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
@@ -983,6 +1069,109 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
+  it("poisons logical identity when either message carries a present malformed id", async () => {
+    const validId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const cases: Array<{
+      name: string;
+      user: CodexLine;
+      assistant: CodexLine;
+    }> = [
+      {
+        name: "blank-user-passthrough",
+        user: userMsg("blank user id", "2026-07-22T18:44:15.000Z", ""),
+        assistant: assistantMsg(
+          "valid assistant id",
+          "2026-07-22T18:44:16.000Z",
+          validId,
+        ),
+      },
+      {
+        name: "malformed-assistant-direct",
+        user: userMsg("valid user id", "2026-07-22T18:44:15.000Z", validId),
+        assistant: {
+          timestamp: "2026-07-22T18:44:16.000Z",
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "malformed assistant id" }],
+            turn_id: "not-a-uuid",
+          },
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const casePath = join(dir, `${testCase.name}.jsonl`);
+      writeJsonl(casePath, [
+        sessionMeta(),
+        testCase.user,
+        testCase.assistant,
+        taskComplete("2026-07-22T18:44:17.000Z"),
+      ]);
+
+      const result = await extractCodexTurns(casePath, 0);
+
+      expect(result.turns, testCase.name).toHaveLength(1);
+      expect(result.turns[0], testCase.name).not.toHaveProperty(
+        "logical_turn_id",
+      );
+      expect(result.turns[0], testCase.name).toMatchObject({
+        occurred_at: "2026-07-22T18:44:15.000Z",
+        observation_kind: "unknown",
+      });
+    }
+  });
+
+  it("reconciles turn_context identity with only the turn it precedes", async () => {
+    const firstId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const secondId = "019f8b25-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("first", "2026-07-22T18:44:15.000Z", firstId),
+      assistantMsg("first answer", "2026-07-22T18:44:16.000Z", firstId),
+      turnContext({ turn_id: secondId, model: "gpt-5.5" }),
+      userMsg("second", "2026-07-22T18:45:15.000Z", secondId),
+      assistantMsg("second answer", "2026-07-22T18:45:16.000Z", secondId),
+      taskComplete("2026-07-22T18:45:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(2);
+    expect(result.turns.map((turn) => turn.logical_turn_id)).toEqual([
+      firstId,
+      secondId,
+    ]);
+    expect(
+      result.turns.every((turn) => turn.observation_kind === "original"),
+    ).toBe(true);
+  });
+
+  it("fails blank or contradictory turn_context identity closed", async () => {
+    const messageId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const otherId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
+    for (const [name, contextId] of [
+      ["blank", ""],
+      ["contradictory", otherId],
+    ] as const) {
+      const casePath = join(dir, `turn-context-${name}.jsonl`);
+      writeJsonl(casePath, [
+        sessionMeta(),
+        turnContext({ turn_id: contextId }),
+        userMsg("question", "2026-07-22T18:44:15.000Z", messageId),
+        assistantMsg("answer", "2026-07-22T18:44:16.000Z", messageId),
+        taskComplete("2026-07-22T18:44:17.000Z"),
+      ]);
+
+      const result = await extractCodexTurns(casePath, 0);
+
+      expect(result.turns, name).toHaveLength(1);
+      expect(result.turns[0], name).not.toHaveProperty("logical_turn_id");
+      expect(result.turns[0]?.observation_kind, name).toBe("unknown");
+    }
+  });
+
   it("keeps an inter-agent trigger durable across an interposed config line and restart", async () => {
     const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
     const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
@@ -997,7 +1186,7 @@ describe("extractCodexTurns (pure)", () => {
         agent_depth: 1,
       }),
       interAgentTrigger("2026-07-22T18:44:15.000Z"),
-      turnContext({ model: "gpt-5.5" }),
+      turnContext({ turn_id: localId, model: "gpt-5.5" }),
     ]);
 
     const first = await extractCodexTurns(path, 0);

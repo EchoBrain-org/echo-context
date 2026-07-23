@@ -183,15 +183,29 @@ export function buildProjectRef(
   metadata: Record<string, unknown> | undefined,
   observedRoot: string | undefined,
 ): ProjectRef | undefined {
-  const canonicalRoot = getString(metadata, 'canonical_root');
+  const hasProjectKey =
+    metadata !== undefined &&
+    Object.prototype.hasOwnProperty.call(metadata, 'project_key');
+  const hasCanonicalRoot =
+    metadata !== undefined &&
+    Object.prototype.hasOwnProperty.call(metadata, 'canonical_root');
   const explicitKey = getString(metadata, 'project_key');
-  const key =
-    explicitKey ??
-    (canonicalRoot !== undefined
-      ? `local:workspace:${canonicalRoot}`
-      : observedRoot !== undefined
-        ? `local:workspace:${observedRoot}`
-        : undefined);
+  const canonicalRoot = getString(metadata, 'canonical_root');
+
+  // Match the storage boundary's presence-based precedence. An explicitly
+  // present malformed field is authoritative failure evidence; it must not
+  // silently widen into the next legacy fallback.
+  let key: string | undefined;
+  if (hasProjectKey) {
+    if (explicitKey === undefined || explicitKey.length === 0) return undefined;
+    key = explicitKey;
+  } else if (hasCanonicalRoot) {
+    if (canonicalRoot === undefined || canonicalRoot.length === 0)
+      return undefined;
+    key = `local:workspace:${canonicalRoot}`;
+  } else if (observedRoot !== undefined && observedRoot.length > 0) {
+    key = `local:workspace:${observedRoot}`;
+  }
   if (key === undefined) return undefined;
   const project: ProjectRef = { key };
   if (canonicalRoot !== undefined) project.canonical_root = canonicalRoot;

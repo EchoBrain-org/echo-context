@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS,
   CLUSTER_MAX_RAW_OBSERVATIONS,
   CLUSTER_MAX_RAW_STORED_BYTES,
   CLUSTER_MAX_STORAGE_SCAN_WINDOWS,
   getRecentWorkContext,
 } from '../../src/mcp/internal/cluster-engine.js';
 import { echoResolveMru } from '../../src/mcp/tools/echo-resolve-mru.js';
+import { findClusters } from '../../src/mcp/tools/find-clusters.js';
 import { waitForNewTurns } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { StorageScanBudgetExceededError } from '../../src/storage/budgets.js';
 import type { CaptureEvent, QueryFilter } from '../../src/storage/interface.js';
@@ -220,7 +222,9 @@ describe('bounded sparse-scan MCP consumers', () => {
       until: '2026-05-11T00:00:00.000Z',
     });
     expect(result.warnings.some((warning) => warning.includes('STORAGE_SCAN_BUDGET'))).toBe(false);
-    expect(storage.queryCalls).toBe(2);
+    // One sparse continuation + the successful on-time page + one empty
+    // delayed-observation recovery page.
+    expect(storage.queryCalls).toBe(3);
   });
 
   it('cluster discovery returns partial shape plus a finite-scan warning', async () => {
@@ -287,7 +291,7 @@ describe('bounded sparse-scan MCP consumers', () => {
     });
 
     expect(Object.keys(result.atoms)).toEqual([contextId]);
-    expect(storage.queryCalls).toBe(2);
+    expect(storage.queryCalls).toBe(3);
   });
 
   it('treats until as an exclusive logical-occurrence boundary', async () => {
@@ -351,6 +355,41 @@ describe('bounded sparse-scan MCP consumers', () => {
     } finally {
       storage.close();
     }
+  });
+
+  it('does not let 4,001 newer observations starve a historical on-time target', async () => {
+    const storage = new MemoryStorage();
+    const targetId = await storage.append(
+      codexTurn({
+        logicalId: 'historical-target',
+        timestamp: '2026-05-01T09:30:00.000Z',
+      }),
+    );
+    for (let index = 0; index < 4_001; index += 1) {
+      await storage.append(
+        codexTurn({
+          logicalId: `newer-${index}`,
+          timestamp: '2026-05-03T09:30:00.000Z',
+          occurredAt: '2026-05-03T09:30:00.000Z',
+        }),
+      );
+    }
+
+    const result = await findClusters(storage, {
+      since: '2026-05-01T00:00:00.000Z',
+      until: '2026-05-02T00:00:00.000Z',
+    });
+    const returnedIds = result.clusters.flatMap((cluster) => cluster.atom_ids);
+
+    expect(returnedIds.filter((id) => id === targetId)).toHaveLength(1);
+    expect(result.result_caps.atoms_total_in_window).toBe(1);
+    expect(result.result_caps.truncated).toBe(true);
+    expect(result.warnings.join('\n')).toMatch(
+      new RegExp(
+        `DELAYED_OBSERVATION_SCAN_BUDGET.*${CLUSTER_MAX_DELAYED_STORAGE_SCAN_WINDOWS} bounded storage windows`,
+      ),
+    );
+    expect(result.warnings.join('\n')).not.toMatch(/STORAGE_INPUT_BUDGET/);
   });
 
   it('rebases admitted legacy descendant roots onto the queried project partition', async () => {

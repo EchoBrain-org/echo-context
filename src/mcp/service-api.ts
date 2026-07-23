@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Ajv, type ValidateFunction } from 'ajv';
 import { processCandidate } from '../capture/pipeline.js';
+import type { NormalizedContextEvent } from '../normalize/types.js';
 import type { Storage } from '../storage/interface.js';
+import type { RecentWorkContextResponse } from '../trace/types.js';
 import {
   getRecentWorkContext,
   type RecentWorkContextParams,
@@ -81,6 +83,113 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 
 function validationError(validate: ValidateFunction): string {
   return ajv.errorsText(validate.errors, { separator: '; ' });
+}
+
+/** The service-v1 atom schema is frozen independently of the internal
+ * normalization model. Keep this as an explicit allowlist projection so new
+ * internal context fields cannot accidentally break the committed HTTP API. */
+function projectServiceV1Atom(atom: NormalizedContextEvent): NormalizedContextEvent {
+  const projected: NormalizedContextEvent = {
+    schema_version: atom.schema_version,
+    id: atom.id,
+    time: {
+      occurred_at: atom.time.occurred_at,
+      ...(atom.time.observed_at !== undefined ? { observed_at: atom.time.observed_at } : {}),
+      ...(atom.time.duration_ms !== undefined ? { duration_ms: atom.time.duration_ms } : {}),
+    },
+    source: {
+      app: atom.source.app,
+      ...(atom.source.surface !== undefined ? { surface: atom.source.surface } : {}),
+      ...(atom.source.account !== undefined ? { account: atom.source.account } : {}),
+      raw_pointer: atom.source.raw_pointer,
+    },
+    actors: atom.actors.map((actor) => ({
+      role: actor.role,
+      ...(actor.name !== undefined ? { name: actor.name } : {}),
+      ...(actor.model !== undefined ? { model: actor.model } : {}),
+      ...(actor.provider !== undefined ? { provider: actor.provider } : {}),
+    })),
+    action: {
+      kind: atom.action.kind,
+      ...(atom.action.verb !== undefined ? { verb: atom.action.verb } : {}),
+      ...(atom.action.input !== undefined ? { input: atom.action.input } : {}),
+      ...(atom.action.output !== undefined ? { output: atom.action.output } : {}),
+      ...(atom.action.status !== undefined ? { status: atom.action.status } : {}),
+    },
+    artifacts: atom.artifacts.map((artifact) => ({
+      type: artifact.type,
+      provider: artifact.provider,
+      id: artifact.id,
+      ...(artifact.label !== undefined ? { label: artifact.label } : {}),
+      ...(artifact.locator !== undefined ? { locator: artifact.locator } : {}),
+    })),
+    provenance: {
+      source_event_id: atom.provenance.source_event_id,
+      raw_payload_hash: atom.provenance.raw_payload_hash,
+      extractor_version: atom.provenance.extractor_version,
+      ...(atom.provenance.redacted_fields !== undefined
+        ? { redacted_fields: atom.provenance.redacted_fields }
+        : {}),
+      ...(atom.provenance.parse_warnings !== undefined
+        ? { parse_warnings: atom.provenance.parse_warnings }
+        : {}),
+    },
+  };
+
+  if (atom.context !== undefined) {
+    projected.context = {
+      ...(atom.context.visible !== undefined ? { visible: atom.context.visible } : {}),
+      ...(atom.context.selected !== undefined ? { selected: atom.context.selected } : {}),
+      ...(atom.context.ambient !== undefined ? { ambient: atom.context.ambient } : {}),
+    };
+  }
+  if (atom.state?.snapshot !== undefined) {
+    projected.state = {
+      snapshot: {
+        artifact_id: atom.state.snapshot.artifact_id,
+        ...(atom.state.snapshot.hash !== undefined ? { hash: atom.state.snapshot.hash } : {}),
+        ...(atom.state.snapshot.summary !== undefined
+          ? { summary: atom.state.snapshot.summary }
+          : {}),
+      },
+    };
+  } else if (atom.state?.delta !== undefined) {
+    projected.state = {
+      delta: {
+        artifact_id: atom.state.delta.artifact_id,
+        kind: atom.state.delta.kind,
+        ...(atom.state.delta.detail !== undefined ? { detail: atom.state.delta.detail } : {}),
+      },
+    };
+  }
+  if (atom.conversation !== undefined) {
+    projected.conversation = {
+      provider: atom.conversation.provider,
+      session_id: atom.conversation.session_id,
+      ...(atom.conversation.turn_index !== undefined
+        ? { turn_index: atom.conversation.turn_index }
+        : {}),
+      ...(atom.conversation.parent_event_id !== undefined
+        ? { parent_event_id: atom.conversation.parent_event_id }
+        : {}),
+    };
+  }
+  if (atom.open_loop_hints !== undefined) {
+    projected.open_loop_hints = atom.open_loop_hints;
+  }
+  if (atom.warnings !== undefined) projected.warnings = atom.warnings;
+
+  return projected;
+}
+
+function projectServiceV1Clusters(
+  response: RecentWorkContextResponse,
+): RecentWorkContextResponse {
+  const atoms: Record<string, NormalizedContextEvent> = {};
+  for (const [id, atom] of Object.entries(response.atoms)) {
+    atoms[id] = projectServiceV1Atom(atom);
+  }
+  return { ...response, atoms };
 }
 
 function sendContractResponse(
@@ -184,7 +293,9 @@ export async function handleServiceApi(
       sendContractResponse(
         route,
         response,
-        await getRecentWorkContext(storage, input as unknown as RecentWorkContextParams),
+        projectServiceV1Clusters(
+          await getRecentWorkContext(storage, input as unknown as RecentWorkContextParams),
+        ),
       );
       return true;
     }

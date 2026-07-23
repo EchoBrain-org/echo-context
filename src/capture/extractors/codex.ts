@@ -210,9 +210,7 @@ function extractMessageText(content: unknown): string {
   return parts.join("");
 }
 
-function turnIdFromPayload(
-  payload: Record<string, unknown>,
-): {
+function turnIdFromPayload(payload: Record<string, unknown>): {
   turnId?: string;
   conflict: boolean;
 } {
@@ -233,16 +231,53 @@ function turnIdFromPayload(
     passthroughRecord !== undefined &&
     Object.prototype.hasOwnProperty.call(passthroughRecord, "turn_id");
   if (
-    hasDirect &&
-    hasNested &&
-    (directId === undefined || nestedId === undefined || directId !== nestedId)
+    (hasDirect && directId === undefined) ||
+    (hasNested && nestedId === undefined)
   ) {
+    return { conflict: true };
+  }
+  if (hasDirect && hasNested && directId !== nestedId) {
     return { conflict: true };
   }
   const turnId = directId ?? nestedId;
   return turnId === undefined
     ? { conflict: false }
     : { turnId, conflict: false };
+}
+
+interface StringEvidence {
+  malformed: boolean;
+  value?: string;
+}
+
+function stringEvidence(
+  record: Record<string, unknown>,
+  key: string,
+): StringEvidence {
+  if (!Object.prototype.hasOwnProperty.call(record, key)) {
+    return { malformed: false };
+  }
+  const raw = record[key];
+  if (!isNonEmptyString(raw) || raw.trim().length === 0) {
+    return { malformed: true };
+  }
+  return { malformed: false, value: raw };
+}
+
+function reconcileStringEvidence(...evidence: readonly StringEvidence[]): {
+  value?: string;
+  conflict: boolean;
+} {
+  let value: string | undefined;
+  for (const candidate of evidence) {
+    if (candidate.malformed) return { conflict: true };
+    if (candidate.value === undefined) continue;
+    if (value !== undefined && value !== candidate.value) {
+      return { conflict: true };
+    }
+    value = candidate.value;
+  }
+  return value === undefined ? { conflict: false } : { value, conflict: false };
 }
 
 function parseLine(line: string): ParsedLine | null {
@@ -263,16 +298,12 @@ function parseLine(line: string): ParsedLine | null {
     const out: ParsedLine = { kind: "session_meta", timestamp };
     if (typeof payload === "object" && payload !== null) {
       const p = payload as Record<string, unknown>;
-      const physicalThreadId = p["id"];
-      const rootThreadId = p["session_id"];
-      const parentThreadId = p["parent_thread_id"];
-      if (isNonEmptyString(parentThreadId))
-        out.parent_thread_id = parentThreadId;
-      const forkedFromId = p["forked_from_id"];
-      if (isNonEmptyString(forkedFromId)) out.forked_from_id = forkedFromId;
+      const physicalThread = stringEvidence(p, "id");
+      const rootThread = stringEvidence(p, "session_id");
+      const topParentThread = stringEvidence(p, "parent_thread_id");
+      const forkedFrom = stringEvidence(p, "forked_from_id");
       const threadSource = p["thread_source"];
-      const agentPath = p["agent_path"];
-      if (isNonEmptyString(agentPath)) out.agent_path = agentPath;
+      const topAgentPath = stringEvidence(p, "agent_path");
       const historyMode = p["history_mode"];
       if (isNonEmptyString(historyMode)) out.history_mode = historyMode;
       const sessionStartedAt = p["timestamp"];
@@ -281,13 +312,23 @@ function parseLine(line: string): ParsedLine | null {
       else if (timestamp !== undefined) out.session_started_at = timestamp;
       const sourceMeta = p["source"];
       let hasSubagentSource = false;
+      let nestedParentThread: StringEvidence = {
+        malformed: false,
+      };
+      let nestedAgentPath: StringEvidence = {
+        malformed: false,
+      };
       if (typeof sourceMeta === "object" && sourceMeta !== null) {
-        const subagent = (sourceMeta as Record<string, unknown>)["subagent"];
+        const sourceRecord = sourceMeta as Record<string, unknown>;
+        const subagent = sourceRecord["subagent"];
         if (typeof subagent === "object" && subagent !== null) {
           hasSubagentSource = true;
-          const spawn = (subagent as Record<string, unknown>)["thread_spawn"];
+          const subagentRecord = subagent as Record<string, unknown>;
+          const spawn = subagentRecord["thread_spawn"];
           if (typeof spawn === "object" && spawn !== null) {
             const spawnMeta = spawn as Record<string, unknown>;
+            nestedParentThread = stringEvidence(spawnMeta, "parent_thread_id");
+            nestedAgentPath = stringEvidence(spawnMeta, "agent_path");
             const depth = spawnMeta["depth"];
             if (
               typeof depth === "number" &&
@@ -301,36 +342,62 @@ function parseLine(line: string): ParsedLine | null {
           }
         }
       }
+      const parentThread = reconcileStringEvidence(
+        topParentThread,
+        nestedParentThread,
+      );
+      const agentPath = reconcileStringEvidence(topAgentPath, nestedAgentPath);
+      const parentForkConflict =
+        parentThread.value !== undefined &&
+        forkedFrom.value !== undefined &&
+        parentThread.value !== forkedFrom.value;
+      const lineageConflict =
+        physicalThread.malformed ||
+        rootThread.malformed ||
+        parentThread.conflict ||
+        agentPath.conflict ||
+        forkedFrom.malformed ||
+        parentForkConflict;
       const hasSubagentEvidence =
         threadSource === "subagent" ||
         hasSubagentSource ||
-        isNonEmptyString(parentThreadId) ||
-        isNonEmptyString(forkedFromId) ||
-        isNonEmptyString(agentPath);
+        parentThread.value !== undefined ||
+        forkedFrom.value !== undefined ||
+        agentPath.value !== undefined;
       const stableSubagentIdentity =
+        !lineageConflict &&
         hasSubagentEvidence &&
         (threadSource === undefined || threadSource === "subagent") &&
-        isNonEmptyString(physicalThreadId) &&
-        isNonEmptyString(rootThreadId) &&
-        physicalThreadId !== rootThreadId;
+        physicalThread.value !== undefined &&
+        rootThread.value !== undefined &&
+        physicalThread.value !== rootThread.value;
       const stableRootIdentity =
+        !lineageConflict &&
         !hasSubagentEvidence &&
         (threadSource === undefined ||
           threadSource === "root" ||
           threadSource === "user") &&
-        isNonEmptyString(physicalThreadId) &&
-        (!isNonEmptyString(rootThreadId) || rootThreadId === physicalThreadId);
+        physicalThread.value !== undefined &&
+        (rootThread.value === undefined ||
+          rootThread.value === physicalThread.value);
       if (stableSubagentIdentity) {
-        out.thread_id = physicalThreadId;
-        out.root_thread_id = rootThreadId;
+        out.thread_id = physicalThread.value;
+        out.root_thread_id = rootThread.value;
+        if (parentThread.value !== undefined) {
+          out.parent_thread_id = parentThread.value;
+        }
+        if (forkedFrom.value !== undefined) {
+          out.forked_from_id = forkedFrom.value;
+        }
+        if (agentPath.value !== undefined) out.agent_path = agentPath.value;
         out.thread_kind = "subagent";
       } else if (stableRootIdentity) {
-        out.thread_id = physicalThreadId;
-        out.root_thread_id = physicalThreadId;
+        out.thread_id = physicalThread.value;
+        out.root_thread_id = physicalThread.value;
         out.thread_kind = "root";
       } else {
-        // Preserve partial lineage fields above as raw evidence, but never
-        // promote an incomplete/contradictory session identity into topology.
+        // Never promote incomplete, malformed, or contradictory lineage into
+        // topology or recipient matching.
         out.thread_kind = "unknown";
       }
       const c = p["cwd"];
@@ -362,8 +429,9 @@ function parseLine(line: string): ParsedLine | null {
     const out: ParsedLine = { kind: "turn_context", timestamp };
     if (typeof payload === "object" && payload !== null) {
       const p = payload as Record<string, unknown>;
-      const turnId = p["turn_id"];
-      if (isNonEmptyString(turnId)) out.turn_id = turnId;
+      const identity = turnIdFromPayload(p);
+      if (identity.turnId !== undefined) out.turn_id = identity.turnId;
+      if (identity.conflict) out.logical_identity_conflict = true;
       const c = p["cwd"];
       if (isNonEmptyString(c)) out.cwd = c;
       const m = p["model"];
@@ -553,6 +621,7 @@ interface PendingToolCall {
 }
 
 interface PendingCluster {
+  clusterStartOffset: number;
   userText: string;
   userTimestamp: string;
   assistantTexts: string[];
@@ -566,11 +635,39 @@ interface PendingCluster {
   toolCallTotal: number;
   files: string[];
   thinking: string[];
+  contextTurnId?: string;
   userTurnId?: string;
   assistantTurnId?: string;
   logicalIdentityConflict: boolean;
   initiator: ContextInitiator;
   localTrigger: boolean;
+}
+
+interface QueuedTurnIdentity {
+  startOffset: number;
+  turnId?: string;
+  conflict: boolean;
+}
+
+function mergeQueuedTurnIdentity(
+  current: QueuedTurnIdentity | undefined,
+  input: { startOffset: number; turnId?: string; conflict: boolean },
+): QueuedTurnIdentity {
+  const turnId = current?.turnId ?? input.turnId;
+  const conflict =
+    current?.conflict === true ||
+    input.conflict ||
+    (current?.turnId !== undefined &&
+      input.turnId !== undefined &&
+      current.turnId !== input.turnId);
+  return {
+    startOffset: Math.min(
+      current?.startOffset ?? input.startOffset,
+      input.startOffset,
+    ),
+    ...(turnId !== undefined ? { turnId } : {}),
+    conflict,
+  };
 }
 
 const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
@@ -767,6 +864,7 @@ export async function extractCodexTurns(
 
   const turns: CodexTurn[] = [];
   let pending: PendingCluster | null = null;
+  let queuedTurnIdentity: QueuedTurnIdentity | undefined;
   let nextAgentMessageTriggersTurn = false;
   let triggerMarkerStartOffset: number | undefined;
   let cwd: string | undefined = input.lastKnownCwd;
@@ -785,6 +883,7 @@ export async function extractCodexTurns(
   function markSafeThrough(offset: number): void {
     if (
       pending === null &&
+      queuedTurnIdentity === undefined &&
       !nextAgentMessageTriggersTurn &&
       offset > confirmedThroughOffset
     ) {
@@ -805,14 +904,18 @@ export async function extractCodexTurns(
       had_tool_use: pending.hadTool,
       byte_offset: pending.assistantLastLineEndOffset,
     };
+    const logicalIds = [
+      pending.contextTurnId,
+      pending.userTurnId,
+      pending.assistantTurnId,
+    ].filter((id): id is string => id !== undefined);
     const logicalIdentityConflict =
-      pending.logicalIdentityConflict ||
-      (pending.userTurnId !== undefined &&
-        pending.assistantTurnId !== undefined &&
-        pending.userTurnId !== pending.assistantTurnId);
+      pending.logicalIdentityConflict || new Set(logicalIds).size > 1;
     const logicalTurnId = logicalIdentityConflict
       ? undefined
-      : (pending.assistantTurnId ?? pending.userTurnId);
+      : (pending.assistantTurnId ??
+        pending.userTurnId ??
+        pending.contextTurnId);
     if (logicalTurnId !== undefined) {
       turn.logical_turn_id = logicalTurnId;
       const occurredAt = occurredAtFromUuidV7(logicalTurnId);
@@ -909,6 +1012,37 @@ export async function extractCodexTurns(
         permission_network: parsed.permission_network,
         file_system_sandbox_kind: parsed.file_system_sandbox_kind,
       });
+      if (
+        parsed.turn_id !== undefined ||
+        parsed.logical_identity_conflict === true
+      ) {
+        const identity = {
+          startOffset: lineStartOffset,
+          ...(parsed.turn_id !== undefined ? { turnId: parsed.turn_id } : {}),
+          conflict: parsed.logical_identity_conflict === true,
+        };
+        if (pending !== null && pending.assistantTexts.length === 0) {
+          if (
+            pending.contextTurnId !== undefined &&
+            identity.turnId !== undefined &&
+            pending.contextTurnId !== identity.turnId
+          ) {
+            pending.logicalIdentityConflict = true;
+          }
+          if (
+            pending.contextTurnId === undefined &&
+            identity.turnId !== undefined
+          ) {
+            pending.contextTurnId = identity.turnId;
+          }
+          if (identity.conflict) pending.logicalIdentityConflict = true;
+        } else {
+          queuedTurnIdentity = mergeQueuedTurnIdentity(
+            queuedTurnIdentity,
+            identity,
+          );
+        }
+      }
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -987,16 +1121,26 @@ export async function extractCodexTurns(
     const isTriggeredAgentInput =
       parsed.role === "agent" &&
       nextAgentMessageTriggersTurn &&
+      codexMeta?.thread_kind === "subagent" &&
       parsed.recipient !== undefined &&
       parsed.recipient === codexMeta?.agent_path;
-    const inputStartOffset = isTriggeredAgentInput
-      ? (triggerMarkerStartOffset ?? lineStartOffset)
-      : lineStartOffset;
+    const inputStartOffset = Math.min(
+      lineStartOffset,
+      ...(isTriggeredAgentInput && triggerMarkerStartOffset !== undefined
+        ? [triggerMarkerStartOffset]
+        : []),
+      ...(queuedTurnIdentity !== undefined
+        ? [queuedTurnIdentity.startOffset]
+        : []),
+    );
     if (parsed.role === "agent") {
       nextAgentMessageTriggersTurn = false;
       triggerMarkerStartOffset = undefined;
     }
     if (parsed.role === "agent" && !isTriggeredAgentInput) {
+      // A targeted-turn marker/context followed by an ineligible agent message
+      // belongs to that rejected input, not to a later human turn.
+      queuedTurnIdentity = undefined;
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -1028,20 +1172,37 @@ export async function extractCodexTurns(
       ) {
         continue;
       }
+      let contextIdentity = queuedTurnIdentity;
+      queuedTurnIdentity = undefined;
       // A new user closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
           emitPendingIfComplete();
         } else {
           log.warn("user_with_no_assistant", { session_id });
+          if (pending.initiator === "system") {
+            contextIdentity = mergeQueuedTurnIdentity(contextIdentity, {
+              startOffset: pending.clusterStartOffset,
+              ...(pending.contextTurnId !== undefined
+                ? { turnId: pending.contextTurnId }
+                : {}),
+              conflict: pending.logicalIdentityConflict,
+            });
+          }
         }
       }
-      // Everything before the new user record is durable. Keep the user line
-      // itself unread until its cluster closes so restart can rebuild it.
-      if (inputStartOffset > confirmedThroughOffset) {
-        confirmedThroughOffset = inputStartOffset;
+      const clusterStartOffset = Math.min(
+        inputStartOffset,
+        contextIdentity?.startOffset ?? inputStartOffset,
+      );
+      // Everything before the context/trigger/user cluster is durable. Keep
+      // its earliest identity-bearing line unread until the turn closes so a
+      // restart can rebuild the same logical identity.
+      if (clusterStartOffset > confirmedThroughOffset) {
+        confirmedThroughOffset = clusterStartOffset;
       }
       pending = {
+        clusterStartOffset,
         userText: parsed.text ?? "",
         userTimestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         assistantTexts: [],
@@ -1052,10 +1213,18 @@ export async function extractCodexTurns(
         toolCallTotal: 0,
         files: [],
         thinking: [],
-        logicalIdentityConflict: parsed.logical_identity_conflict === true,
+        logicalIdentityConflict:
+          parsed.logical_identity_conflict === true ||
+          contextIdentity?.conflict === true ||
+          (contextIdentity?.turnId !== undefined &&
+            parsed.turn_id !== undefined &&
+            contextIdentity.turnId !== parsed.turn_id),
         initiator,
         localTrigger: isTriggeredAgentInput,
       };
+      if (contextIdentity?.turnId !== undefined) {
+        pending.contextTurnId = contextIdentity.turnId;
+      }
       if (parsed.turn_id !== undefined) pending.userTurnId = parsed.turn_id;
       if (cwd !== undefined) pending.cwd = cwd;
       if (git !== undefined) pending.git = git;

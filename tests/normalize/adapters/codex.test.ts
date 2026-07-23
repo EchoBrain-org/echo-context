@@ -142,4 +142,44 @@ describe('codex adapter', () => {
     expect(normalized.conversation).not.toHaveProperty('logical_turn_id');
     expect(normalized.conversation).not.toHaveProperty('parent_logical_turn_id');
   });
+
+  it('does not fall through malformed authoritative project fields', () => {
+    const malformedProjectKey = normalizeEvent({
+      ...codexFixture,
+      id: 'evt_codex_malformed_project_key',
+      metadata: {
+        ...codexFixture.metadata,
+        project_key: null,
+        canonical_root: '/Users/dev/Desktop/demo-repo',
+      },
+    });
+    const malformedCanonicalRoot = normalizeEvent({
+      ...codexFixture,
+      id: 'evt_codex_malformed_canonical_root',
+      metadata: {
+        ...codexFixture.metadata,
+        canonical_root: '',
+      },
+    });
+    if (malformedProjectKey === null || malformedCanonicalRoot === null) {
+      throw new Error('expected adapter to match');
+    }
+
+    expect(malformedProjectKey.project).toBeUndefined();
+    expect(malformedCanonicalRoot.project).toBeUndefined();
+  });
+
+  it('retains the repo_root project fallback only when explicit fields are absent', () => {
+    const normalized = normalizeEvent({
+      ...codexFixture,
+      id: 'evt_codex_legacy_project',
+      metadata: { ...codexFixture.metadata },
+    });
+    if (normalized === null) throw new Error('expected adapter to match');
+
+    expect(normalized.project).toEqual({
+      key: 'local:workspace:/Users/dev/Desktop/demo-repo',
+      observed_root: '/Users/dev/Desktop/demo-repo',
+    });
+  });
 });

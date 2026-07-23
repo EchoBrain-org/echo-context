@@ -6,6 +6,7 @@ import {
   WAIT_PER_POLL_LIMIT_PER_SOURCE,
 } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
+import { SqliteStorage } from '../../src/storage/sqlite.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 
 function ev(
@@ -220,6 +221,41 @@ describe('wait_for_new_turns — happy path', () => {
 });
 
 describe('wait_for_new_turns — logical-observation freshness', () => {
+  it('adaptively pages byte-heavy SQLite rows without retaining their bodies', async () => {
+    const store = new SqliteStorage(':memory:');
+    const source = 'fs:/large-turns.jsonl';
+    const expected: string[] = [];
+    try {
+      for (let index = 1; index <= 9; index += 1) {
+        expected.push(
+          await store.append(
+            ev(
+              source,
+              new Date(Date.parse('2026-05-09T10:00:00.000Z') + index * 1_000).toISOString(),
+              'x'.repeat(4 * 1024 * 1024 - 16 * 1024),
+              { observation_kind: 'original' },
+            ),
+          ),
+        );
+      }
+
+      const result = await waitForNewTurns(
+        store,
+        {
+          sources: [source],
+          since: '2026-05-09T10:00:00.000Z',
+          timeout: 0,
+        },
+        { pollIntervalMs: 10 },
+      );
+
+      expect(result.turn_ids).toEqual(expected);
+      expect(result.warnings).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+
   it('does not wake for a newly observed inherited copy of old logical work', async () => {
     const store = new MemoryStorage();
     const since = '2026-05-09T10:00:00.000Z';
