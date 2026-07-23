@@ -70,7 +70,7 @@ describe('buildRecentWorkContext', () => {
     });
   });
 
-  it('surfaces dense graph budget exhaustion as structured truncation', () => {
+  it('does not exhaust a graph budget for dense scope-only activity', () => {
     const { events, normalize } = asCapture(
       Array.from({ length: 1_000 }, (_, index) => ({
         id: `dense-${String(index).padStart(4, '0')}`,
@@ -84,9 +84,9 @@ describe('buildRecentWorkContext', () => {
       { ...QUERY, limit: 1_000 },
       normalize,
     );
-    expect(response.truncation.truncated).toBe(true);
+    expect(response.truncation.truncated).toBe(false);
     expect(response.warnings.some((warning) => warning.startsWith('[GRAPH_BUDGET]'))).toBe(
-      true,
+      false,
     );
   });
 
@@ -445,17 +445,9 @@ describe('buildRecentWorkContext', () => {
       }
       const { events, normalize } = asCapture(specs);
       const r = buildRecentWorkContext(events, QUERY, normalize);
-      expect(r.clusters).toHaveLength(1);
-      const cluster = r.clusters[0]!;
-      // Cluster membership unchanged — all 6 atoms still present.
-      expect(cluster.atom_ids).toEqual([
-        'evt_0',
-        'evt_1',
-        'evt_2',
-        'evt_3',
-        'evt_4',
-        'evt_5',
-      ]);
+      expect(r.clusters).toHaveLength(4);
+      const cluster = r.clusters.find((candidate) => candidate.atom_ids.length === 3)!;
+      expect(cluster.atom_ids).toEqual(['evt_0', 'evt_1', 'evt_2']);
       for (const edge of cluster.edges) {
         const hasSignal = edge.artifact_ids.some((key) => {
           const role = roleOf(typeFromArtifactKey(key));
@@ -463,14 +455,11 @@ describe('buildRecentWorkContext', () => {
         });
         expect(hasSignal).toBe(true);
       }
-      // The 3 file-sharing atoms form C(3,2)=3 file-bearing edges; all should survive.
-      expect(cluster.edges).toHaveLength(3);
+      // The 3 file-sharing atoms use a two-edge spanning tree.
+      expect(cluster.edges).toHaveLength(2);
     });
 
-    it('cluster.atom_ids and rank_reason are unchanged by the edge filter', () => {
-      // K_5 sharing only repo+conversation: cluster forms (atoms are joined),
-      // but every edge should be filtered out. atom_ids and rank_reason still
-      // reflect the un-filtered cluster state.
+    it('scope and generic session artifacts do not create thread membership', () => {
       const baseTs = Date.parse('2026-05-06T08:00:00.000Z');
       const specs: AtomSpec[] = [];
       for (let i = 0; i < 5; i++) {
@@ -486,20 +475,9 @@ describe('buildRecentWorkContext', () => {
       }
       const { events, normalize } = asCapture(specs);
       const r = buildRecentWorkContext(events, QUERY, normalize);
-      expect(r.clusters).toHaveLength(1);
-      const cluster = r.clusters[0]!;
-      // membership unchanged: 5 atoms even with 0 retained edges
-      expect(cluster.atom_ids).toEqual([
-        'evt_0',
-        'evt_1',
-        'evt_2',
-        'evt_3',
-        'evt_4',
-      ]);
-      expect(cluster.edges).toEqual([]);
-      // `dense` reason still fires because atom_ids.length >= 5 — proves
-      // ranking ran on the unfiltered cluster.
-      expect(cluster.rank_reason).toContain('dense');
+      expect(r.clusters).toHaveLength(5);
+      expect(r.clusters.every((cluster) => cluster.atom_ids.length === 1)).toBe(true);
+      expect(r.clusters.every((cluster) => cluster.edges.length === 0)).toBe(true);
     });
 
     it('format defaults to "full" and is echoed in query', () => {

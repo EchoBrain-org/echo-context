@@ -9,6 +9,7 @@ import {
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CAPTURED_SOURCES } from "../../../src/capture/sources.js";
+import { occurredAtFromUuidV7 } from "../../../src/capture/logical-identity.js";
 import {
   extractCodexTurns,
   startCodexExtractor,
@@ -201,6 +202,13 @@ function sessionMeta(
     source?: string;
     cli_version?: string;
     model_provider?: string;
+    session_id?: string;
+    forked_from_id?: string;
+    parent_thread_id?: string;
+    thread_source?: string;
+    agent_path?: string;
+    history_mode?: string;
+    agent_depth?: number;
     git?: { commit_hash?: string; branch?: string; repository_url?: string };
   } = {},
 ): CodexLine {
@@ -212,6 +220,28 @@ function sessionMeta(
   if (opts.cli_version !== undefined) payload["cli_version"] = opts.cli_version;
   if (opts.model_provider !== undefined)
     payload["model_provider"] = opts.model_provider;
+  if (opts.session_id !== undefined) payload["session_id"] = opts.session_id;
+  if (opts.forked_from_id !== undefined)
+    payload["forked_from_id"] = opts.forked_from_id;
+  if (opts.parent_thread_id !== undefined)
+    payload["parent_thread_id"] = opts.parent_thread_id;
+  if (opts.thread_source !== undefined)
+    payload["thread_source"] = opts.thread_source;
+  if (opts.agent_path !== undefined) payload["agent_path"] = opts.agent_path;
+  if (opts.history_mode !== undefined)
+    payload["history_mode"] = opts.history_mode;
+  if (opts.agent_depth !== undefined) {
+    payload["source"] = {
+      subagent: {
+        thread_spawn: {
+          parent_thread_id: opts.parent_thread_id,
+          depth: opts.agent_depth,
+          agent_path: opts.agent_path,
+          agent_nickname: "TestAgent",
+        },
+      },
+    };
+  }
   if (opts.git !== undefined) payload["git"] = opts.git;
   return {
     timestamp: opts.ts ?? "2026-05-01T10:00:00.000Z",
@@ -297,7 +327,11 @@ function turnContext(
   };
 }
 
-function userMsg(text: string, ts = "2026-05-01T10:00:01.000Z"): CodexLine {
+function userMsg(
+  text: string,
+  ts = "2026-05-01T10:00:01.000Z",
+  turnId?: string,
+): CodexLine {
   return {
     timestamp: ts,
     type: "response_item",
@@ -305,6 +339,9 @@ function userMsg(text: string, ts = "2026-05-01T10:00:01.000Z"): CodexLine {
       type: "message",
       role: "user",
       content: [{ type: "input_text", text }],
+      ...(turnId !== undefined
+        ? { internal_chat_message_metadata_passthrough: { turn_id: turnId } }
+        : {}),
     },
   };
 }
@@ -312,6 +349,7 @@ function userMsg(text: string, ts = "2026-05-01T10:00:01.000Z"): CodexLine {
 function assistantMsg(
   text: string,
   ts = "2026-05-01T10:00:02.000Z",
+  turnId?: string,
 ): CodexLine {
   return {
     timestamp: ts,
@@ -320,6 +358,9 @@ function assistantMsg(
       type: "message",
       role: "assistant",
       content: [{ type: "output_text", text }],
+      ...(turnId !== undefined
+        ? { internal_chat_message_metadata_passthrough: { turn_id: turnId } }
+        : {}),
     },
   };
 }
@@ -383,6 +424,33 @@ function taskComplete(ts = "2026-05-01T10:00:03.000Z"): CodexLine {
     },
     ts,
   );
+}
+
+function interAgentTrigger(ts: string, trigger = true): CodexLine {
+  return {
+    timestamp: ts,
+    type: "inter_agent_communication_metadata",
+    payload: { trigger_turn: trigger },
+  };
+}
+
+function agentMessage(
+  text: string,
+  recipient: string,
+  turnId: string,
+  ts: string,
+): CodexLine {
+  return {
+    timestamp: ts,
+    type: "response_item",
+    payload: {
+      type: "agent_message",
+      author: "/root",
+      recipient,
+      content: [{ type: "input_text", text }],
+      internal_chat_message_metadata_passthrough: { turn_id: turnId },
+    },
+  };
 }
 
 // ─── Pure parser tests ──────────────────────────────────────────────────────
@@ -778,7 +846,7 @@ describe("extractCodexTurns (pure)", () => {
       userMsg("next"),
     ]);
     const r = await extractCodexTurns(path, 0);
-    expect(r.turns[0]?.codex).toEqual({
+    expect(r.turns[0]?.codex).toMatchObject({
       source: "cli",
       cli_version: "0.77.0",
       model_provider: "openai",
@@ -788,7 +856,126 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
-  it("omits git/codex on turns when no session_meta or turn_context fields are present", async () => {
+  it("separates inherited fork history from a local agent-triggered turn", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const inheritedId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        forked_from_id: parentId,
+        parent_thread_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        history_mode: "legacy",
+        agent_depth: 2,
+      }),
+      userMsg("copied parent question", "2026-07-22T18:44:08.000Z", inheritedId),
+      assistantMsg("copied parent answer", "2026-07-22T18:44:08.001Z", inheritedId),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage("review the HTTP boundary", childPath, localId, "2026-07-22T18:44:15.001Z"),
+      userMsg("<recommended_plugins>noise</recommended_plugins>", "2026-07-22T18:44:15.002Z"),
+      assistantMsg("review complete", "2026-07-22T18:49:36.000Z", localId),
+      taskComplete("2026-07-22T18:49:36.001Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+    expect(result.turns).toHaveLength(2);
+    expect(result.turns[0]).toMatchObject({
+      logical_turn_id: inheritedId,
+      occurred_at: occurredAtFromUuidV7(inheritedId),
+      observed_at: "2026-07-22T18:44:08.001Z",
+      observation_kind: "inherited",
+    });
+    expect(result.turns[1]).toMatchObject({
+      user_message: "review the HTTP boundary",
+      logical_turn_id: localId,
+      occurred_at: occurredAtFromUuidV7(localId),
+      observed_at: "2026-07-22T18:49:36.000Z",
+      observation_kind: "original",
+      initiator: "agent",
+      codex: {
+        root_thread_id: rootId,
+        parent_thread_id: parentId,
+        thread_kind: "subagent",
+        agent_path: childPath,
+        agent_depth: 2,
+      },
+    });
+  });
+
+  it("keeps an inter-agent trigger durable across an interposed config line and restart", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        agent_path: childPath,
+        agent_depth: 1,
+      }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      turnContext({ model: "gpt-5.5" }),
+    ]);
+
+    const first = await extractCodexTurns(path, 0);
+    expect(first.turns).toEqual([]);
+    expect(first.newOffset).toBeGreaterThan(0);
+    expect(first.newOffset).toBeLessThan(readFileSync(path).length);
+
+    appendJsonl(path, [
+      agentMessage("review the topology", childPath, localId, "2026-07-22T18:44:16.000Z"),
+      assistantMsg("review complete", "2026-07-22T18:44:17.000Z", localId),
+      taskComplete("2026-07-22T18:44:18.000Z"),
+    ]);
+    const second = await extractCodexTurns(path, first.newOffset, {
+      lastKnownCodex: first.codex,
+    });
+
+    expect(second.turns).toHaveLength(1);
+    expect(second.turns[0]).toMatchObject({
+      user_message: "review the topology",
+      initiator: "agent",
+      observation_kind: "original",
+      codex: {
+        root_thread_id: rootId,
+        parent_thread_id: parentId,
+        thread_kind: "subagent",
+        agent_path: childPath,
+      },
+    });
+  });
+
+  it("does not let a system injection replace a pending human prompt", async () => {
+    const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta({ ts: "2026-07-22T18:44:05.000Z" }),
+      userMsg("Explain the current thread.", "2026-07-22T18:44:15.000Z", turnId),
+      userMsg(
+        "<recommended_plugins>noise</recommended_plugins>",
+        "2026-07-22T18:44:15.500Z",
+      ),
+      assistantMsg("It is the topology thread.", "2026-07-22T18:44:16.000Z", turnId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      user_message: "Explain the current thread.",
+      logical_turn_id: turnId,
+      initiator: "human",
+    });
+  });
+
+  it("retains thread lineage even when session config fields are absent", async () => {
     writeJsonl(path, [
       // session_meta with cwd only — no source/cli_version/git
       {
@@ -802,7 +989,11 @@ describe("extractCodexTurns (pure)", () => {
     ]);
     const r = await extractCodexTurns(path, 0);
     expect(r.turns[0]?.git).toBeUndefined();
-    expect(r.turns[0]?.codex).toBeUndefined();
+    expect(r.turns[0]?.codex).toMatchObject({
+      thread_id: "x",
+      root_thread_id: "x",
+      thread_kind: "root",
+    });
   });
 
   it("preserves git + codex across incremental passes via lastKnownGit/lastKnownCodex", async () => {
@@ -1795,7 +1986,7 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       branch: "main",
       origin_url: "https://github.com/u/repo.git",
     });
-    expect(md["codex"]).toEqual({
+    expect(md["codex"]).toMatchObject({
       source: "vscode",
       cli_version: "0.128.0-alpha.1",
       model_provider: "openai",

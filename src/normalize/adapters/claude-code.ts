@@ -9,6 +9,8 @@ import type { Adapter, ArtifactRef, ContextRef, NormalizedContextEvent } from '.
 import {
   buildAssistant,
   buildConversation,
+  buildInitiatorActor,
+  buildProjectRef,
   buildProvenance,
   buildRepoArtifact,
   extractOpenLoopHints,
@@ -21,7 +23,7 @@ import {
   tryParseTurnPair,
 } from './_shared.js';
 
-export const CLAUDE_CODE_VERSION = 'claude-code@1';
+export const CLAUDE_CODE_VERSION = 'claude-code@2';
 
 export const CLAUDE_CODE_SOURCE_RE = /^fs:.*\/\.claude\/projects\/.*\.jsonl$/;
 
@@ -77,16 +79,20 @@ export const adaptClaudeCode: Adapter = (event: CaptureEvent): NormalizedContext
 
   const context: ContextRef | undefined = Object.keys(ambient).length > 0 ? { ambient } : undefined;
 
+  const observedAt = getString(meta, 'observed_at');
   const out: NormalizedContextEvent = {
     schema_version: 1,
     id: event.id,
-    time: { occurred_at: event.timestamp },
+    time: {
+      occurred_at: getString(meta, 'occurred_at') ?? event.timestamp,
+      ...(observedAt !== undefined ? { observed_at: observedAt } : {}),
+    },
     source: {
       app: 'claude_code',
       surface: 'jsonl',
       raw_pointer: event.source,
     },
-    actors: [{ role: 'user' }, buildAssistant(model, 'anthropic')],
+    actors: [buildInitiatorActor(meta), buildAssistant(model, 'anthropic')],
     action: {
       kind: 'message',
       input: pair.user,
@@ -94,10 +100,12 @@ export const adaptClaudeCode: Adapter = (event: CaptureEvent): NormalizedContext
     },
     artifacts,
     provenance: buildProvenance(event, CLAUDE_CODE_VERSION),
-    conversation: buildConversation(session_id, turn_index, 'claude_code'),
+    conversation: buildConversation(session_id, turn_index, 'claude_code', meta),
   };
 
   if (context !== undefined) out.context = context;
+  const project = buildProjectRef(meta, repo_root);
+  if (project !== undefined) out.project = project;
   const hints = extractOpenLoopHints(pair.user, pair.assistant);
   if (hints.length > 0) out.open_loop_hints = hints;
 

@@ -29,6 +29,37 @@ Defaults:
 The HTTP server refuses non-loopback binds. Runtime configuration is isolated
 under `ECHO_CONTEXT_*`; it does not inherit Project_echo product secrets.
 
+## Logical activity model
+
+The event ledger remains append-only: every physical source observation is
+preserved under its original stored ID. Codex and Claude Code capture stable
+logical-turn identity, original occurrence time, observation time, thread
+lineage, initiator, and canonical project identity when their source records
+provide that evidence. Ambiguous evidence stays `unknown`; capture never
+reconstructs identity from matching text.
+
+Retrieval projects those raw observations into logical turns before clustering
+or ranking. It groups only `(provider, logical_turn_id)`, retains an original
+stored event ID for `get_atoms`, and excludes inherited-only fork history from
+fresh activity. Existing rows without provider identity remain distinct.
+
+Thread topology is project-partitioned and bounded. Explicit root lineage is
+authoritative; repo/workspace and generic conversation references are
+descriptive only. Concrete work artifacts may connect activity, but weak file,
+document, or branch references cannot merge two explicit roots. The default
+continuity gap stays four hours regardless of retrieval lookback, and the graph
+is emitted as a deterministic spanning forest rather than a pairwise clique.
+
+Run the synthetic fork/copy regression benchmark with:
+
+```sh
+node --import tsx tools/benchmark-context-topology.ts
+```
+
+It verifies raw-ledger preservation, logical collapse, canonical project scope,
+seven-thread topology, complete `find_clusters` → `get_atoms` hydration, wire
+size, and bounded latency under a 10× inherited-copy stress case.
+
 ## Adapter incubation boundary
 
 The context-adapter registry is the single composition point for observational

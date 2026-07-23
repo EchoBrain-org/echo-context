@@ -57,6 +57,50 @@ describe('claude-code adapter', () => {
     });
   });
 
+  it('normalizes logical lineage, initiator, clocks, and project identity', () => {
+    const event = {
+      ...claudeCodeFixture,
+      id: 'evt_cc_lineage',
+      metadata: {
+        ...claudeCodeFixture.metadata,
+        logical_turn_id: 'turn-u1',
+        parent_logical_turn_id: 'turn-parent',
+        thread_id: 'agent-reviewer',
+        root_thread_id: 'root-session',
+        thread_kind: 'subagent',
+        agent_id: 'agent-reviewer',
+        initiator: 'agent',
+        observation_kind: 'original',
+        occurred_at: '2026-05-07T06:00:00.000Z',
+        observed_at: '2026-05-07T06:03:42.830Z',
+        canonical_root: '/Users/dev/Desktop/demo-repo',
+        project_key: 'local:workspace:/Users/dev/Desktop/demo-repo',
+      },
+    };
+    const normalized = normalizeEvent(event);
+    if (normalized === null) throw new Error('expected adapter to match');
+
+    expect(normalized.time).toEqual({
+      occurred_at: '2026-05-07T06:00:00.000Z',
+      observed_at: '2026-05-07T06:03:42.830Z',
+    });
+    expect(normalized.actors[0]).toEqual({ role: 'agent' });
+    expect(normalized.conversation).toMatchObject({
+      logical_turn_id: 'turn-u1',
+      parent_logical_turn_id: 'turn-parent',
+      thread_id: 'agent-reviewer',
+      root_thread_id: 'root-session',
+      thread_kind: 'subagent',
+      initiator: 'agent',
+      observation_kind: 'original',
+    });
+    expect(normalized.project).toEqual({
+      key: 'local:workspace:/Users/dev/Desktop/demo-repo',
+      canonical_root: '/Users/dev/Desktop/demo-repo',
+      observed_root: '/Users/dev/Desktop/demo-repo',
+    });
+  });
+
   it('context.ambient.had_tool_use is "true" (string), branch + cli_version + permission_mode flow through', () => {
     expect(out.context?.ambient?.had_tool_use).toBe('true');
     expect(out.context?.ambient?.branch).toBe('main');
@@ -76,7 +120,7 @@ describe('claude-code adapter', () => {
 
   it('provenance carries source_event_id, raw_payload_hash (sha256 hex), extractor_version', () => {
     expect(out.provenance.source_event_id).toBe(claudeCodeFixture.id);
-    expect(out.provenance.extractor_version).toBe('claude-code@1');
+    expect(out.provenance.extractor_version).toBe('claude-code@2');
     expect(out.provenance.raw_payload_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

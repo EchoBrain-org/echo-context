@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CaptureEvent } from '../storage/interface.js';
 import type { ArtifactRef, NormalizedContextEvent } from '../normalize/types.js';
+import { projectLogicalTurns } from '../normalize/logical-turns.js';
 import {
   artifactKey,
   buildGraph,
@@ -11,6 +12,7 @@ import {
 import { enrichHints } from './hints.js';
 import { heuristicLabel } from './labels.js';
 import { rankClusters, rankReasonsFor } from './rank.js';
+import { roleOf } from './role.js';
 import type {
   Cluster,
   Query,
@@ -87,41 +89,32 @@ export function buildRecentWorkContext(
   // canonical sort defined below). Cost is bounded by the upstream overfetch
   // cap (typically ≤ limit * STORAGE_OVERFETCH events).
   atoms.sort(compareByOccurredAt);
-  const atomsById = new Map(atoms.map((a) => [a.id, a]));
-  const atomsTotalInWindow = atoms.length;
+  const logicalProjection = projectLogicalTurns(atoms);
+  const logicalAtoms = logicalProjection.atoms.sort(compareByOccurredAt);
+  const atomsById = new Map(logicalAtoms.map((a) => [a.id, a]));
+  const atomsTotalInWindow = logicalAtoms.length;
   // Window-wide source_breakdown computed pre-truncate, so the consumer can
   // see every source active in (since, until) even when limit drops the
   // sibling cluster carrying that source. Cluster-level source_breakdown is
   // unchanged. Item 029 — a Cursor-only sibling cluster was being dropped at
   // default limit=20, hiding "cursor was active" from
   // `cluster[rank=1].source_breakdown`.
-  const windowSourceBreakdown = countByApp(atoms);
+  const windowSourceBreakdown = countByApp(logicalAtoms);
 
-  // 2. Compute open-loop hints once, before clustering — resolution scans
-  //    over the full sorted atom list so the result is cluster-agnostic
-  //    (item 020). Hints are then filtered per-cluster by atom membership.
-  const allHints = enrichHints(atoms);
-  const hintsByAtomId = new Map<string, typeof allHints>();
-  for (const h of allHints) {
-    const arr = hintsByAtomId.get(h.atom_id);
-    if (arr === undefined) hintsByAtomId.set(h.atom_id, [h]);
-    else arr.push(h);
-  }
-
-  // 3. Graph + components
-  const graph = buildGraph(atoms, windowHours);
+  // 2. Graph + components over canonical logical turns.
+  const graph = buildGraph(logicalAtoms, windowHours);
   const rawClusters = connectedComponents(graph);
 
-  // 4. Compute cluster fields
+  // 3. Compute cluster fields. Hint resolution is thread-local: activity in
+  // another project/root thread cannot accidentally resolve this one.
   let clusters: Cluster[] = rawClusters.map((rc) => {
     const clusterAtoms = rc.atom_ids
       .map((id) => atomsById.get(id))
       .filter((a): a is NormalizedContextEvent => a !== undefined);
     const cluster_id = makeClusterId(rc.atom_ids);
     const label = heuristicLabel(clusterAtoms);
-    const open_loop_hints = rc.atom_ids.flatMap(
-      (id) => hintsByAtomId.get(id) ?? [],
-    );
+    clusterAtoms.sort(compareByOccurredAt);
+    const open_loop_hints = enrichHints(clusterAtoms);
     const anchor_artifacts = topArtifacts(clusterAtoms, 3);
     const source_breakdown = countByApp(clusterAtoms);
     const time_range = computeTimeRange(clusterAtoms);
@@ -144,7 +137,7 @@ export function buildRecentWorkContext(
     return cluster;
   });
 
-  // 5. Filter by artifact_hint if provided
+  // 4. Filter by artifact_hint if provided
   if (query.artifact_hint !== undefined) {
     const hintKey = `${query.artifact_hint.provider}:${query.artifact_hint.type}:${query.artifact_hint.id}`;
     clusters = clusters.filter((c) => {
@@ -157,7 +150,7 @@ export function buildRecentWorkContext(
     });
   }
 
-  // 6. Rank
+  // 5. Rank
   clusters = rankClusters(clusters, atomsById, query);
   clusters.forEach((c, i) => {
     c.rank = i + 1;
@@ -166,10 +159,10 @@ export function buildRecentWorkContext(
 
   const clustersTotal = clusters.length;
 
-  // 7. Truncate by atom limit (lowest-rank cluster atoms drop first)
+  // 6. Truncate by atom limit (lowest-rank cluster atoms drop first)
   const truncated = truncate(clusters, atomsById, limit);
 
-  // 8. Build atoms map (only those still referenced)
+  // 7. Build atoms map (only those still referenced)
   const atomsMap: Record<string, NormalizedContextEvent> = {};
   for (const c of truncated.clusters) {
     for (const id of c.atom_ids) {
@@ -260,6 +253,8 @@ function topArtifacts(
   for (const atom of atoms) {
     const seen = new Set<string>();
     for (const art of atom.artifacts) {
+      const role = roleOf(art.type);
+      if (role === 'scope' || role === 'session') continue;
       const key = artifactKey(art);
       if (seen.has(key)) continue;
       seen.add(key);

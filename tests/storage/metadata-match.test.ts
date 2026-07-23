@@ -132,4 +132,42 @@ describe.each(ADAPTERS)('QueryFilter.metadata_match parity ($name)', ({ create, 
     const got = await store.query({ metadata_match: { composer_id: 'COMP-X' } });
     expect(got.map((e) => e.content)).toEqual(['has-md']);
   });
+
+  it('project_key matches explicit identity and legacy canonical/repo-root fallbacks', async () => {
+    const projectKey = 'local:workspace:/repo-a';
+    await seed([
+      {
+        source: 'fs:explicit',
+        timestamp: '2026-05-10T10:00:00.000Z',
+        content: 'explicit',
+        metadata: { project_key: projectKey, repo_root: '/nested/observation' },
+      },
+      {
+        source: 'fs:canonical',
+        timestamp: '2026-05-10T11:00:00.000Z',
+        content: 'canonical-fallback',
+        metadata: { canonical_root: '/repo-a', repo_root: '/repo-a/packages/app' },
+      },
+      {
+        source: 'fs:legacy',
+        timestamp: '2026-05-10T12:00:00.000Z',
+        content: 'repo-root-fallback',
+        metadata: { repo_root: '/repo-a' },
+      },
+      {
+        source: 'fs:other',
+        timestamp: '2026-05-10T13:00:00.000Z',
+        content: 'other-project',
+        metadata: { project_key: 'local:workspace:/repo-b', repo_root: '/repo-b' },
+      },
+    ]);
+
+    const got = await store.query({ project_key: projectKey });
+
+    expect(got.map((event) => event.content)).toEqual([
+      'repo-root-fallback',
+      'canonical-fallback',
+      'explicit',
+    ]);
+  });
 });

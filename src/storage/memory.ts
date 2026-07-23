@@ -124,6 +124,9 @@ export class MemoryStorage implements Storage {
     if (filter?.until !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.until);
     }
+    if (filter?.project_key !== undefined) {
+      assertStorageDescriptorField('query', 'source', filter.project_key);
+    }
     if (filter?.before !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.before.timestamp);
       assertStorageDescriptorField('query', 'id', filter.before.id);
@@ -197,6 +200,21 @@ export class MemoryStorage implements Storage {
           }
         }
         if (skip) continue;
+      }
+      if (filter?.project_key !== undefined) {
+        const md = event.metadata as Record<string, unknown> | undefined;
+        const explicit = md?.['project_key'];
+        const canonicalRoot = md?.['canonical_root'];
+        const repoRoot = md?.['repo_root'];
+        const eventProjectKey =
+          typeof explicit === 'string'
+            ? explicit
+            : typeof canonicalRoot === 'string'
+              ? `local:workspace:${canonicalRoot}`
+              : typeof repoRoot === 'string'
+                ? `local:workspace:${repoRoot}`
+                : undefined;
+        if (eventProjectKey !== filter.project_key) continue;
       }
       filtered.push(event);
     }

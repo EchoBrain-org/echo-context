@@ -9,7 +9,17 @@ import {
   createExtractorFilesystemPolicy,
   processExtractorCandidate,
 } from "../pipeline.js";
-import { resolveCanonicalRoot } from "../workspace-root.js";
+import {
+  projectKeyForCanonicalRoot,
+  resolveCanonicalRoot,
+} from "../workspace-root.js";
+import {
+  classifyCodexObservation,
+  classifyContextInitiator,
+  occurredAtFromUuidV7,
+  type ContextInitiator,
+  type ObservationKind,
+} from "../logical-identity.js";
 import { CODEX_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 import {
   assertJsonlReadSnapshotCurrent,
@@ -73,6 +83,18 @@ export interface CodexSessionMeta {
   permission_file_system_type?: string;
   permission_network?: string;
   file_system_sandbox_kind?: string;
+  /** Physical Codex thread represented by this JSONL file. */
+  thread_id?: string;
+  /** Root founder thread. Codex carries this directly as session_id. */
+  root_thread_id?: string;
+  parent_thread_id?: string;
+  forked_from_id?: string;
+  thread_kind?: "root" | "subagent";
+  agent_path?: string;
+  agent_depth?: number;
+  agent_nickname?: string;
+  history_mode?: string;
+  session_started_at?: string;
 }
 
 export interface CodexTurn {
@@ -93,6 +115,12 @@ export interface CodexTurn {
   files_referenced?: string[];
   thinking?: string;
   git_state?: GitState;
+  logical_turn_id?: string;
+  parent_logical_turn_id?: string;
+  observed_at?: string;
+  occurred_at?: string;
+  observation_kind?: ObservationKind;
+  initiator?: ContextInitiator;
 }
 
 export interface ExtractCodexResult {
@@ -116,10 +144,14 @@ interface ParsedLine {
     | "reasoning"
     | "session_meta"
     | "turn_context"
+    | "inter_agent_metadata"
     | "task_complete"
     | "other";
-  role?: "user" | "assistant";
+  role?: "user" | "assistant" | "agent";
   text?: string;
+  turn_id?: string;
+  trigger_turn?: boolean;
+  recipient?: string;
   cwd?: string;
   timestamp?: string;
   git?: CodexGitMeta;
@@ -141,6 +173,16 @@ interface ParsedLine {
   permission_file_system_type?: string;
   permission_network?: string;
   file_system_sandbox_kind?: string;
+  thread_id?: string;
+  root_thread_id?: string;
+  parent_thread_id?: string;
+  forked_from_id?: string;
+  thread_kind?: "root" | "subagent";
+  agent_path?: string;
+  agent_depth?: number;
+  agent_nickname?: string;
+  history_mode?: string;
+  session_started_at?: string;
   // Tool / reasoning payload extras
   tool_call_name?: string;
   tool_call_args?: string;
@@ -167,6 +209,15 @@ function extractMessageText(content: unknown): string {
   return parts.join("");
 }
 
+function turnIdFromPayload(payload: Record<string, unknown>): string | undefined {
+  const direct = payload["turn_id"];
+  if (isNonEmptyString(direct)) return direct;
+  const passthrough = payload["internal_chat_message_metadata_passthrough"];
+  if (typeof passthrough !== "object" || passthrough === null) return undefined;
+  const turnId = (passthrough as Record<string, unknown>)["turn_id"];
+  return isNonEmptyString(turnId) ? turnId : undefined;
+}
+
 function parseLine(line: string): ParsedLine | null {
   let raw: unknown;
   try {
@@ -185,6 +236,49 @@ function parseLine(line: string): ParsedLine | null {
     const out: ParsedLine = { kind: "session_meta", timestamp };
     if (typeof payload === "object" && payload !== null) {
       const p = payload as Record<string, unknown>;
+      const physicalThreadId = p["id"];
+      if (isNonEmptyString(physicalThreadId)) out.thread_id = physicalThreadId;
+      const rootThreadId = p["session_id"];
+      if (isNonEmptyString(rootThreadId)) out.root_thread_id = rootThreadId;
+      else if (isNonEmptyString(physicalThreadId)) out.root_thread_id = physicalThreadId;
+      const parentThreadId = p["parent_thread_id"];
+      if (isNonEmptyString(parentThreadId)) out.parent_thread_id = parentThreadId;
+      const forkedFromId = p["forked_from_id"];
+      if (isNonEmptyString(forkedFromId)) out.forked_from_id = forkedFromId;
+      const threadSource = p["thread_source"];
+      const agentPath = p["agent_path"];
+      if (isNonEmptyString(agentPath)) out.agent_path = agentPath;
+      const historyMode = p["history_mode"];
+      if (isNonEmptyString(historyMode)) out.history_mode = historyMode;
+      const sessionStartedAt = p["timestamp"];
+      if (isNonEmptyString(sessionStartedAt)) out.session_started_at = sessionStartedAt;
+      else if (timestamp !== undefined) out.session_started_at = timestamp;
+      const sourceMeta = p["source"];
+      let hasSubagentSource = false;
+      if (typeof sourceMeta === "object" && sourceMeta !== null) {
+        const subagent = (sourceMeta as Record<string, unknown>)["subagent"];
+        if (typeof subagent === "object" && subagent !== null) {
+          hasSubagentSource = true;
+          const spawn = (subagent as Record<string, unknown>)["thread_spawn"];
+          if (typeof spawn === "object" && spawn !== null) {
+            const spawnMeta = spawn as Record<string, unknown>;
+            const depth = spawnMeta["depth"];
+            if (typeof depth === "number" && Number.isSafeInteger(depth) && depth >= 0) {
+              out.agent_depth = depth;
+            }
+            const nickname = spawnMeta["agent_nickname"];
+            if (isNonEmptyString(nickname)) out.agent_nickname = nickname;
+          }
+        }
+      }
+      out.thread_kind =
+        threadSource === "subagent" ||
+        hasSubagentSource ||
+        isNonEmptyString(parentThreadId) ||
+        isNonEmptyString(forkedFromId) ||
+        isNonEmptyString(agentPath)
+          ? "subagent"
+          : "root";
       const c = p["cwd"];
       if (isNonEmptyString(c)) out.cwd = c;
       const src = p["source"];
@@ -214,6 +308,8 @@ function parseLine(line: string): ParsedLine | null {
     const out: ParsedLine = { kind: "turn_context", timestamp };
     if (typeof payload === "object" && payload !== null) {
       const p = payload as Record<string, unknown>;
+      const turnId = p["turn_id"];
+      if (isNonEmptyString(turnId)) out.turn_id = turnId;
       const c = p["cwd"];
       if (isNonEmptyString(c)) out.cwd = c;
       const m = p["model"];
@@ -277,12 +373,37 @@ function parseLine(line: string): ParsedLine | null {
     return { kind: "other", timestamp };
   }
 
+  if (t === "inter_agent_communication_metadata") {
+    const payload = obj["payload"];
+    const triggerTurn =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>)["trigger_turn"]
+        : undefined;
+    return {
+      kind: "inter_agent_metadata",
+      timestamp,
+      ...(typeof triggerTurn === "boolean" ? { trigger_turn: triggerTurn } : {}),
+    };
+  }
+
   if (t !== "response_item") return { kind: "other", timestamp };
   const payload = obj["payload"];
   if (typeof payload !== "object" || payload === null)
     return { kind: "other", timestamp };
   const p = payload as Record<string, unknown>;
   const ptype = p["type"];
+
+  if (ptype === "agent_message") {
+    const recipient = p["recipient"];
+    return {
+      kind: "message",
+      role: "agent",
+      text: extractMessageText(p["content"]),
+      timestamp,
+      turn_id: turnIdFromPayload(p),
+      ...(isNonEmptyString(recipient) ? { recipient } : {}),
+    };
+  }
 
   if (ptype === "reasoning") {
     const out: ParsedLine = { kind: "reasoning", timestamp };
@@ -349,6 +470,7 @@ function parseLine(line: string): ParsedLine | null {
     role,
     text: extractMessageText(p["content"]),
     timestamp,
+    turn_id: turnIdFromPayload(p),
   };
 }
 
@@ -372,6 +494,7 @@ interface PendingToolCall {
 
 interface PendingCluster {
   userText: string;
+  userTimestamp: string;
   assistantTexts: string[];
   assistantLastLineEndOffset: number;
   hadTool: boolean;
@@ -383,6 +506,10 @@ interface PendingCluster {
   toolCallTotal: number;
   files: string[];
   thinking: string[];
+  userTurnId?: string;
+  assistantTurnId?: string;
+  initiator: ContextInitiator;
+  localTrigger: boolean;
 }
 
 const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
@@ -434,7 +561,7 @@ function extractFileRefsFromToolArgs(argsRaw: string | undefined): string[] {
   return dedupStrings(refs);
 }
 
-type CodexMetaValue = string | boolean | string[] | undefined;
+type CodexMetaValue = string | number | boolean | string[] | undefined;
 
 function sameStringArray(a: string[] | undefined, b: string[]): boolean {
   return (
@@ -513,6 +640,8 @@ export async function extractCodexTurns(
 
   const turns: CodexTurn[] = [];
   let pending: PendingCluster | null = null;
+  let nextAgentMessageTriggersTurn = false;
+  let triggerMarkerStartOffset: number | undefined;
   let cwd: string | undefined = input.lastKnownCwd;
   let git: CodexGitMeta | undefined = input.lastKnownGit;
   let codexMeta: CodexSessionMeta | undefined = input.lastKnownCodex;
@@ -527,7 +656,11 @@ export async function extractCodexTurns(
   let firstUserCodex: CodexSessionMeta | undefined;
 
   function markSafeThrough(offset: number): void {
-    if (pending === null && offset > confirmedThroughOffset) {
+    if (
+      pending === null &&
+      !nextAgentMessageTriggersTurn &&
+      offset > confirmedThroughOffset
+    ) {
       confirmedThroughOffset = offset;
     }
   }
@@ -545,6 +678,30 @@ export async function extractCodexTurns(
       had_tool_use: pending.hadTool,
       byte_offset: pending.assistantLastLineEndOffset,
     };
+    const logicalTurnId = pending.assistantTurnId ?? pending.userTurnId;
+    if (logicalTurnId !== undefined) {
+      turn.logical_turn_id = logicalTurnId;
+      const occurredAt = occurredAtFromUuidV7(logicalTurnId);
+      if (occurredAt !== undefined) turn.occurred_at = occurredAt;
+    }
+    if (turn.occurred_at === undefined) turn.occurred_at = pending.userTimestamp;
+    if (
+      pending.userTurnId !== undefined &&
+      pending.assistantTurnId !== undefined &&
+      pending.userTurnId !== pending.assistantTurnId
+    ) {
+      turn.parent_logical_turn_id = pending.userTurnId;
+    }
+    turn.observed_at = pending.timestamp;
+    turn.initiator = pending.initiator;
+    turn.observation_kind = classifyCodexObservation({
+      threadKind: pending.codex?.thread_kind,
+      sessionStartedAt: pending.codex?.session_started_at,
+      logicalTurnId,
+      userTurnId: pending.userTurnId,
+      assistantTurnId: pending.assistantTurnId,
+      localTrigger: pending.localTrigger,
+    });
     if (pending.cwd !== undefined) turn.cwd = pending.cwd;
     if (pending.git !== undefined) turn.git = pending.git;
     if (pending.codex !== undefined) turn.codex = pending.codex;
@@ -593,8 +750,30 @@ export async function extractCodexTurns(
         source: parsed.source,
         cli_version: parsed.cli_version,
         model_provider: parsed.model_provider,
+        thread_id: parsed.thread_id,
+        root_thread_id: parsed.root_thread_id,
+        parent_thread_id: parsed.parent_thread_id,
+        forked_from_id: parsed.forked_from_id,
+        thread_kind: parsed.thread_kind,
+        agent_path: parsed.agent_path,
+        agent_depth: parsed.agent_depth,
+        agent_nickname: parsed.agent_nickname,
+        history_mode: parsed.history_mode,
+        session_started_at: parsed.session_started_at,
       });
       markSafeThrough(lineEndOffset);
+      continue;
+    }
+
+    if (parsed.kind === "inter_agent_metadata") {
+      nextAgentMessageTriggersTurn = parsed.trigger_turn === true;
+      triggerMarkerStartOffset = nextAgentMessageTriggersTurn
+        ? lineStartOffset
+        : undefined;
+      // A true marker changes the meaning of the immediately following
+      // agent_message. Keep both records behind the durable boundary until
+      // that turn closes so a restart cannot lose the trigger.
+      if (!nextAgentMessageTriggersTurn) markSafeThrough(lineEndOffset);
       continue;
     }
 
@@ -688,13 +867,47 @@ export async function extractCodexTurns(
       continue;
     }
 
-    // kind === 'message'
-    if (parsed.role === "user") {
+    // kind === 'message'. Triggering agent messages are user-side task input;
+    // non-trigger agent messages are coordination observations, not turns.
+    const isTriggeredAgentInput =
+      parsed.role === "agent" &&
+      nextAgentMessageTriggersTurn &&
+      (parsed.recipient === undefined || parsed.recipient === codexMeta?.agent_path);
+    const inputStartOffset = isTriggeredAgentInput
+      ? (triggerMarkerStartOffset ?? lineStartOffset)
+      : lineStartOffset;
+    if (parsed.role === "agent") {
+      nextAgentMessageTriggersTurn = false;
+      triggerMarkerStartOffset = undefined;
+    }
+    if (parsed.role === "agent" && !isTriggeredAgentInput) {
+      markSafeThrough(lineEndOffset);
+      continue;
+    }
+    if (parsed.role === "user" || isTriggeredAgentInput) {
+      const fallbackInitiator: Exclude<ContextInitiator, "system"> =
+        isTriggeredAgentInput
+          ? "agent"
+          : codexMeta?.thread_kind === "subagent"
+            ? "unknown"
+            : "human";
+      const initiator = classifyContextInitiator(parsed.text ?? "", fallbackInitiator);
       if (firstUserOffset === undefined) {
-        firstUserOffset = lineStartOffset;
+        firstUserOffset = inputStartOffset;
         firstUserCwd = cwd;
         firstUserGit = git;
         firstUserCodex = codexMeta;
+      }
+      // Bootstrap/system injections may follow a substantive agent task. Keep
+      // them as raw JSONL evidence, but do not let them replace the task that
+      // the assistant is about to answer.
+      if (
+        pending !== null &&
+        pending.assistantTexts.length === 0 &&
+        pending.initiator !== "system" &&
+        initiator === "system"
+      ) {
+        continue;
       }
       // A new user closes any prior cluster.
       if (pending !== null) {
@@ -706,11 +919,12 @@ export async function extractCodexTurns(
       }
       // Everything before the new user record is durable. Keep the user line
       // itself unread until its cluster closes so restart can rebuild it.
-      if (lineStartOffset > confirmedThroughOffset) {
-        confirmedThroughOffset = lineStartOffset;
+      if (inputStartOffset > confirmedThroughOffset) {
+        confirmedThroughOffset = inputStartOffset;
       }
       pending = {
         userText: parsed.text ?? "",
+        userTimestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         assistantTexts: [],
         assistantLastLineEndOffset: lineEndOffset,
         hadTool: false,
@@ -719,7 +933,10 @@ export async function extractCodexTurns(
         toolCallTotal: 0,
         files: [],
         thinking: [],
+        initiator,
+        localTrigger: isTriggeredAgentInput,
       };
+      if (parsed.turn_id !== undefined) pending.userTurnId = parsed.turn_id;
       if (cwd !== undefined) pending.cwd = cwd;
       if (git !== undefined) pending.git = git;
       if (codexMeta !== undefined) pending.codex = codexMeta;
@@ -732,6 +949,8 @@ export async function extractCodexTurns(
         pending.assistantLastLineEndOffset = lineEndOffset;
         if (parsed.timestamp !== undefined)
           pending.timestamp = parsed.timestamp;
+        if (parsed.turn_id !== undefined)
+          pending.assistantTurnId = parsed.turn_id;
       }
     }
   }
@@ -810,9 +1029,21 @@ function readCodexMetaFromMd(
     "permission_file_system_type",
     "permission_network",
     "file_system_sandbox_kind",
+    "thread_id",
+    "root_thread_id",
+    "parent_thread_id",
+    "forked_from_id",
+    "agent_path",
+    "agent_nickname",
+    "history_mode",
+    "session_started_at",
   ] as const) {
     const v = r[k];
     if (isNonEmptyString(v)) out[k] = v;
+  }
+  const threadKind = r["thread_kind"];
+  if (threadKind === "root" || threadKind === "subagent") {
+    out.thread_kind = threadKind;
   }
   for (const k of [
     "sandbox_network_access",
@@ -826,6 +1057,14 @@ function readCodexMetaFromMd(
   if (Array.isArray(roots)) {
     const writableRoots = dedupStrings(roots.filter(isNonEmptyString));
     if (writableRoots.length > 0) out.sandbox_writable_roots = writableRoots;
+  }
+  const agentDepth = r["agent_depth"];
+  if (
+    typeof agentDepth === "number" &&
+    Number.isSafeInteger(agentDepth) &&
+    agentDepth >= 0
+  ) {
+    out.agent_depth = agentDepth;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -1370,14 +1609,44 @@ export async function startCodexExtractor(
           mtime: turn.mtime,
           byte_offset: turn.byte_offset,
         };
+        if (turn.logical_turn_id !== undefined)
+          metadata["logical_turn_id"] = turn.logical_turn_id;
+        if (turn.parent_logical_turn_id !== undefined)
+          metadata["parent_logical_turn_id"] = turn.parent_logical_turn_id;
+        if (turn.occurred_at !== undefined)
+          metadata["occurred_at"] = turn.occurred_at;
+        if (turn.observed_at !== undefined)
+          metadata["observed_at"] = turn.observed_at;
+        if (turn.observation_kind !== undefined)
+          metadata["observation_kind"] = turn.observation_kind;
+        if (turn.initiator !== undefined)
+          metadata["initiator"] = turn.initiator;
         if (turn.had_tool_use) metadata["had_tool_use"] = true;
         if (turn.cwd !== undefined) {
           metadata["cwd"] = turn.cwd;
           metadata["repo_root"] = turn.cwd;
-          metadata["canonical_root"] = await resolveCanonicalRoot(turn.cwd);
+          const canonicalRoot = await resolveCanonicalRoot(turn.cwd);
+          metadata["canonical_root"] = canonicalRoot;
+          metadata["project_key"] = projectKeyForCanonicalRoot(canonicalRoot);
         }
         if (turn.git !== undefined) metadata["git"] = turn.git;
-        if (turn.codex !== undefined) metadata["codex"] = turn.codex;
+        if (turn.codex !== undefined) {
+          metadata["codex"] = turn.codex;
+          for (const key of [
+            "thread_id",
+            "root_thread_id",
+            "parent_thread_id",
+            "forked_from_id",
+            "thread_kind",
+            "agent_path",
+            "agent_depth",
+            "agent_nickname",
+            "history_mode",
+          ] as const) {
+            const value = turn.codex[key];
+            if (value !== undefined) metadata[key] = value;
+          }
+        }
         if (turn.tool_calls !== undefined)
           metadata["tool_calls"] = turn.tool_calls;
         if (turn.tool_call_total !== undefined)

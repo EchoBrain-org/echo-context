@@ -9,7 +9,15 @@ import {
   createExtractorFilesystemPolicy,
   processExtractorCandidate,
 } from "../pipeline.js";
-import { resolveCanonicalRoot } from "../workspace-root.js";
+import {
+  projectKeyForCanonicalRoot,
+  resolveCanonicalRoot,
+} from "../workspace-root.js";
+import {
+  classifyContextInitiator,
+  type ContextInitiator,
+  type ObservationKind,
+} from "../logical-identity.js";
 import { CLAUDE_CODE_CHECKPOINT_NAMESPACE } from "../checkpoint-namespaces.js";
 import {
   assertJsonlReadSnapshotCurrent,
@@ -82,6 +90,16 @@ export interface ClaudeCodeTurn {
   cli_version?: string;
   /** Model id from the assistant message (e.g. "claude-opus-4-7"). */
   model?: string;
+  logical_turn_id?: string;
+  parent_logical_turn_id?: string;
+  occurred_at?: string;
+  observed_at?: string;
+  observation_kind?: ObservationKind;
+  initiator?: ContextInitiator;
+  thread_id?: string;
+  root_thread_id?: string;
+  thread_kind?: "root" | "subagent" | "unknown";
+  agent_id?: string;
 }
 
 /** A text-bearing user line that was discarded because a later user line
@@ -167,6 +185,11 @@ interface ParsedLine {
   permissionMode: string | undefined;
   version: string | undefined;
   model: string | undefined;
+  sessionId: string | undefined;
+  uuid: string | undefined;
+  parentUuid: string | undefined;
+  isSidechain: boolean | undefined;
+  agentId: string | undefined;
   files: string[];
   toolUses: ParsedToolUse[];
   toolResults: ParsedToolResult[];
@@ -289,6 +312,11 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
   const permissionMode = obj["permissionMode"];
   const version = obj["version"];
   const model = msg["model"];
+  const sessionId = obj["sessionId"];
+  const uuid = obj["uuid"];
+  const parentUuid = obj["parentUuid"];
+  const isSidechain = obj["isSidechain"];
+  const agentId = obj["agentId"];
   const isEndTurn = role === "assistant" && msg["stop_reason"] === "end_turn";
   return {
     role,
@@ -303,6 +331,11 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
       : undefined,
     version: isNonEmptyString(version) ? version : undefined,
     model: isNonEmptyString(model) ? model : undefined,
+    sessionId: isNonEmptyString(sessionId) ? sessionId : undefined,
+    uuid: isNonEmptyString(uuid) ? uuid : undefined,
+    parentUuid: isNonEmptyString(parentUuid) ? parentUuid : undefined,
+    isSidechain: typeof isSidechain === "boolean" ? isSidechain : undefined,
+    agentId: isNonEmptyString(agentId) ? agentId : undefined,
     files: ec.files,
     toolUses: ec.toolUses,
     toolResults: ec.toolResults,
@@ -347,6 +380,7 @@ export async function extractClaudeCodeTurns(
   interface PendingCluster {
     userText: string;
     userByteOffset: number;
+    userTimestamp: string;
     timestamp: string;
     assistantTexts: string[];
     assistantLastLineEndOffset: number;
@@ -360,6 +394,12 @@ export async function extractClaudeCodeTurns(
     permissionMode?: string;
     version?: string;
     model?: string;
+    rawSessionId?: string;
+    userUuid?: string;
+    parentUuid?: string;
+    isSidechain?: boolean;
+    agentId?: string;
+    initiator: ContextInitiator;
   }
   let pending: PendingCluster | null = null;
   const droppedUsers: DroppedUserLine[] = [];
@@ -416,6 +456,26 @@ export async function extractClaudeCodeTurns(
       had_tool_use: pending.hadTool,
       byte_offset: pending.assistantLastLineEndOffset,
     };
+    const rootThreadId = pending.rawSessionId ?? session_id;
+    turn.root_thread_id = rootThreadId;
+    turn.thread_id = pending.agentId ?? rootThreadId;
+    turn.thread_kind =
+      pending.isSidechain === true || pending.agentId !== undefined
+        ? "subagent"
+        : pending.isSidechain === false
+          ? "root"
+          : "unknown";
+    if (pending.agentId !== undefined) turn.agent_id = pending.agentId;
+    if (pending.userUuid !== undefined) turn.logical_turn_id = pending.userUuid;
+    if (pending.parentUuid !== undefined)
+      turn.parent_logical_turn_id = pending.parentUuid;
+    turn.occurred_at = pending.userTimestamp;
+    turn.observed_at = pending.timestamp;
+    turn.initiator = pending.initiator;
+    turn.observation_kind =
+      turn.thread_kind === "root" || pending.initiator === "agent"
+        ? "original"
+        : "unknown";
     if (pending.repo_root !== undefined) turn.repo_root = pending.repo_root;
     if (allFiles.length > 0) turn.files_referenced = allFiles;
     const tc = matchToolCalls(pending.toolUses, pending.toolResults);
@@ -488,6 +548,22 @@ export async function extractClaudeCodeTurns(
 
     if (parsed.role === "user") {
       if (firstUserOffset === undefined) firstUserOffset = lineStartOffset;
+      const fallbackInitiator: Exclude<ContextInitiator, "system"> =
+        parsed.isSidechain === true || parsed.agentId !== undefined
+          ? "agent"
+          : "human";
+      const initiator = classifyContextInitiator(parsed.text, fallbackInitiator);
+      // Do not let a system reminder displace the substantive teammate task
+      // that the next assistant message answers.
+      if (
+        pending !== null &&
+        pending.assistantTexts.length === 0 &&
+        pending.initiator !== "system" &&
+        initiator === "system"
+      ) {
+        lineStartOffset = lineEndOffset;
+        continue;
+      }
       // A new text-bearing user line closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
@@ -510,6 +586,7 @@ export async function extractClaudeCodeTurns(
       pending = {
         userText: parsed.text,
         userByteOffset: lineStartOffset,
+        userTimestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         timestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         assistantTexts: [],
         assistantLastLineEndOffset: lineEndOffset,
@@ -518,7 +595,14 @@ export async function extractClaudeCodeTurns(
         toolUses: [...toolUsesBetween, ...parsed.toolUses],
         toolResults: [...toolResultsBetween, ...parsed.toolResults],
         thinking: [...thinkingBetween, ...parsed.thinking],
+        initiator,
       };
+      if (parsed.sessionId !== undefined) pending.rawSessionId = parsed.sessionId;
+      if (parsed.uuid !== undefined) pending.userUuid = parsed.uuid;
+      if (parsed.parentUuid !== undefined) pending.parentUuid = parsed.parentUuid;
+      if (parsed.isSidechain !== undefined)
+        pending.isSidechain = parsed.isSidechain;
+      if (parsed.agentId !== undefined) pending.agentId = parsed.agentId;
       if (currentCwd !== undefined) pending.repo_root = currentCwd;
       if (parsed.gitBranch !== undefined) pending.gitBranch = parsed.gitBranch;
       if (parsed.permissionMode !== undefined)
@@ -1154,13 +1238,32 @@ export async function startClaudeCodeExtractor(
           mtime: turn.mtime,
           byte_offset: turn.byte_offset,
         };
+        if (turn.logical_turn_id !== undefined)
+          metadata["logical_turn_id"] = turn.logical_turn_id;
+        if (turn.parent_logical_turn_id !== undefined)
+          metadata["parent_logical_turn_id"] = turn.parent_logical_turn_id;
+        if (turn.occurred_at !== undefined)
+          metadata["occurred_at"] = turn.occurred_at;
+        if (turn.observed_at !== undefined)
+          metadata["observed_at"] = turn.observed_at;
+        if (turn.observation_kind !== undefined)
+          metadata["observation_kind"] = turn.observation_kind;
+        if (turn.initiator !== undefined)
+          metadata["initiator"] = turn.initiator;
+        if (turn.thread_id !== undefined)
+          metadata["thread_id"] = turn.thread_id;
+        if (turn.root_thread_id !== undefined)
+          metadata["root_thread_id"] = turn.root_thread_id;
+        if (turn.thread_kind !== undefined)
+          metadata["thread_kind"] = turn.thread_kind;
+        if (turn.agent_id !== undefined) metadata["agent_id"] = turn.agent_id;
         if (turn.had_tool_use) metadata["had_tool_use"] = true;
         if (turn.repo_root !== undefined)
           metadata["repo_root"] = turn.repo_root;
         if (turn.repo_root !== undefined) {
-          metadata["canonical_root"] = await resolveCanonicalRoot(
-            turn.repo_root,
-          );
+          const canonicalRoot = await resolveCanonicalRoot(turn.repo_root);
+          metadata["canonical_root"] = canonicalRoot;
+          metadata["project_key"] = projectKeyForCanonicalRoot(canonicalRoot);
         }
         if (turn.files_referenced !== undefined)
           metadata["files_referenced"] = turn.files_referenced;

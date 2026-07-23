@@ -13,7 +13,10 @@ import {
   type CodexExtractorHandle,
 } from '../../src/capture/extractors/codex.js';
 import { CAPTURED_SOURCES } from '../../src/capture/sources.js';
-import { canonicalizePath } from '../../src/capture/workspace-root.js';
+import {
+  canonicalizePath,
+  projectKeyForCanonicalRoot,
+} from '../../src/capture/workspace-root.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
 import { resetAllowlist, restoreFsPaths, snapshotFsPaths } from '../fixtures/allowlist.js';
 import { waitFor, writeJsonl } from '../fixtures/jsonl.js';
@@ -116,8 +119,10 @@ describe('canonical_root capture stamping', () => {
     };
   }
 
-  it('claude_code stamps metadata.canonical_root from the turn cwd', async () => {
+  it('claude_code keeps the observed nested cwd but stamps the repository project root', async () => {
     const repo = await makeRepo('echo-canonical-cc-repo-');
+    const nestedCwd = join(repo, 'packages', 'app');
+    mkdirSync(nestedCwd, { recursive: true });
     const root = tempDir('echo-canonical-cc-home-');
     const projectsPrefix = `${root}/projects/`;
     const projectDir = join(projectsPrefix, 'repo');
@@ -127,16 +132,18 @@ describe('canonical_root capture stamping', () => {
     claudeHandle = await startClaudeCodeExtractor(storage, { projectsPrefix });
 
     writeJsonl(join(projectDir, 'session.jsonl'), [
-      claudeUser(repo, 'Q1', 'u1'),
-      claudeAssistant(repo, 'A1', 'a1'),
-      claudeUser(repo, 'Q2', 'u2'),
+      claudeUser(nestedCwd, 'Q1', 'u1'),
+      claudeAssistant(nestedCwd, 'A1', 'a1'),
+      claudeUser(nestedCwd, 'Q2', 'u2'),
     ]);
     await waitFor(async () => (await storage.count()) >= 1);
 
     const event = (await storage.query({ order: 'asc' }))[0]!;
     const metadata = event.metadata as Record<string, unknown>;
-    expect(metadata['repo_root']).toBe(repo);
-    expect(metadata['canonical_root']).toBe(await canonicalizePath(repo));
+    expect(metadata['repo_root']).toBe(nestedCwd);
+    const canonicalRoot = await canonicalizePath(repo);
+    expect(metadata['canonical_root']).toBe(canonicalRoot);
+    expect(metadata['project_key']).toBe(projectKeyForCanonicalRoot(canonicalRoot));
   });
 
   it('codex stamps metadata.canonical_root from cwd/repo_root', async () => {
@@ -161,6 +168,8 @@ describe('canonical_root capture stamping', () => {
     const metadata = event.metadata as Record<string, unknown>;
     expect(metadata['cwd']).toBe(repo);
     expect(metadata['repo_root']).toBe(repo);
-    expect(metadata['canonical_root']).toBe(await canonicalizePath(repo));
+    const canonicalRoot = await canonicalizePath(repo);
+    expect(metadata['canonical_root']).toBe(canonicalRoot);
+    expect(metadata['project_key']).toBe(projectKeyForCanonicalRoot(canonicalRoot));
   });
 });

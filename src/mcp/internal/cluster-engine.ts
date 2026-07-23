@@ -7,14 +7,15 @@
 //   - `src/mcp/tools/recent-work-context.ts` (deprecated; stays as a
 //     wrapper until the 2026-05-17 follow-up removes the registration)
 //
-// The engine inherits 037's `repo_path` forwarding verbatim: when set, it
-// is normalised once at the engine entry and forwarded as
-// `metadata_match: {repo_root: normalised}` into the storage query. Mirrors
-// the contract that the four retrieval tools agreed on in 037.
+// `repo_path` is normalized once at engine entry and converted to the shared
+// canonical project key used by all retrieval tools.
 
 import { normalizeEvent } from '../../context-adapters/normalization.js';
 import type { NormalizedContextEvent } from '../../normalize/types.js';
-import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
+import {
+  eventStoredBytes,
+  StorageScanBudgetExceededError,
+} from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { noUsefulCluster } from '../../trace/auto-expand.js';
 import { buildRecentWorkContext, rankClusters, rankReasonsFor } from '../../trace/index.js';
@@ -26,7 +27,11 @@ import type {
 } from '../../trace/types.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, TZ_NAIVE_WARNING } from '../util/iso8601.js';
-import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
+import {
+  assertAbsoluteRepoPath,
+  normaliseRepoPath,
+  projectKeyForRepoPath,
+} from '../util/repo-path.js';
 import { WIRE_SHAPE_CAPS } from '../wire-shape/caps.js';
 
 // Cost-safer defaults (item 025): every retrieval today blew the consumer's
@@ -37,7 +42,10 @@ export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 500;
 export const DEFAULT_WINDOW_HOURS = 4;
 export const STORAGE_OVERFETCH = 10;
-export const CLUSTER_MAX_STORAGE_SCAN_WINDOWS = 4;
+export const CLUSTER_MAX_STORAGE_SCAN_WINDOWS = 16;
+export const CLUSTER_STORAGE_PAGE_ROWS = 500;
+export const CLUSTER_MAX_RAW_OBSERVATIONS = 4_000;
+export const CLUSTER_MAX_RAW_STORED_BYTES = 32 * 1024 * 1024;
 
 // V1.5.7 polish (2026-05-09): no-args resume auto-expand. The 4h default
 // is right for "what just happened" but wrong for "where did I leave off
@@ -55,10 +63,10 @@ export interface RecentWorkContextParams {
   limit?: number;
   window_hours?: number;
   format?: ResponseFormat;
-  /** Item 037 / AC4: absolute repo root path. When set, scopes the
-   *  candidate event set to atoms whose `metadata.repo_root` matches —
-   *  cross-source (no source_app gating). Legacy git atoms without
-   *  repo_root metadata are out of scope when this is set. */
+  /** Item 037 / AC4: absolute project root path. When set, scopes the
+   *  candidate set by canonical metadata.project_key, with bounded legacy
+   *  fallback through canonical_root/repo_root. Cross-source; no source_app
+   *  gating. */
   repo_path?: string;
 }
 
@@ -95,6 +103,33 @@ function clampLimit(input: number | undefined): number {
 interface ClusterStoragePage {
   events: CaptureEvent[];
   scanTruncated: boolean;
+  logicalCandidateCount: number;
+  inputTruncationReason?: 'storage_windows' | 'raw_observations' | 'raw_bytes';
+}
+
+function sourceProvider(source: string): string {
+  if (source.includes('/.codex/sessions/')) return 'codex';
+  if (source.includes('/.claude/projects/')) return 'claude_code';
+  return source.split(':', 1)[0] ?? source;
+}
+
+function logicalCandidateKey(
+  event: CaptureEvent,
+  since: string | undefined,
+  until: string | undefined,
+): string | undefined {
+  const metadata = event.metadata;
+  const occurred =
+    typeof metadata?.['occurred_at'] === 'string'
+      ? metadata['occurred_at']
+      : event.timestamp;
+  if (since !== undefined && occurred < since) return undefined;
+  if (until !== undefined && occurred >= until) return undefined;
+  if (metadata?.['observation_kind'] === 'inherited') return undefined;
+  const logicalTurnId = metadata?.['logical_turn_id'];
+  return typeof logicalTurnId === 'string'
+    ? `${sourceProvider(event.source)}\u0000${logicalTurnId}`
+    : `raw\u0000${event.id}`;
 }
 
 async function hydrateClusterMatches(
@@ -108,6 +143,19 @@ async function hydrateClusterMatches(
   return events;
 }
 
+function captureEventStoredBytes(event: CaptureEvent): number {
+  const encodedMetadata =
+    event.metadata === undefined ? null : (JSON.stringify(event.metadata) ?? null);
+  return eventStoredBytes({
+    id: event.id,
+    source: event.source,
+    timestamp: event.timestamp,
+    content: event.content,
+    metadataJson: encodedMetadata,
+    embeddingBytes: (event.embedding?.length ?? 0) * Float32Array.BYTES_PER_ELEMENT,
+  });
+}
+
 /** Continue a descending cluster query across a finite number of sparse
  * descriptor windows. This consumes the storage adapter's lossless
  * `matched_ids + resume_cursor` contract without exposing the hard scan
@@ -119,64 +167,101 @@ async function queryClusterEvents(
 ): Promise<ClusterStoragePage> {
   const events: CaptureEvent[] = [];
   const seen = new Set<string>();
+  const logicalCandidates = new Set<string>();
+  let retainedBytes = 0;
   let before = filter.before;
 
-  const appendUnique = (rows: readonly CaptureEvent[]): void => {
+  const finish = (
+    scanTruncated: boolean,
+    inputTruncationReason?: ClusterStoragePage['inputTruncationReason'],
+  ): ClusterStoragePage => {
+    events.sort(compareCaptureEventsNewestFirst);
+    return {
+      events,
+      scanTruncated,
+      logicalCandidateCount: logicalCandidates.size,
+      ...(inputTruncationReason !== undefined ? { inputTruncationReason } : {}),
+    };
+  };
+
+  const appendUnique = (
+    rows: readonly CaptureEvent[],
+  ): ClusterStoragePage['inputTruncationReason'] => {
     for (const event of rows) {
       if (seen.has(event.id)) continue;
+      if (events.length >= CLUSTER_MAX_RAW_OBSERVATIONS) {
+        return 'raw_observations';
+      }
+      const storedBytes = captureEventStoredBytes(event);
+      if (retainedBytes + storedBytes > CLUSTER_MAX_RAW_STORED_BYTES) {
+        return 'raw_bytes';
+      }
       seen.add(event.id);
       events.push(event);
+      retainedBytes += storedBytes;
+      const logicalKey = logicalCandidateKey(event, filter.since, filter.until);
+      if (logicalKey !== undefined) logicalCandidates.add(logicalKey);
     }
+    return undefined;
   };
 
   for (let window = 0; window < CLUSTER_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
-    const remaining = requested - events.length;
-    if (remaining <= 0) return { events, scanTruncated: false };
+    const remaining = requested - logicalCandidates.size;
+    if (remaining <= 0) {
+      return finish(false);
+    }
+    const pageLimit = Math.min(
+      CLUSTER_STORAGE_PAGE_ROWS,
+      Math.max(remaining, Math.min(requested, 100)),
+    );
     try {
-      appendUnique(await storage.query({ ...filter, before, limit: remaining }));
-      events.sort((left, right) => {
-        if (left.timestamp < right.timestamp) return 1;
-        if (left.timestamp > right.timestamp) return -1;
-        if (left.id < right.id) return 1;
-        if (left.id > right.id) return -1;
-        return 0;
-      });
-      return { events: events.slice(0, requested), scanTruncated: false };
+      const rows = await storage.query({ ...filter, before, limit: pageLimit });
+      const truncationReason = appendUnique(rows);
+      if (truncationReason !== undefined) {
+        const truncated = logicalCandidates.size < requested;
+        return finish(truncated, truncated ? truncationReason : undefined);
+      }
+      if (logicalCandidates.size >= requested || rows.length < pageLimit) {
+        return finish(false);
+      }
+      const last = rows[rows.length - 1];
+      if (last === undefined) break;
+      before = { timestamp: last.timestamp, id: last.id };
     } catch (error) {
       if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      appendUnique(await hydrateClusterMatches(storage, error.matched_ids));
+      const truncationReason = appendUnique(
+        await hydrateClusterMatches(storage, error.matched_ids),
+      );
+      if (truncationReason !== undefined) {
+        const truncated = logicalCandidates.size < requested;
+        return finish(truncated, truncated ? truncationReason : undefined);
+      }
       before = error.resume_cursor;
     }
   }
 
-  events.sort((left, right) => {
-    if (left.timestamp < right.timestamp) return 1;
-    if (left.timestamp > right.timestamp) return -1;
-    if (left.id < right.id) return 1;
-    if (left.id > right.id) return -1;
-    return 0;
-  });
-  return {
-    events: events.slice(0, requested),
-    scanTruncated: events.length < requested,
-  };
+  const truncated = logicalCandidates.size < requested;
+  return finish(truncated, truncated ? 'storage_windows' : undefined);
 }
 
-// Span-driven default for window_hours. When the caller passes an explicit
-// value, that wins. Otherwise: short spans (≤4h) reuse the span exactly so a
-// 1h "what did I just do" query produces a tight 1h cluster cap; longer spans
-// cap at 24h to prevent week-long mega-clusters but still let overnight gaps
-// resolve into a single cluster.
+function compareCaptureEventsNewestFirst(left: CaptureEvent, right: CaptureEvent): number {
+  if (left.timestamp < right.timestamp) return 1;
+  if (left.timestamp > right.timestamp) return -1;
+  if (left.id < right.id) return 1;
+  if (left.id > right.id) return -1;
+  return 0;
+}
+
+// Thread continuity is independent of retrieval lookback. Auto-expanding a
+// candidate window must not silently turn a four-hour work gap into a 24-hour
+// merge gap.
 export function inferWindowHours(
-  sinceMs: number,
-  untilMs: number,
+  _sinceMs: number,
+  _untilMs: number,
   explicit: number | undefined,
 ): number {
   if (explicit !== undefined) return explicit;
-  const spanHours = (untilMs - sinceMs) / 3_600_000;
-  if (!Number.isFinite(spanHours) || spanHours <= 0) return DEFAULT_WINDOW_HOURS;
-  if (spanHours <= 4) return spanHours;
-  return Math.min(spanHours, 24);
+  return DEFAULT_WINDOW_HOURS;
 }
 
 // Single-pass query + trace build. Extracted so the no-args auto-expand
@@ -199,10 +284,11 @@ async function runRecentWorkContextPass(
     withFsExclusion({
       since,
       until,
-      // Item 037 / AC4: cross-source repo scoping. Storage matches
-      // metadata.repo_root by string equality — git atoms without that
-      // metadata are not in the filtered set.
-      ...(normalisedRepoPath !== null ? { metadata_match: { repo_root: normalisedRepoPath } } : {}),
+      // Item 037 / AC4: cross-source canonical project scoping. Storage uses
+      // explicit project_key first, then bounded legacy canonical/root fields.
+      ...(normalisedRepoPath !== null
+        ? { project_key: projectKeyForRepoPath(normalisedRepoPath) }
+        : {}),
     }),
     storageCap,
   );
@@ -228,19 +314,29 @@ async function runRecentWorkContextPass(
   // exactly `limit * STORAGE_OVERFETCH` rows, additional in-window atoms may
   // have been silently dropped at the storage layer; surface a single warning
   // so the consumer can raise `limit` or narrow `(since, until)`.
-  if (events.length === storageCap) {
+  if (storagePage.logicalCandidateCount >= storageCap) {
     response.truncation.truncated = true;
     response.warnings.push(
-      'storage cap hit (events.length === limit * STORAGE_OVERFETCH); ' +
-        'atoms in window may be silently truncated. ' +
+      'storage cap hit (logical candidates >= limit * STORAGE_OVERFETCH); ' +
+        'logical turns in window may be truncated. ' +
         'Raise limit or narrow (since, until) to retain them.',
     );
   }
   if (storagePage.scanTruncated) {
     response.truncation.truncated = true;
-    response.warnings.push(
-      `[STORAGE_SCAN_BUDGET] cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
-    );
+    if (storagePage.inputTruncationReason === 'storage_windows') {
+      response.warnings.push(
+        `[STORAGE_SCAN_BUDGET] cluster input exhausted ${CLUSTER_MAX_STORAGE_SCAN_WINDOWS} bounded storage windows; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
+      );
+    } else {
+      const budget =
+        storagePage.inputTruncationReason === 'raw_bytes'
+          ? `${CLUSTER_MAX_RAW_STORED_BYTES} retained bytes`
+          : `${CLUSTER_MAX_RAW_OBSERVATIONS} raw observations`;
+      response.warnings.push(
+        `[STORAGE_INPUT_BUDGET] cluster input reached its bounded ${budget}; clusters may omit older matching atoms. Narrow since/until/repo scope and retry.`,
+      );
+    }
   }
 
   return response;

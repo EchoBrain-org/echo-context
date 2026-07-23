@@ -16,6 +16,7 @@ import type { NormalizedContextEvent, SourceRef, TimeRef } from '../../normalize
 import type { Cluster, RecentWorkContextResponse, ResponseFormat } from '../../trace/types.js';
 import { getRecentWorkContext, type RecentWorkContextParams } from '../internal/cluster-engine.js';
 import { isoString } from '../util/iso8601.js';
+import { jsonByteLength } from '../wire-shape/bytes.js';
 import { WIRE_SHAPE_CAPS } from '../wire-shape/caps.js';
 
 // Re-export the cluster engine + non-skeleton constants so existing
@@ -90,7 +91,7 @@ export const RECENT_WORK_CONTEXT_DEPRECATION_MARKER =
 export const RECENT_WORK_CONTEXT_DESCRIPTION =
   RECENT_WORK_CONTEXT_DEPRECATION_MARKER +
   "Retrieve clusters of related events from the user's captured ECHO memories — " +
-  'joined by shared artifacts (files, repos, conversations) within a recent time window. ' +
+  'joined by explicit thread lineage or declared work artifacts within a recent time window; broad repo/workspace and generic conversation references are descriptive, not membership. ' +
   'Use when the user asks open-ended questions about recent work across their tools — ' +
   'their own activity, or another agent/app on the same machine ("what is Codex/Claude ' +
   'Code working on?" — answered via `cluster.source_breakdown`, which counts atoms per ' +
@@ -109,16 +110,15 @@ export const RECENT_WORK_CONTEXT_DESCRIPTION =
   'actors/provenance/cluster-edges/open-loop-hint-bodies; typical < 10k chars ' +
   'even on full-day windows; use for low-budget context-pull / "where did I ' +
   'leave off" / resume calls), `format:"minimal"` (default — atom heads with ' +
-  'action.input/output clipped to 500 chars; uncapped sub-collections still ' +
-  'pass through, so realistic claude_code days can exceed the consumer 25k ' +
-  'budget), `format:"full"` (debug — verbatim atom envelopes, only for offline ' +
+  'action.input/output clipped to 500 chars; the deprecated wrapper drops ' +
+  'lowest-ranked whole clusters if needed to stay below its 25k response ' +
+  'ceiling), `format:"full"` (debug — verbatim atom envelopes, only for offline ' +
   'inspection). `limit` may be raised up to MAX_LIMIT=500 for offline/batch ' +
   'consumers but is rarely the right choice for interactive AI-client paths. ' +
-  'Pass `window_hours` to control the maximum temporal ' +
-  'gap between atoms in a single cluster; when omitted it is inferred from the ' +
-  '(since, until) span (equal to span when ≤ 4h, otherwise min(span, 24h)) — for ' +
-  '"where did I leave off after a break" queries, span-equal inference lets a single ' +
-  'cluster bridge an overnight gap. `since` and `until` should always carry an explicit ' +
+  'Pass `window_hours` to explicitly override the maximum temporal ' +
+  'gap between atoms in a single cluster; when omitted it stays fixed at 4h, ' +
+  'independent of retrieval lookback, so a wider query does not silently merge ' +
+  'separate work periods. `since` and `until` should always carry an explicit ' +
   'timezone (`Z` for UTC or `+HH:MM` offset); naive ISO strings are parsed as local ' +
   'server time, which is rarely what an AI client intends. NO-ARGS RESUME: when ' +
   'called with neither `since` nor `until`, the default 4h window auto-expands to ' +
@@ -152,6 +152,7 @@ export const SKELETON_SUMMARY_CAP = WIRE_SHAPE_CAPS.skeleton_summary;
 // emit a `*_omitted` integer field per omission.
 export const SKELETON_CLUSTER_ATOM_IDS_CAP = 50;
 export const SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP = 30;
+export const RECENT_WORK_CONTEXT_RESPONSE_BYTE_CEILING = 25_000;
 
 export interface SkeletonAtom {
   id: NormalizedContextEvent['id'];
@@ -265,6 +266,47 @@ export function buildSkeletonResponse(response: RecentWorkContextResponse): Skel
   };
 }
 
+/** Preserve the deprecated compound tool's established byte ceiling without
+ * weakening truthful topology. Lowest-ranked whole clusters and their atom
+ * bodies leave together, so every retained cluster remains internally
+ * complete and the existing truncation fields continue to describe coverage. */
+export function capRecentWorkContextResponse(
+  response: RecentWorkContextResponse,
+  byteCeiling = RECENT_WORK_CONTEXT_RESPONSE_BYTE_CEILING,
+): RecentWorkContextResponse {
+  if (jsonByteLength(response) < byteCeiling) return response;
+
+  const clusters = [...response.clusters];
+  const atoms = { ...response.atoms };
+  const baseWarnings = [...response.warnings];
+  let droppedClusters = 0;
+
+  const candidate = (): RecentWorkContextResponse => ({
+    ...response,
+    clusters,
+    atoms,
+    truncation: {
+      ...response.truncation,
+      atoms_returned: Object.keys(atoms).length,
+      clusters_returned: clusters.length,
+      truncated: true,
+    },
+    warnings: [
+      ...baseWarnings,
+      `[RECENT_WORK_CONTEXT_RESPONSE_CAP] dropped ${droppedClusters} lowest-ranked whole cluster(s) and their atom bodies to keep the deprecated compound response below ${byteCeiling} UTF-8 bytes; use find_clusters + get_atoms for complete targeted hydration`,
+    ],
+  });
+
+  let shaped = candidate();
+  while (clusters.length > 0 && jsonByteLength(shaped) >= byteCeiling) {
+    const dropped = clusters.pop()!;
+    droppedClusters += 1;
+    for (const id of dropped.atom_ids) delete atoms[id];
+    shaped = candidate();
+  }
+  return shaped;
+}
+
 // outputSchema for get_recent_work_context. Permissive on inner bodies so
 // the agent isn't locked into deep validation while items 016–022 reshape them.
 const recentWorkContextOutputSchema = {
@@ -293,7 +335,7 @@ export function registerRecentWorkContext(server: McpServer, storage: Storage): 
           .string()
           .optional()
           .describe(
-            "Item 037: absolute filesystem path to a repo root. When set, scopes the candidate event set to atoms whose `metadata.repo_root` matches (cross-source). Legacy git atoms without that metadata are out of scope when this is passed; reach them via `source_prefix=git:<path>` on `search_memories` or `echo_resolve_mru(sources=['git'], repo_path=...)` for the two-path OR fallback.",
+            "Absolute filesystem path to a project root. Scopes candidates cross-source by canonical project identity, with legacy canonical_root/repo_root fallback. Legacy git rows lacking all project metadata remain reachable through `source_prefix=git:<path>` or echo_resolve_mru's exact-source fallback.",
           ),
       },
       outputSchema: recentWorkContextOutputSchema,
@@ -314,7 +356,11 @@ export function registerRecentWorkContext(server: McpServer, storage: Storage): 
         throw err;
       }
       const result: RecentWorkContextResponse | SkeletonResponse =
-        params.format === 'skeleton' ? buildSkeletonResponse(full) : full;
+        params.format === 'skeleton'
+          ? buildSkeletonResponse(full)
+          : full.query.format === 'minimal'
+            ? capRecentWorkContextResponse(full)
+            : full;
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
         structuredContent: result as unknown as Record<string, unknown>,

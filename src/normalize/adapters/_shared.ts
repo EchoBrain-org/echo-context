@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto';
 import type { CaptureEvent } from '../../storage/interface.js';
 import { repoArtifact } from '../artifacts.js';
 import { NormalizationError } from '../errors.js';
-import type { ArtifactRef, NormalizedContextEvent, ProvenanceRef } from '../types.js';
+import type {
+  ActorRef,
+  ArtifactRef,
+  NormalizedContextEvent,
+  ProjectRef,
+  ProvenanceRef,
+} from '../types.js';
 
 const TURN_PAIR_RE = /^USER: ([\s\S]*?)\n\nASSISTANT: ([\s\S]*)$/;
 
@@ -105,10 +111,87 @@ export function buildConversation(
   session_id: string,
   turn_index: number | undefined,
   provider: string,
+  metadata?: Record<string, unknown>,
 ): NormalizedContextEvent['conversation'] {
   const conv: NonNullable<NormalizedContextEvent['conversation']> = { provider, session_id };
   if (turn_index !== undefined) conv.turn_index = turn_index;
+  const stringFields = [
+    'logical_turn_id',
+    'parent_logical_turn_id',
+    'thread_id',
+    'root_thread_id',
+    'parent_thread_id',
+    'agent_path',
+  ] as const;
+  for (const field of stringFields) {
+    const value = getString(metadata, field);
+    if (value !== undefined) {
+      (conv as unknown as Record<string, unknown>)[field] = value;
+    }
+  }
+  const threadKind = getString(metadata, 'thread_kind');
+  if (threadKind === 'root' || threadKind === 'subagent' || threadKind === 'unknown') {
+    conv.thread_kind = threadKind;
+  }
+  const initiator = getString(metadata, 'initiator');
+  if (
+    initiator === 'human' ||
+    initiator === 'agent' ||
+    initiator === 'system' ||
+    initiator === 'unknown'
+  ) {
+    conv.initiator = initiator;
+  }
+  const observationKind = getString(metadata, 'observation_kind');
+  if (
+    observationKind === 'original' ||
+    observationKind === 'inherited' ||
+    observationKind === 'unknown'
+  ) {
+    conv.observation_kind = observationKind;
+  }
+  const agentDepth = getNumber(metadata, 'agent_depth');
+  if (agentDepth !== undefined && Number.isInteger(agentDepth) && agentDepth >= 0) {
+    conv.agent_depth = agentDepth;
+  }
+  if (conv.root_thread_id === undefined && conv.thread_kind === 'root') {
+    conv.root_thread_id = conv.thread_id ?? session_id;
+  }
   return conv;
+}
+
+export function buildInitiatorActor(
+  metadata: Record<string, unknown> | undefined,
+): ActorRef {
+  const initiator = getString(metadata, 'initiator');
+  if (
+    initiator === 'agent' ||
+    initiator === 'system' ||
+    initiator === 'unknown'
+  ) {
+    return { role: initiator };
+  }
+  return { role: 'user' };
+}
+
+export function buildProjectRef(
+  metadata: Record<string, unknown> | undefined,
+  observedRoot: string | undefined,
+): ProjectRef | undefined {
+  const canonicalRoot = getString(metadata, 'canonical_root');
+  const explicitKey = getString(metadata, 'project_key');
+  const key =
+    explicitKey ??
+    (canonicalRoot !== undefined
+      ? `local:workspace:${canonicalRoot}`
+      : observedRoot !== undefined
+        ? `local:workspace:${observedRoot}`
+        : undefined);
+  if (key === undefined) return undefined;
+  const project: ProjectRef = { key };
+  if (canonicalRoot !== undefined) project.canonical_root = canonicalRoot;
+  if (observedRoot !== undefined) project.observed_root = observedRoot;
+  return project;
 }
 
 /** Caller passes `origin_url` extracted from its own metadata shape

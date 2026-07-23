@@ -162,6 +162,9 @@ interface JsonlLine {
   };
   uuid: string;
   timestamp: string;
+  parentUuid?: string;
+  isSidechain?: boolean;
+  agentId?: string;
 }
 
 function userText(
@@ -298,6 +301,78 @@ describe("extractClaudeCodeTurns (pure)", () => {
     expect(turns[0]?.assistant_message).toBe(
       "thinking...\n\nI see the issue\n\nhere is the fix",
     );
+  });
+
+  it("keeps a Claude teammate task as the logical turn when a system reminder follows it", async () => {
+    const path = join(dir, "agent-sess.jsonl");
+    const teammate = userText(
+      "root-session",
+      "019f0000-0000-7000-8000-000000000001",
+      '<teammate-message teammate_id="reviewer">Review the topology.</teammate-message>',
+      "2026-04-30T10:00:00.000Z",
+    );
+    teammate.parentUuid = "019effff-ffff-7000-8000-000000000000";
+    teammate.isSidechain = true;
+    teammate.agentId = "reviewer@team";
+    const reminder = userText(
+      "root-session",
+      "019f0000-0001-7000-8000-000000000002",
+      "<system-reminder>Read-only review.</system-reminder>",
+      "2026-04-30T10:00:01.000Z",
+    );
+    reminder.isSidechain = true;
+    reminder.agentId = "reviewer@team";
+    const answer = assistantEndTurn(
+      "root-session",
+      "019f0000-0002-7000-8000-000000000003",
+      "The topology is bounded.",
+      "2026-04-30T10:00:02.000Z",
+    );
+    answer.isSidechain = true;
+    answer.agentId = "reviewer@team";
+    writeJsonlFresh(path, [teammate, reminder, answer]);
+
+    const { turns } = await extractClaudeCodeTurns(path, 0);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      user_message:
+        '<teammate-message teammate_id="reviewer">Review the topology.</teammate-message>',
+      assistant_message: "The topology is bounded.",
+      logical_turn_id: "019f0000-0000-7000-8000-000000000001",
+      parent_logical_turn_id: "019effff-ffff-7000-8000-000000000000",
+      occurred_at: "2026-04-30T10:00:00.000Z",
+      observed_at: "2026-04-30T10:00:02.000Z",
+      root_thread_id: "root-session",
+      thread_id: "reviewer@team",
+      thread_kind: "subagent",
+      agent_id: "reviewer@team",
+      initiator: "agent",
+      observation_kind: "original",
+    });
+  });
+
+  it("does not let a system reminder replace a pending human prompt", async () => {
+    const path = join(dir, "human-reminder.jsonl");
+    writeJsonlFresh(path, [
+      userText("root-session", "human-u1", "Explain the current thread."),
+      userText(
+        "root-session",
+        "system-u1",
+        "<system-reminder>Use concise output.</system-reminder>",
+      ),
+      assistantEndTurn("root-session", "assistant-a1", "It is the topology thread."),
+    ]);
+
+    const { turns } = await extractClaudeCodeTurns(path, 0);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      user_message: "Explain the current thread.",
+      assistant_message: "It is the topology thread.",
+      logical_turn_id: "human-u1",
+      initiator: "human",
+    });
   });
 
   it("returns all turns when reading from offset 0 on a fresh JSONL", async () => {

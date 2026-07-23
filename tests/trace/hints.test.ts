@@ -3,6 +3,39 @@ import { enrichHints } from '../../src/trace/hints.js';
 import { makeAtom } from './fixtures/atoms.js';
 
 describe('enrichHints', () => {
+  it('marks a user question answered in the same turn as resolved', () => {
+    const atom = makeAtom({
+      id: 'answered',
+      app: 'codex',
+      occurred_at: '2026-05-06T08:00:00.000Z',
+      artifacts: [{ provider: 'codex', type: 'conversation', id: 'codex:s1' }],
+      input: 'Is this ready?',
+      output: 'Yes, all checks pass.',
+      hints: ['ends_with_question'],
+    });
+    expect(enrichHints([atom])[0]).toMatchObject({
+      atom_id: 'answered',
+      resolved: true,
+      resolved_by_atom_id: 'answered',
+    });
+  });
+
+  it('does not turn agent-originated prompts into founder open loops', () => {
+    const atom = makeAtom({
+      id: 'agent-task',
+      app: 'codex',
+      occurred_at: '2026-05-06T08:00:00.000Z',
+      artifacts: [],
+      input: 'Review this?',
+      hints: ['ends_with_question'],
+      conversation: {
+        provider: 'codex',
+        session_id: 'child',
+        initiator: 'agent',
+      },
+    });
+    expect(enrichHints([atom])).toEqual([]);
+  });
   it('returns empty array for atoms with no hints', () => {
     const a = makeAtom({
       id: 'evt_a',

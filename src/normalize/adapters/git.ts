@@ -8,9 +8,16 @@ import {
   workspaceArtifact,
 } from '../artifacts.js';
 import type { Adapter, ArtifactRef, ContextRef, NormalizedContextEvent } from '../types.js';
-import { buildProvenance, fail, getNumber, getString, getStringArray } from './_shared.js';
+import {
+  buildProjectRef,
+  buildProvenance,
+  fail,
+  getNumber,
+  getString,
+  getStringArray,
+} from './_shared.js';
 
-export const GIT_VERSION = 'git@1';
+export const GIT_VERSION = 'git@2';
 
 export const GIT_SOURCE_RE = /^git:/;
 
@@ -99,6 +106,8 @@ export const adaptGit: Adapter = (event: CaptureEvent): NormalizedContextEvent =
   };
 
   if (context !== undefined) out.context = context;
+  const project = buildProjectRef(meta, repoRoot);
+  if (project !== undefined) out.project = project;
 
   return out;
 };

@@ -6,20 +6,19 @@ import type { Cluster, Query, RankSignals } from './types.js';
 const RECENT_HOURS = 1;
 const CODE_SESSION_ARTIFACT_TYPES = new Set(['repo', 'file', 'commit']);
 
-// Deprecated for V1+ UI use: `has_open_loop` intentionally preserves the
-// legacy "any hint exists" semantics for compatibility. New UI should consume
-// `has_unresolved_open_loop`, which excludes hints already marked resolved.
+// `has_open_loop` is retained in the internal signal shape for compatibility,
+// but now means an unresolved loop. Resolved hints are evidence, not urgency.
 
 // V1.6 (item 032) — options for the no-args auto-expand demotion path.
 // When `demoteSingleSourceRecent` is true, a new PRIMARY sort key is added
-// BEFORE the existing 5-key chain (hint > openLoop > recent > size >
+// BEFORE the existing 5-key chain (hint > recent > openLoop > size >
 // negMedianAge): single-source-recent clusters sort STRICTLY BELOW all
 // non-single-source-recent clusters. This is a strict partition, not a
 // per-signal nudge — an earlier R1 draft tried to neutralize the `recent`
-// signal alone, but `rank.ts`'s 5-key chain places `hint` + `openLoop`
-// AHEAD of `recent`, so a noise cluster carrying `matches_artifact_hint=1`
-// or `has_open_loop=1` would still outrank prior multi-source work. The
-// strict partition is the structural guarantee the demo bar requires
+// signal alone, but `rank.ts`'s 5-key chain still places `hint` ahead of
+// `recent`, so a noise cluster carrying `matches_artifact_hint=1` could
+// still outrank prior multi-source work. The strict partition is the
+// structural guarantee the demo bar requires
 // (clusters[0] = prior multi-source work whenever prior work exists in
 // 24h). See AC1 + R2-2 in the item 032 spec.
 //
@@ -44,7 +43,6 @@ export function rankReasonsFor(
   const reasons: string[] = [];
   if (signals.recent_activity) reasons.push('recent_activity');
   if (signals.matches_artifact_hint) reasons.push('matches_artifact_hint');
-  if (signals.has_open_loop) reasons.push('has_open_loop');
   if (signals.has_unresolved_open_loop) reasons.push('has_unresolved_open_loop');
   if (signals.code_session_anchor) reasons.push('code_session_anchor');
   if (signals.dense) reasons.push('dense');
@@ -83,7 +81,6 @@ export function signalsFor(
     }
   }
 
-  const hasOpenLoop = cluster.open_loop_hints.length > 0;
   const hasUnresolvedOpenLoop = cluster.open_loop_hints.some((h) => h.resolved === false);
   const hasCodeArtifact = cluster.anchor_artifacts.some((a) =>
     CODE_SESSION_ARTIFACT_TYPES.has(a.type),
@@ -105,7 +102,7 @@ export function signalsFor(
     recent_activity: recent,
     matches_artifact_hint: touchesHint,
     has_unresolved_open_loop: hasUnresolvedOpenLoop,
-    has_open_loop: hasOpenLoop,
+    has_open_loop: hasUnresolvedOpenLoop,
     code_session_anchor: codeSessionAnchor,
     dense,
     cross_tool: crossTool,
@@ -163,7 +160,7 @@ export function rankClusters(
     return {
       singleSourceRecent: partition,
       hint: sig.matches_artifact_hint ? 1 : 0,
-      openLoop: sig.has_open_loop ? 1 : 0,
+      openLoop: sig.has_unresolved_open_loop ? 1 : 0,
       recent: sig.recent_activity ? 1 : 0,
       size: c.atom_ids.length,
       negMedianAge: -median,
@@ -177,8 +174,8 @@ export function rankClusters(
     if (a.singleSourceRecent !== b.singleSourceRecent)
       return a.singleSourceRecent - b.singleSourceRecent;
     if (a.hint !== b.hint) return b.hint - a.hint;
-    if (a.openLoop !== b.openLoop) return b.openLoop - a.openLoop;
     if (a.recent !== b.recent) return b.recent - a.recent;
+    if (a.openLoop !== b.openLoop) return b.openLoop - a.openLoop;
     if (a.size !== b.size) return b.size - a.size;
     if (a.negMedianAge !== b.negMedianAge) return b.negMedianAge - a.negMedianAge;
     if (a.cluster.cluster_id < b.cluster.cluster_id) return -1;

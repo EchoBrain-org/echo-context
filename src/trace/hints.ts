@@ -36,6 +36,8 @@ export function enrichHints(
   const pending: PendingHint[] = [];
   for (let i = 0; i < atoms.length; i++) {
     const atom = atoms[i]!;
+    const initiator = atom.conversation?.initiator;
+    if (initiator === 'agent' || initiator === 'system') continue;
     const hints = atom.open_loop_hints;
     if (hints === undefined || hints.length === 0) continue;
     const input = atom.action.input ?? '';
@@ -101,6 +103,9 @@ function findResolverQ(
   atoms: NormalizedContextEvent[],
   hintIndex: number,
 ): string | undefined {
+  // A turn pair already contains the assistant's answer. If that answer asks
+  // a new question, `unresolved_assistant_q` represents the remaining loop.
+  if ((hintAtom.action.output ?? '').trim().length > 0) return hintAtom.id;
   const conv = conversationArtifactKey(hintAtom);
   if (conv === undefined) return undefined;
   for (let i = hintIndex + 1; i < atoms.length; i++) {

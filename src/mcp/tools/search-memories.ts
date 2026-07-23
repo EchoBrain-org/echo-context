@@ -17,7 +17,11 @@ import {
 } from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, isoString, TZ_NAIVE_WARNING } from '../util/iso8601.js';
-import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
+import {
+  assertAbsoluteRepoPath,
+  normaliseRepoPath,
+  projectKeyForRepoPath,
+} from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { clipString } from '../wire-shape/clip.js';
@@ -126,10 +130,9 @@ export interface SearchResult {
      *  the normalised form lets the caller see what actually filtered
      *  storage (e.g. a trailing-slash input vs. the stored shape). */
     repo_path: string | null;
-    /** Item 038 / AC0: the caller-supplied `metadata_match`, verbatim
-     *  (BEFORE merge with `repo_path`'s implicit `metadata_match.repo_root`).
-     *  Lets the caller verify which metadata-equality keys were forwarded
-     *  to storage. `null` when not passed. */
+    /** Item 038 / AC0: the caller-supplied `metadata_match`, verbatim and
+     *  separate from repo_path's canonical project filter. Lets the caller
+     *  verify which exact metadata-equality keys were forwarded. */
     metadata_match: Record<string, MetadataMatchValue> | null;
   };
   /** V1.5.7 (Gap 6): non-blocking advisories. Mirrors
@@ -155,9 +158,8 @@ export interface SearchMemoriesParams {
   until?: string;
   cursor?: string;
   limit?: number;
-  /** Item 037 / AC3: work-artifact (repo) scoping. Absolute repo root path.
-   *  When set, restricts results to atoms whose `metadata.repo_root` equals
-   *  `normaliseRepoPath(repo_path)`. Joins AND with other filters. */
+  /** Item 037 / AC3: canonical project scoping. Absolute project root path.
+   *  Joins AND with other filters while retaining nested adapter cwd values. */
   repo_path?: string;
   /** Item 038 / AC0: arbitrary metadata-equality predicate. Each key/value
    *  pair AND-joins as `metadata[key] === value`. Allowed keys are the
@@ -610,9 +612,8 @@ export async function searchMemories(
     }
   }
   if (normalisedRepoPath !== null) {
-    // Merge precedence with `repo_path`'s implicit `metadata_match.repo_root`.
-    // Conflict on the `repo_root` key (caller passed both with different
-    // values) → isError. Equal values are silently merged (idempotent).
+    // An explicit repo_root equality predicate must agree with the broader
+    // canonical-project filter. Equal values remain an idempotent AND.
     const requestedRepoRoot = metadata_match?.['repo_root'];
     if (
       requestedRepoRoot !== undefined &&
@@ -622,10 +623,8 @@ export async function searchMemories(
         'search_memories: metadata_match.repo_root conflicts with repo_path; pass one or the other',
       );
     }
-    storageMetadataMatch = {
-      ...(storageMetadataMatch ?? {}),
-      repo_root: normalisedRepoPath,
-    };
+    // Canonical project scoping is applied separately below. Keep an explicit
+    // metadata_match.repo_root only when the caller intentionally supplied it.
   }
 
   let before: { timestamp: string; id: string } | undefined;
@@ -657,6 +656,9 @@ export async function searchMemories(
   if (until !== undefined) filter.until = until;
   if (before !== undefined) filter.before = before;
   if (storageMetadataMatch !== undefined) filter.metadata_match = storageMetadataMatch;
+  if (normalisedRepoPath !== null) {
+    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
+  }
 
   const restrictToCurrentGranolaSignals = requestedGranolaSignals(
     effectiveSource,
@@ -893,7 +895,7 @@ export function registerSearchMemories(server: McpServer, storage: Storage): voi
           .max(4096)
           .optional()
           .describe(
-            'Absolute repo root. AND-filters atoms by capture-side metadata.repo_root. Conflicting metadata_match.repo_root is rejected.',
+            'Absolute project root. AND-filters atoms by canonical project identity; conflicting explicit metadata_match.repo_root is rejected.',
           ),
         metadata_match: z
           .record(

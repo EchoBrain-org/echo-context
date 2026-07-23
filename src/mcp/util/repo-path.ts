@@ -10,16 +10,15 @@
 //     `<tool>: repo_path must be absolute` Error. The MCP envelope handler
 //     converts this to `isError: true` per the consistent error-prefix
 //     pattern across retrieval tools.
-//   - normalization: align caller path shape with the stored
-//     `metadata.repo_root` shape (no trailing slash; structural normalize
-//     only — NO symlink resolution, NO canonicalization). Required because
-//     `metadata_match` is a string-equality predicate against the value the
-//     capture-side wrote (per AC1's contract).
+//   - normalization: derive the canonical project-key shape used by storage
+//     (`local:workspace:<path>`). This is structural normalization only — NO
+//     symlink resolution or filesystem reads. Capture owns canonical-root
+//     resolution before it stamps metadata.project_key.
 //
 import { isAbsolute, normalize as pathNormalize } from 'node:path';
 
-/** Normalize a repository path for exact metadata equality without touching
- * the filesystem or resolving symlinks. */
+/** Normalize a repository path without touching the filesystem or resolving
+ * symlinks. */
 export function normaliseRepoPath(p: string): string {
   const normalized = pathNormalize(p);
   if (
@@ -29,6 +28,10 @@ export function normaliseRepoPath(p: string): string {
     return normalized.slice(0, -1);
   }
   return normalized;
+}
+
+export function projectKeyForRepoPath(p: string): string {
+  return `local:workspace:${normaliseRepoPath(p)}`;
 }
 
 /**

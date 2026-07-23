@@ -9,6 +9,7 @@
 // registry catches up.
 
 export type ArtifactRole = 'work' | 'session' | 'scope' | 'unknown';
+export type ArtifactMembership = 'strong' | 'weak' | 'none';
 
 const TYPE_TO_ROLE: Record<string, ArtifactRole> = {
   // scope — broad context everyone in the cluster shares
@@ -38,4 +39,27 @@ const TYPE_TO_ROLE: Record<string, ArtifactRole> = {
 
 export function roleOf(artifactType: string): ArtifactRole {
   return TYPE_TO_ROLE[artifactType.toLowerCase()] ?? 'unknown';
+}
+
+const STRONG_MEMBERSHIP_TYPES = new Set([
+  'task',
+  'issue',
+  'pr',
+  'email_thread',
+  'meeting',
+  'crm_record',
+  'record',
+  'commit',
+]);
+
+const WEAK_MEMBERSHIP_TYPES = new Set(['file', 'doc', 'branch']);
+
+/** Whether an artifact may shape thread membership. Scope/session artifacts
+ * are descriptive only. Unknown types fail closed until an adapter declares
+ * their topology semantics. */
+export function membershipOf(artifactType: string): ArtifactMembership {
+  const type = artifactType.toLowerCase();
+  if (STRONG_MEMBERSHIP_TYPES.has(type)) return 'strong';
+  if (WEAK_MEMBERSHIP_TYPES.has(type)) return 'weak';
+  return 'none';
 }

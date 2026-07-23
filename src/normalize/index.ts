@@ -24,3 +24,7 @@ export {
   repoArtifact,
 } from './artifacts.js';
 export { createNormalizer, type Normalizer } from './dispatch.js';
+export {
+  projectLogicalTurns,
+  type LogicalTurnProjection,
+} from './logical-turns.js';

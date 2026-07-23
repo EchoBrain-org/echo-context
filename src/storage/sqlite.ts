@@ -589,6 +589,9 @@ export class SqliteStorage implements Storage {
     if (filter?.until !== undefined) {
       assertStorageDescriptorField("query", "timestamp", filter.until);
     }
+    if (filter?.project_key !== undefined) {
+      assertStorageDescriptorField("query", "source", filter.project_key);
+    }
     assertCursorDescriptorFields("query", filter?.before);
     assertCursorDescriptorFields("query", filter?.after);
     const since =
@@ -671,8 +674,8 @@ export class SqliteStorage implements Storage {
       // orders, so the prepared-statement cache below keys cleanly.
       // Note: the cache is keyed on the FULL `sql` text, so each distinct
       // metadata_match key combination produces its own cached prepared
-      // statement. That is fine in practice — the whitelist is tiny (3
-      // keys ⇒ at most 7 non-empty subsets) so the cache size is bounded.
+      // statement. That is fine in practice — the whitelist is deliberately
+      // finite, so the number of possible key combinations remains bounded.
       const matchKeys = Object.keys(filter.metadata_match).sort();
       matchKeys.forEach((key, i) => {
         const placeholder = `__metadata_match_${i}`;
@@ -681,6 +684,20 @@ export class SqliteStorage implements Storage {
         );
         params[placeholder] = filter.metadata_match![key];
       });
+    }
+    if (filter?.project_key !== undefined) {
+      postDescriptorSqlPredicates.push(
+        `(CASE
+           WHEN typeof(json_extract(e.metadata, '$.project_key')) = 'text'
+             THEN json_extract(e.metadata, '$.project_key')
+           WHEN typeof(json_extract(e.metadata, '$.canonical_root')) = 'text'
+             THEN 'local:workspace:' || json_extract(e.metadata, '$.canonical_root')
+           WHEN typeof(json_extract(e.metadata, '$.repo_root')) = 'text'
+             THEN 'local:workspace:' || json_extract(e.metadata, '$.repo_root')
+           ELSE NULL
+         END) = @__project_key`,
+      );
+      params["__project_key"] = filter.project_key;
     }
     if (
       filter?.exclude_metadata_surface !== undefined &&

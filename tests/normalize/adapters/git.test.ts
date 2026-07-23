@@ -60,7 +60,7 @@ describe('git adapter', () => {
     expect(out.conversation).toBeUndefined();
   });
 
-  it('provenance.extractor_version is git@1', () => {
-    expect(out.provenance.extractor_version).toBe('git@1');
+  it('provenance.extractor_version is git@2', () => {
+    expect(out.provenance.extractor_version).toBe('git@2');
   });
 });

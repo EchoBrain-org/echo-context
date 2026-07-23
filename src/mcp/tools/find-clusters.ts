@@ -54,7 +54,7 @@ export const FIND_CLUSTERS_RESPONSE_BYTE_CEILING = 25_000;
 export const PER_CLUSTER_ATOM_IDS_HARD_CAP = 200;
 
 export const FIND_CLUSTERS_DESCRIPTION =
-  'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` controls the maximum gap used to join atoms into one cluster; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
+  'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` explicitly overrides the fixed 4-hour maximum gap used to join atoms; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
   '`view="rich"` is the default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. `format="skeleton"` is compatibility-only and can be omitted. A cluster may contain more than 50 IDs, so call `get_atoms` in chunks of at most 50. The 25,000-byte result budget preserves cluster headers first, then shrinks ID slices before dropping low-ranked clusters. Inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
 
 const formatSchema = z.enum(['skeleton']);
@@ -66,9 +66,9 @@ export interface FindClustersParams {
   window_hours?: number;
   format?: 'skeleton';
   view?: ViewMode;
-  /** Item 037 / AC4: absolute repo root path. Pass-through to the
-   *  underlying `recent_work_context` query; scopes the candidate set
-   *  cross-source by `metadata.repo_root`. Echoed in `query.repo_path`. */
+  /** Item 037 / AC4: absolute project root path. Pass-through to the
+   *  underlying cluster query; scopes the candidate set cross-source by
+   *  canonical project identity. Echoed in `query.repo_path`. */
   repo_path?: string;
 }
 
@@ -104,8 +104,8 @@ export interface FindClustersResult {
     until: string;
     window_hours: number;
     format: 'skeleton';
-    /** Item 037 / AC4: echoes the normalised `repo_path` filter applied
-     *  (cross-source `metadata.repo_root` match). `null` when not passed. */
+    /** Item 037 / AC4: echoes the normalized canonical-project filter.
+     * `null` when not passed. */
     repo_path: string | null;
   };
   clusters: FindClustersCluster[];
@@ -351,7 +351,7 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
           .max(4096)
           .optional()
           .describe(
-            'Absolute repo root. Filters candidate atoms by capture-side metadata.repo_root.',
+            'Absolute project root. Filters candidate atoms by canonical project identity across nested adapter working directories.',
           ),
       },
       outputSchema: findClustersOutputSchema,

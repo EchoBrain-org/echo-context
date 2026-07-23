@@ -72,7 +72,7 @@ describe('rankReasonsFor', () => {
     expect(rankReasonsFor(c, buildAtomMap([a]), q)).toContain('matches_artifact_hint');
   });
 
-  it('fires has_open_loop when cluster has any enriched hints', () => {
+  it('fires only the truthful unresolved open-loop reason', () => {
     const c = makeCluster({
       id: 'ctx_1',
       atom_ids: [],
@@ -86,7 +86,8 @@ describe('rankReasonsFor', () => {
         },
       ],
     });
-    expect(rankReasonsFor(c, new Map(), QUERY)).toContain('has_open_loop');
+    expect(rankReasonsFor(c, new Map(), QUERY)).toContain('has_unresolved_open_loop');
+    expect(rankReasonsFor(c, new Map(), QUERY)).not.toContain('has_open_loop');
   });
 
   it('fires dense when cluster has ≥5 atoms', () => {
@@ -106,7 +107,7 @@ describe('rankReasonsFor', () => {
     expect(rankReasonsFor(c, new Map(), QUERY)).toContain('cross_tool');
   });
 
-  it('keeps legacy has_open_loop true while has_unresolved_open_loop stays false for resolved hints', () => {
+  it('resolved hints do not produce an open-loop signal or rank reason', () => {
     const c = makeCluster({
       id: 'ctx_resolved',
       atom_ids: [],
@@ -130,9 +131,9 @@ describe('rankReasonsFor', () => {
       ],
     });
     const signals = signalsFor(c, new Map(), QUERY);
-    expect(signals.has_open_loop).toBe(true);
+    expect(signals.has_open_loop).toBe(false);
     expect(signals.has_unresolved_open_loop).toBe(false);
-    expect(rankReasonsFor(c, new Map(), QUERY)).toContain('has_open_loop');
+    expect(rankReasonsFor(c, new Map(), QUERY)).not.toContain('has_open_loop');
     expect(rankReasonsFor(c, new Map(), QUERY)).not.toContain('has_unresolved_open_loop');
   });
 

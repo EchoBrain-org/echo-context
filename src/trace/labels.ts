@@ -1,5 +1,6 @@
 import type { ArtifactRef, NormalizedContextEvent } from '../normalize/types.js';
 import { artifactKey } from './cluster.js';
+import { roleOf } from './role.js';
 
 const VERB_MAP: Record<string, string> = {
   message: 'discussion about',
@@ -23,6 +24,8 @@ export function heuristicLabel(
   for (const atom of atoms) {
     const seenInAtom = new Set<string>();
     for (const art of atom.artifacts) {
+      const role = roleOf(art.type);
+      if (role === 'scope' || role === 'session') continue;
       const key = artifactKey(art);
       if (seenInAtom.has(key)) continue;
       seenInAtom.add(key);

@@ -38,8 +38,16 @@ describe('cursor adapter', () => {
     expect(out.context?.ambient?.workspace_id).toBe('ws_demo_hash');
   });
 
-  it('provenance.extractor_version is cursor@1', () => {
-    expect(out.provenance.extractor_version).toBe('cursor@1');
+  it('provenance.extractor_version is cursor@2', () => {
+    expect(out.provenance.extractor_version).toBe('cursor@2');
+  });
+
+  it('treats a composer as an explicit root thread', () => {
+    expect(out.conversation).toMatchObject({
+      thread_id: '3ce99c8c-aaaa-bbbb-cccc-ddddeeeeffff',
+      root_thread_id: '3ce99c8c-aaaa-bbbb-cccc-ddddeeeeffff',
+      thread_kind: 'root',
+    });
   });
 
   it('action input/output split correctly', () => {

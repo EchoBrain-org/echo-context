@@ -153,7 +153,7 @@ describe('buildGraph + connectedComponents', () => {
       occurred_at: '2026-05-06T08:30:00.000Z',
       artifacts: [
         { provider: 'local_fs', type: 'file', id: 'r::a.ts' },
-        { provider: 'claude_code', type: 'conversation', id: 'claude_code:s1' },
+        { provider: 'local_fs', type: 'file', id: 'r::b.ts' },
       ],
     });
     const c = makeAtom({
@@ -161,7 +161,7 @@ describe('buildGraph + connectedComponents', () => {
       app: 'claude_code',
       occurred_at: '2026-05-06T09:00:00.000Z',
       artifacts: [
-        { provider: 'claude_code', type: 'conversation', id: 'claude_code:s1' },
+        { provider: 'local_fs', type: 'file', id: 'r::b.ts' },
       ],
     });
     const g = buildGraph([a, b, c], 4);
@@ -233,7 +233,7 @@ describe('buildGraph + connectedComponents', () => {
     ]);
   });
 
-  it('hard-bounds a dense shared-artifact graph', () => {
+  it('uses a bounded spanning tree for a dense shared-artifact graph', () => {
     const atoms = Array.from({ length: 1_000 }, (_, index) =>
       makeAtom({
         id: `dense-${String(index).padStart(4, '0')}`,
@@ -243,9 +243,10 @@ describe('buildGraph + connectedComponents', () => {
       }),
     );
     const graph = buildGraph(atoms);
-    expect(graph.truncated).toBe(true);
-    expect(graph.edges).toHaveLength(GRAPH_MAX_EDGES);
-    expect(connectedComponents(graph).length).toBeGreaterThan(0);
+    expect(graph.truncated).toBeUndefined();
+    expect(graph.edges).toHaveLength(999);
+    expect(graph.edges.length).toBeLessThan(GRAPH_MAX_EDGES);
+    expect(connectedComponents(graph)).toHaveLength(1);
   });
 });
 
@@ -302,7 +303,7 @@ describe('filterRedundantEdges (V1.5 trace edge-filter)', () => {
     expect(filterRedundantEdges([e])).toEqual([e]);
   });
 
-  it('end-to-end: K_5 sharing only repo+conversation → 0 edges after filter', () => {
+  it('end-to-end: scope/session artifacts never enter membership', () => {
     const specs: AtomSpec[] = [];
     const baseTs = Date.parse('2026-05-06T08:00:00.000Z');
     for (let i = 0; i < 5; i++) {
@@ -318,8 +319,8 @@ describe('filterRedundantEdges (V1.5 trace edge-filter)', () => {
     }
     const atoms = specs.map(makeAtom);
     const g = buildGraph(atoms, 4);
-    // Sanity: K_5 = 10 raw pairwise edges before filtering.
-    expect(g.edges).toHaveLength(10);
+    expect(g.edges).toEqual([]);
+    expect(connectedComponents(g)).toHaveLength(5);
     const filtered = filterRedundantEdges(g.edges);
     expect(filtered).toEqual([]);
   });

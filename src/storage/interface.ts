@@ -99,6 +99,9 @@ export interface QueryFilter {
   // compatibility. The storage layer enforces a whitelist so callers cannot
   // probe arbitrary metadata fields; see METADATA_MATCH_KEY_WHITELIST.
   metadata_match?: Record<string, string>;
+  /** Canonical project identity. Matches metadata.project_key, falling back to
+   * canonical_root and finally legacy repo_root without rewriting raw rows. */
+  project_key?: string;
   // Composite-key cursor pagination boundary: returns rows strictly older than
   // (timestamp, id) under the storage `(timestamp DESC, id DESC)` ordering.
   // Defined for descending queries only — passing `before` together with

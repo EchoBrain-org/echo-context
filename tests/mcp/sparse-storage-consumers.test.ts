@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getRecentWorkContext } from '../../src/mcp/internal/cluster-engine.js';
+import {
+  CLUSTER_MAX_RAW_OBSERVATIONS,
+  CLUSTER_MAX_RAW_STORED_BYTES,
+  CLUSTER_MAX_STORAGE_SCAN_WINDOWS,
+  getRecentWorkContext,
+} from '../../src/mcp/internal/cluster-engine.js';
 import { echoResolveMru } from '../../src/mcp/tools/echo-resolve-mru.js';
 import { waitForNewTurns } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { StorageScanBudgetExceededError } from '../../src/storage/budgets.js';
@@ -129,6 +134,66 @@ describe('bounded sparse-scan MCP consumers', () => {
       until: '2026-05-11T00:00:00.000Z',
     });
     expect(result.warnings.join('\n')).toMatch(/STORAGE_SCAN_BUDGET/);
-    expect(storage.queryCalls).toBe(4);
+    expect(storage.queryCalls).toBe(CLUSTER_MAX_STORAGE_SCAN_WINDOWS);
+  });
+
+  it('cluster discovery caps retained raw observations during an inherited-copy flood', async () => {
+    const storage = new MemoryStorage();
+    for (let index = 0; index <= CLUSTER_MAX_RAW_OBSERVATIONS; index += 1) {
+      await storage.append({
+        source: 'fs:/repo/.codex/sessions/inherited-flood.jsonl',
+        timestamp: '2026-05-09T10:00:00.000Z',
+        content: 'USER: inherited prompt\n\nASSISTANT: inherited response',
+        metadata: {
+          session_id: 'inherited-flood',
+          logical_turn_id: `inherited-${index}`,
+          thread_id: 'fork-thread',
+          root_thread_id: 'root-thread',
+          thread_kind: 'subagent',
+          observation_kind: 'inherited',
+          occurred_at: '2026-05-09T09:00:00.000Z',
+        },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T00:00:00.000Z',
+      until: '2026-05-10T00:00:00.000Z',
+      limit: 500,
+    });
+
+    expect(result.truncation.truncated).toBe(true);
+    expect(result.warnings.join('\n')).toMatch(/STORAGE_INPUT_BUDGET.*raw observations/);
+  });
+
+  it('cluster discovery caps retained raw bytes even when row count is small', async () => {
+    const storage = new MemoryStorage();
+    const content = `USER: ${'x'.repeat(4 * 1024 * 1024 - 16 * 1024)}\n\nASSISTANT: inherited`;
+    const rowsNeeded = Math.ceil(CLUSTER_MAX_RAW_STORED_BYTES / Buffer.byteLength(content)) + 1;
+    for (let index = 0; index < rowsNeeded; index += 1) {
+      await storage.append({
+        source: 'fs:/repo/.codex/sessions/large-inherited-flood.jsonl',
+        timestamp: '2026-05-09T10:00:00.000Z',
+        content,
+        metadata: {
+          session_id: 'large-inherited-flood',
+          logical_turn_id: `large-inherited-${index}`,
+          thread_id: 'large-fork-thread',
+          root_thread_id: 'root-thread',
+          thread_kind: 'subagent',
+          observation_kind: 'inherited',
+          occurred_at: '2026-05-09T09:00:00.000Z',
+        },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T00:00:00.000Z',
+      until: '2026-05-10T00:00:00.000Z',
+      limit: 500,
+    });
+
+    expect(result.truncation.truncated).toBe(true);
+    expect(result.warnings.join('\n')).toMatch(/STORAGE_INPUT_BUDGET.*retained bytes/);
   });
 });

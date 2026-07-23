@@ -68,7 +68,7 @@ describe('heuristicLabel', () => {
       app: 'git',
       occurred_at: '2026-05-06T08:00:00.000Z',
       artifacts: [
-        { provider: 'github', type: 'repo', id: 'gh:foo/bar', label: 'bar' },
+        { provider: 'local_fs', type: 'file', id: 'gh:foo/bar', label: 'bar' },
       ],
       verb: 'commit',
     });
@@ -77,7 +77,7 @@ describe('heuristicLabel', () => {
       app: 'git',
       occurred_at: '2026-05-06T08:30:00.000Z',
       artifacts: [
-        { provider: 'github', type: 'repo', id: 'gh:foo/bar', label: 'bar' },
+        { provider: 'local_fs', type: 'file', id: 'gh:foo/bar', label: 'bar' },
       ],
       verb: 'commit',
     });
@@ -111,14 +111,14 @@ describe('heuristicLabel', () => {
       id: 'evt_a',
       app: 'git',
       occurred_at: '2026-05-06T08:00:00.000Z',
-      artifacts: [{ provider: 'local', type: 'repo', id: 'local:/Users/zhen/echo' }],
+      artifacts: [{ provider: 'local_fs', type: 'file', id: 'local:/Users/zhen/echo' }],
       verb: 'commit',
     });
     const b = makeAtom({
       id: 'evt_b',
       app: 'git',
       occurred_at: '2026-05-06T08:30:00.000Z',
-      artifacts: [{ provider: 'local', type: 'repo', id: 'local:/Users/zhen/echo' }],
+      artifacts: [{ provider: 'local_fs', type: 'file', id: 'local:/Users/zhen/echo' }],
       verb: 'commit',
     });
     expect(heuristicLabel([a, b])).toBe('work on echo');

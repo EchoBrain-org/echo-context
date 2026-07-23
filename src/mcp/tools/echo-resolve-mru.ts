@@ -21,7 +21,11 @@ import { z } from 'zod';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
-import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
+import {
+  assertAbsoluteRepoPath,
+  normaliseRepoPath,
+  projectKeyForRepoPath,
+} from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 
 export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
@@ -118,7 +122,7 @@ async function resolveAppNameEntry(
         storage,
         withFsExclusion({
           source_prefix: prefix,
-          metadata_match: { repo_root: normalisedRepoPath },
+          project_key: projectKeyForRepoPath(normalisedRepoPath),
         }),
         scanState,
       ),
@@ -151,10 +155,10 @@ async function resolveAppNameEntry(
   }
 
   // Default app-name branch (claude_code / codex / cursor-without-repo /
-  // git-without-repo): single prefix query, optional repo_root filter.
+  // git-without-repo): single prefix query, optional canonical-project filter.
   const filter: QueryFilter = withFsExclusion({ source_prefix: prefix });
   if (normalisedRepoPath !== null) {
-    filter.metadata_match = { repo_root: normalisedRepoPath };
+    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
   }
   const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;
@@ -172,7 +176,7 @@ async function resolveLiteralSourceEntry(
 ): Promise<ResolvedSourceDescriptor | null> {
   const filter: QueryFilter = withFsExclusion({ source: literal });
   if (normalisedRepoPath !== null) {
-    filter.metadata_match = { repo_root: normalisedRepoPath };
+    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
   }
   const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;

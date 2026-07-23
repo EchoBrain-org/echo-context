@@ -456,31 +456,31 @@ describe('get_recent_work_context (test-only legacy wrapper harness)', () => {
       return JSON.parse(result.content![0]!.text) as RecentWorkContextResponse;
     }
 
-    it('default behavior on a 24h since/until span uses inferred window_hours = 24, not 4', async () => {
+    it('uses the fixed 4h topology gap even when the retrieval span is 24h', async () => {
       handle = await startMcpServer(store, { port: 0 });
       const r = await callWith({
         since: '2026-05-06T00:00:00.000Z',
         until: '2026-05-07T00:00:00.000Z',
       });
-      expect(r.query.window_hours).toBe(24);
+      expect(r.query.window_hours).toBe(4);
     });
 
-    it('a 1h span infers window_hours = 1 (≤4h branch)', async () => {
+    it('keeps the fixed 4h topology gap when the retrieval span is 1h', async () => {
       handle = await startMcpServer(store, { port: 0 });
       const r = await callWith({
         since: '2026-05-06T05:00:00.000Z',
         until: '2026-05-06T06:00:00.000Z',
       });
-      expect(r.query.window_hours).toBe(1);
+      expect(r.query.window_hours).toBe(4);
     });
 
-    it('a span > 24h still caps inferred window_hours at 24', async () => {
+    it('keeps the fixed 4h topology gap for retrieval spans over 24h', async () => {
       handle = await startMcpServer(store, { port: 0 });
       const r = await callWith({
         since: '2026-05-01T00:00:00.000Z',
         until: '2026-05-07T00:00:00.000Z', // 144h span
       });
-      expect(r.query.window_hours).toBe(24);
+      expect(r.query.window_hours).toBe(4);
     });
 
     it('explicit window_hours wins over inference', async () => {
@@ -667,7 +667,7 @@ describe('item 025: cost-safer defaults + structured output + readOnlyHint', () 
     }
   });
 
-  it('envelope-byte-size: default-args response on a 200-atom fixture is < 25,000 chars', async () => {
+  it('legacy envelope stays below 25,000 bytes after truthful thread splitting', async () => {
     const NOW = '2026-05-08T08:00:00.000Z';
     const SINCE = new Date(Date.parse(NOW) - 4 * 3600_000).toISOString();
     const baseMs = Date.parse(SINCE);
@@ -687,11 +687,30 @@ describe('item 025: cost-safer defaults + structured output + readOnlyHint', () 
       }),
     )) as CallToolResultLike;
     expect(result.isError).toBeFalsy();
-    // Measure the literal payload — what the consumer's tool-result budget pays
-    // for. The text-content envelope is the on-the-wire size that mattered in
-    // dogfooding 2026-05-08 (every retrieval blew the 25k budget pre-fix).
-    const envelopeBytes = result.content![0]!.text.length;
+    // Truthful topology produces five thread headers here instead of the old
+    // false repo-wide component. The deprecated wrapper preserves its existing
+    // ceiling by dropping the lowest-ranked whole cluster + bodies and making
+    // that loss explicit through the existing truncation contract.
+    const envelopeBytes = Buffer.byteLength(result.content![0]!.text, 'utf8');
     expect(envelopeBytes).toBeLessThan(25_000);
+    const parsed = JSON.parse(result.content![0]!.text) as RecentWorkContextResponse;
+    expect(parsed.truncation.truncated).toBe(true);
+    expect(parsed.truncation.atoms_returned).toBe(16);
+    expect(parsed.truncation.clusters_returned).toBe(4);
+    expect(parsed.warnings.join('\n')).toMatch(/RECENT_WORK_CONTEXT_RESPONSE_CAP/);
+
+    // Full is the explicit offline/debug escape hatch and remains unshaped.
+    const fullResult = (await withClient(handle.url, async (c) =>
+      c.callTool({
+        name: 'get_recent_work_context',
+        arguments: { since: SINCE, until: NOW, format: 'full' },
+      }),
+    )) as CallToolResultLike;
+    const fullText = fullResult.content![0]!.text;
+    const fullParsed = JSON.parse(fullText) as RecentWorkContextResponse;
+    expect(Buffer.byteLength(fullText, 'utf8')).toBeGreaterThan(25_000);
+    expect(fullParsed.truncation.atoms_returned).toBe(20);
+    expect(fullParsed.warnings.join('\n')).not.toMatch(/RECENT_WORK_CONTEXT_RESPONSE_CAP/);
   });
 
   it('format: "full" preserves full atom content (regression guard against limit/format coupling)', async () => {
@@ -1314,6 +1333,9 @@ describe('truncation.source_breakdown (item 029)', () => {
       metadata: {
         session_id: session,
         turn_index: turn,
+        thread_id: session,
+        root_thread_id: session,
+        thread_kind: 'root',
         files_referenced: [file],
         // No git_state / repo_root → cluster topology is driven solely by the
         // file artifact. Keeps the three source clusters disjoint without
@@ -1350,6 +1372,9 @@ describe('truncation.source_breakdown (item 029)', () => {
       metadata: {
         session_id: sessionId,
         turn_index: turn,
+        thread_id: sessionId,
+        root_thread_id: sessionId,
+        thread_kind: 'root',
       },
     };
   }

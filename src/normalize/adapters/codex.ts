@@ -9,6 +9,8 @@ import type { Adapter, ArtifactRef, ContextRef, NormalizedContextEvent } from '.
 import {
   buildAssistant,
   buildConversation,
+  buildInitiatorActor,
+  buildProjectRef,
   buildProvenance,
   buildRepoArtifact,
   extractOpenLoopHints,
@@ -21,7 +23,7 @@ import {
   tryParseTurnPair,
 } from './_shared.js';
 
-export const CODEX_VERSION = 'codex@1';
+export const CODEX_VERSION = 'codex@2';
 
 export const CODEX_SOURCE_RE = /^fs:.*\/\.codex\/sessions\/.*\.jsonl$/;
 
@@ -88,16 +90,20 @@ export const adaptCodex: Adapter = (event: CaptureEvent): NormalizedContextEvent
 
   const provider =
     codex !== undefined ? (getString(codex, 'model_provider') ?? 'openai') : 'openai';
+  const observedAt = getString(meta, 'observed_at');
   const out: NormalizedContextEvent = {
     schema_version: 1,
     id: event.id,
-    time: { occurred_at: event.timestamp },
+    time: {
+      occurred_at: getString(meta, 'occurred_at') ?? event.timestamp,
+      ...(observedAt !== undefined ? { observed_at: observedAt } : {}),
+    },
     source: {
       app: 'codex',
       surface: 'jsonl',
       raw_pointer: event.source,
     },
-    actors: [{ role: 'user' }, buildAssistant(model, provider)],
+    actors: [buildInitiatorActor(meta), buildAssistant(model, provider)],
     action: {
       kind: 'message',
       input: pair.user,
@@ -105,10 +111,12 @@ export const adaptCodex: Adapter = (event: CaptureEvent): NormalizedContextEvent
     },
     artifacts,
     provenance: buildProvenance(event, CODEX_VERSION),
-    conversation: buildConversation(session_id, turn_index, 'codex'),
+    conversation: buildConversation(session_id, turn_index, 'codex', meta),
   };
 
   if (context !== undefined) out.context = context;
+  const project = buildProjectRef(meta, repo_root);
+  if (project !== undefined) out.project = project;
   const hints = extractOpenLoopHints(pair.user, pair.assistant);
   if (hints.length > 0) out.open_loop_hints = hints;
 

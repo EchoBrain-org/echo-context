@@ -50,7 +50,78 @@ describe('codex adapter', () => {
     expect(out.context?.ambient?.approval_policy).toBe('on-request');
   });
 
-  it('provenance.extractor_version is codex@1', () => {
-    expect(out.provenance.extractor_version).toBe('codex@1');
+  it('provenance.extractor_version is codex@2', () => {
+    expect(out.provenance.extractor_version).toBe('codex@2');
+  });
+
+  it('normalizes fork lineage, initiator, clocks, and canonical project identity', () => {
+    const event = {
+      ...codexFixture,
+      id: 'evt_codex_lineage',
+      metadata: {
+        ...codexFixture.metadata,
+        logical_turn_id: 'turn-a1',
+        parent_logical_turn_id: 'turn-u1',
+        thread_id: 'child-thread',
+        root_thread_id: 'root-thread',
+        parent_thread_id: 'parent-thread',
+        thread_kind: 'subagent',
+        agent_path: 'reviewer/child',
+        agent_depth: 2,
+        initiator: 'agent',
+        observation_kind: 'original',
+        occurred_at: '2026-05-07T05:40:00.000Z',
+        observed_at: '2026-05-07T05:42:03.649Z',
+        canonical_root: '/Users/dev/Desktop/demo-repo',
+        project_key: 'local:workspace:/Users/dev/Desktop/demo-repo',
+      },
+    };
+    const normalized = normalizeEvent(event);
+    if (normalized === null) throw new Error('expected adapter to match');
+
+    expect(normalized.time).toEqual({
+      occurred_at: '2026-05-07T05:40:00.000Z',
+      observed_at: '2026-05-07T05:42:03.649Z',
+    });
+    expect(normalized.actors[0]).toEqual({ role: 'agent' });
+    expect(normalized.conversation).toMatchObject({
+      logical_turn_id: 'turn-a1',
+      parent_logical_turn_id: 'turn-u1',
+      thread_id: 'child-thread',
+      root_thread_id: 'root-thread',
+      parent_thread_id: 'parent-thread',
+      thread_kind: 'subagent',
+      agent_path: 'reviewer/child',
+      agent_depth: 2,
+      initiator: 'agent',
+      observation_kind: 'original',
+    });
+    expect(normalized.project).toEqual({
+      key: 'local:workspace:/Users/dev/Desktop/demo-repo',
+      canonical_root: '/Users/dev/Desktop/demo-repo',
+      observed_root: '/Users/dev/Desktop/demo-repo',
+    });
+  });
+
+  it('ignores malformed lineage enums and agent depth instead of inventing topology', () => {
+    const event = {
+      ...codexFixture,
+      id: 'evt_codex_malformed_lineage',
+      metadata: {
+        ...codexFixture.metadata,
+        thread_kind: 'forked-ish',
+        initiator: 'robot',
+        observation_kind: 'copied-ish',
+        agent_depth: -1.5,
+      },
+    };
+    const normalized = normalizeEvent(event);
+    if (normalized === null) throw new Error('expected adapter to match');
+
+    expect(normalized.actors[0]).toEqual({ role: 'user' });
+    expect(normalized.conversation).not.toHaveProperty('thread_kind');
+    expect(normalized.conversation).not.toHaveProperty('initiator');
+    expect(normalized.conversation).not.toHaveProperty('observation_kind');
+    expect(normalized.conversation).not.toHaveProperty('agent_depth');
   });
 });

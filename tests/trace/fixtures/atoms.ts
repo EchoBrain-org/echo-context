@@ -1,13 +1,16 @@
 import type {
   ActorRef,
+  ConversationRef,
   NormalizedContextEvent,
   ObservedState,
+  ProjectRef,
 } from '../../../src/normalize/types.js';
 
 export interface AtomSpec {
   id: string;
   app: string;
   occurred_at: string;
+  observed_at?: string;
   artifacts: { provider: string; type: string; id: string; label?: string }[];
   verb?: string;
   kind?: string;
@@ -16,13 +19,18 @@ export interface AtomSpec {
   hints?: string[];
   actors?: ActorRef[];
   state?: ObservedState;
+  conversation?: ConversationRef;
+  project?: ProjectRef;
 }
 
 export function makeAtom(spec: AtomSpec): NormalizedContextEvent {
   const out: NormalizedContextEvent = {
     schema_version: 1,
     id: spec.id,
-    time: { occurred_at: spec.occurred_at },
+    time: {
+      occurred_at: spec.occurred_at,
+      ...(spec.observed_at !== undefined ? { observed_at: spec.observed_at } : {}),
+    },
     source: { app: spec.app, raw_pointer: `fs:fixture/${spec.id}` },
     actors: spec.actors ?? [{ role: 'user' }],
     action: {
@@ -47,5 +55,7 @@ export function makeAtom(spec: AtomSpec): NormalizedContextEvent {
     out.open_loop_hints = spec.hints;
   }
   if (spec.state !== undefined) out.state = spec.state;
+  if (spec.conversation !== undefined) out.conversation = spec.conversation;
+  if (spec.project !== undefined) out.project = spec.project;
   return out;
 }

@@ -11,6 +11,7 @@ export interface NormalizedContextEvent {
   context?: ContextRef;
   state?: ObservedState;
   conversation?: ConversationRef;
+  project?: ProjectRef;
   open_loop_hints?: string[];
   provenance: ProvenanceRef;
   warnings?: string[];
@@ -79,6 +80,22 @@ export interface ConversationRef {
   session_id: string;
   turn_index?: number;
   parent_event_id?: EventId;
+  logical_turn_id?: string;
+  parent_logical_turn_id?: string;
+  thread_id?: string;
+  root_thread_id?: string;
+  parent_thread_id?: string;
+  thread_kind?: 'root' | 'subagent' | 'unknown';
+  agent_path?: string;
+  agent_depth?: number;
+  initiator?: 'human' | 'agent' | 'system' | 'unknown';
+  observation_kind?: 'original' | 'inherited' | 'unknown';
+}
+
+export interface ProjectRef {
+  key: string;
+  canonical_root?: string;
+  observed_root?: string;
 }
 
 export interface ProvenanceRef {
@@ -87,6 +104,7 @@ export interface ProvenanceRef {
   extractor_version: string;
   redacted_fields?: string[];
   parse_warnings?: string[];
+  raw_observation_count?: number;
 }
 
 export type Adapter = (event: CaptureEvent) => NormalizedContextEvent | null;

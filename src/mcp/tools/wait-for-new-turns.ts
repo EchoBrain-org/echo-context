@@ -26,7 +26,11 @@ import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface
 import { canonicalizeTimestamp } from '../../util/timestamp.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import { isoString } from '../util/iso8601.js';
-import { assertAbsoluteRepoPath, normaliseRepoPath } from '../util/repo-path.js';
+import {
+  assertAbsoluteRepoPath,
+  normaliseRepoPath,
+  projectKeyForRepoPath,
+} from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 
 const SCHEMA_VERSION = 1;
@@ -76,13 +80,10 @@ export interface WaitForNewTurnsParams {
   source_prefix?: string;
   since: string;
   timeout?: number;
-  /** Item 037 / AC5: absolute repo root path. When set, every per-source
-   *  poll inherits a `metadata_match: {repo_root: normalize(repo_path)}`
-   *  AND filter, so the long-poll wakes only on new turns in the named
-   *  repo. For `sources` containing `'git'` or a `git:` prefix entry,
-   *  matches `metadata.repo_root` only — legacy git atoms without that
-   *  metadata are out of scope (callers use `source_prefix='git:<path>'`
-   *  on the discovery tools or omit `repo_path` to widen). */
+  /** Item 037 / AC5: absolute project root path. Every per-source poll
+   *  inherits a canonical project-key AND filter, so nested adapter cwd
+   *  values still wake the same project. Legacy rows fall back through
+   *  canonical_root/repo_root when available. */
   repo_path?: string;
 }
 
@@ -214,7 +215,9 @@ async function pollOnce(
     limit: WAIT_PER_POLL_LIMIT_PER_SOURCE,
     // Item 037 / AC5: repo-scoping. AND-joined with the source/prefix
     // filter on each per-source query below.
-    ...(normalisedRepoPath !== null ? { metadata_match: { repo_root: normalisedRepoPath } } : {}),
+    ...(normalisedRepoPath !== null
+      ? { project_key: projectKeyForRepoPath(normalisedRepoPath) }
+      : {}),
   });
   // Fix ⑤: ASC oldest-first per-source fetch — the lossless chaining
   // contract pages from the OLDEST end. (DESC newest-first silently dropped
@@ -524,7 +527,7 @@ export function registerWaitForNewTurns(server: McpServer, storage: Storage): vo
           .max(4096)
           .optional()
           .describe(
-            'Absolute repo root. AND-filters each source query by capture-side metadata.repo_root.',
+            'Absolute project root. AND-filters each source query by canonical project identity.',
           ),
       },
       outputSchema: waitOutputSchema,

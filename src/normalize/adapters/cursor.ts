@@ -11,6 +11,8 @@ import type {
 } from '../types.js';
 import {
   buildConversation,
+  buildInitiatorActor,
+  buildProjectRef,
   buildProvenance,
   extractOpenLoopHints,
   fail,
@@ -21,7 +23,7 @@ import {
   tryParseTurnPair,
 } from './_shared.js';
 
-export const CURSOR_VERSION = 'cursor@1';
+export const CURSOR_VERSION = 'cursor@2';
 
 export const CURSOR_SOURCE_RE = /^fs:.*\/Cursor\/User\/globalStorage\/state\.vscdb$/;
 
@@ -44,6 +46,7 @@ export const adaptCursor: Adapter = (
 
   const turn_index = getNumber(meta, 'turn_index');
   const workspace_id = getString(meta, 'workspace_id');
+  const repo_root = getString(meta, 'repo_root');
   const ctxBlock = getRecord(meta, 'context');
 
   const artifacts: ArtifactRef[] = [conversationArtifact('cursor', composer_id)];
@@ -93,10 +96,7 @@ export const adaptCursor: Adapter = (
       surface: 'composer',
       raw_pointer: event.source,
     },
-    actors: [
-      { role: 'user' },
-      { role: 'assistant', provider: 'cursor' },
-    ],
+    actors: [buildInitiatorActor(meta), { role: 'assistant', provider: 'cursor' }],
     action: {
       kind: 'message',
       input: pair.user,
@@ -104,13 +104,19 @@ export const adaptCursor: Adapter = (
     },
     artifacts,
     provenance: buildProvenance(event, CURSOR_VERSION),
-    conversation: buildConversation(composer_id, turn_index, 'cursor'),
+    conversation: buildConversation(composer_id, turn_index, 'cursor', {
+      ...meta,
+      thread_id: getString(meta, 'thread_id') ?? composer_id,
+      root_thread_id: getString(meta, 'root_thread_id') ?? composer_id,
+      thread_kind: getString(meta, 'thread_kind') ?? 'root',
+    }),
   };
 
   if (context !== undefined) out.context = context;
+  const project = buildProjectRef(meta, repo_root);
+  if (project !== undefined) out.project = project;
   const hints = extractOpenLoopHints(pair.user, pair.assistant);
   if (hints.length > 0) out.open_loop_hints = hints;
 
   return out;
 };
-

@@ -7,6 +7,10 @@ const execFileP = promisify(execFile);
 
 export const GIT_PROBE_TIMEOUT_MS = 1_500;
 
+export function projectKeyForCanonicalRoot(canonicalRoot: string): string {
+  return `local:workspace:${canonicalRoot}`;
+}
+
 const PROJECT_ANCHORS = [
   '.git',
   'package.json',

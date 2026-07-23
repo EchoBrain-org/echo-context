@@ -261,7 +261,6 @@ describe('find_clusters', () => {
     expect(cluster['open_loop_hints']).toBeDefined();
     expect(cluster['rank']).toBe(1);
     expect(cluster['rank_reason']).toEqual([
-      'has_open_loop',
       'has_unresolved_open_loop',
       'code_session_anchor',
     ]);
@@ -292,7 +291,7 @@ describe('find_clusters', () => {
     expect(clipped!.open_loop_hints_omitted).toBe(5);
   });
 
-  it('view="compact" emits UUID fallback labels as null while rich preserves them', async () => {
+  it('does not invent labels from opaque conversation UUIDs', async () => {
     const store = new MemoryStorage();
     const sessionId = '11111111-2222-3333-4444-555555555555';
     for (let i = 0; i < 2; i++) {
@@ -314,8 +313,8 @@ describe('find_clusters', () => {
     const rich = await findClusters(store, { ...params, view: 'rich' });
     const compact = await findClusters(store, { ...params, view: 'compact' });
 
-    expect(rich.clusters[0]!.label).toBe(`discussion about ${sessionId}`);
-    expect((compact.clusters[0] as unknown as Record<string, unknown>)['label']).toBeNull();
+    expect(rich.clusters[0]!.label).toBeUndefined();
+    expect((compact.clusters[0] as unknown as Record<string, unknown>)['label']).toBeUndefined();
   });
 
   it('per-cluster atom_ids hard cap fires only when cluster size exceeds PER_CLUSTER_ATOM_IDS_HARD_CAP (safety net, not routine)', async () => {

@@ -9,8 +9,9 @@
 //       edge — the repo artifact is scope-role and filtered from visible edges);
 //   (2) derived file artifacts for the same relative path across tools share
 //       the same canonical repo-id prefix (artifact-key equality);
-//   (3) the identity is MACHINE-INDEPENDENT: same remote, different local path
-//       / OS (POSIX vs Windows) still resolves to the same repo id and joins.
+//   (3) the artifact identity is MACHINE-INDEPENDENT, while local project
+//       identity still prevents two distinct checkouts from becoming one
+//       active-work thread merely because they share a remote.
 //
 // Boundaries (deliberately NOT asserted as failures): a repo with NO remote
 // may fall back to a local, same-machine-only identity.
@@ -195,7 +196,7 @@ describe('R1 — cross-adapter repo identity (shared remote → one identity)', 
     expect(fileKeys[0]).toContain(`${CANONICAL_REPO_ID}::${SHARED_REL}`);
   });
 
-  it('machine independence: same remote, different local roots / OS still resolve to one identity and join', () => {
+  it('keeps remote artifact identity machine-independent without merging distinct local projects', () => {
     // Same remote, but the three sessions live on different checkouts: a POSIX
     // path and a Windows path. Identity must follow the REMOTE, not the local
     // path, so all atoms resolve to the same repo id and land in one component.
@@ -226,11 +227,16 @@ describe('R1 — cross-adapter repo identity (shared remote → one identity)', 
     const ids = atoms.map((a) => repoArtifactOf(a).id);
     expect(new Set(ids)).toEqual(new Set([CANONICAL_REPO_ID]));
 
-    // And they still cluster together into one component.
+    // Project partitioning is stricter than repo artifact identity: the POSIX
+    // checkout stays together, while the Windows checkout is a distinct local
+    // project and therefore remains a separate active-work component.
     const components = connectedComponents(buildGraph(atoms, 4));
-    expect(components).toHaveLength(1);
-    expect(new Set(components[0]!.atom_ids)).toEqual(
-      new Set(['evt_cc_repoid', 'evt_git_repoid', 'evt_codex_windows']),
+    expect(components).toHaveLength(2);
+    expect(components.map((component) => new Set(component.atom_ids))).toEqual(
+      expect.arrayContaining([
+        new Set(['evt_cc_repoid', 'evt_git_repoid']),
+        new Set(['evt_codex_windows']),
+      ]),
     );
   });
 });
