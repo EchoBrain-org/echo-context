@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CAPTURED_SOURCES } from "../../../src/capture/sources.js";
 import { occurredAtFromUuidV7 } from "../../../src/capture/logical-identity.js";
+import { normalizeEvent } from "../../../src/context-adapters/normalization.js";
 import {
   extractCodexTurns,
   startCodexExtractor,
@@ -20,6 +21,7 @@ import {
   JsonlSourceChangedError,
   MAX_JSONL_READ_BYTES,
 } from "../../../src/capture/extractors/_shared.js";
+import { projectLogicalTurns } from "../../../src/normalize/logical-turns.js";
 import type { CaptureEvent, EventId } from "../../../src/storage/interface.js";
 import { MemoryStorage } from "../../../src/storage/memory.js";
 import {
@@ -923,6 +925,64 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
+  it("fails contradictory user and assistant turn ids closed", async () => {
+    const userId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const assistantId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("conflicting identity", "2026-07-22T18:44:15.000Z", userId),
+      assistantMsg(
+        "must remain physical",
+        "2026-07-22T18:44:16.000Z",
+        assistantId,
+      ),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).not.toHaveProperty("logical_turn_id");
+    expect(result.turns[0]).toMatchObject({
+      occurred_at: "2026-07-22T18:44:15.000Z",
+      observation_kind: "unknown",
+    });
+  });
+
+  it("fails contradictory direct and passthrough ids within one record closed", async () => {
+    const directId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const nestedId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta(),
+      {
+        timestamp: "2026-07-22T18:44:15.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "conflicting payload" }],
+          turn_id: directId,
+          internal_chat_message_metadata_passthrough: { turn_id: nestedId },
+        },
+      },
+      assistantMsg(
+        "must remain physical",
+        "2026-07-22T18:44:16.000Z",
+        directId,
+      ),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).not.toHaveProperty("logical_turn_id");
+    expect(result.turns[0]).toMatchObject({
+      occurred_at: "2026-07-22T18:44:15.000Z",
+      observation_kind: "unknown",
+    });
+  });
+
   it("keeps an inter-agent trigger durable across an interposed config line and restart", async () => {
     const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
     const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
@@ -1380,6 +1440,109 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.source).toBe(`fs:${path}`);
     expect(events[0]!.content).toBe("USER: q1\n\nASSISTANT: a1");
+  });
+
+  it("keeps conflicting ids separate from the genuine turn they resemble after projection", async () => {
+    const conflictingUserId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const genuineId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg(
+        "conflicting identity",
+        "2026-07-22T18:44:15.000Z",
+        conflictingUserId,
+      ),
+      assistantMsg(
+        "same assistant id as the next genuine turn",
+        "2026-07-22T18:44:16.000Z",
+        genuineId,
+      ),
+      userMsg("genuine turn", "2026-07-22T18:45:15.000Z", genuineId),
+      assistantMsg("genuine answer", "2026-07-22T18:45:16.000Z", genuineId),
+      taskComplete("2026-07-22T18:45:17.000Z"),
+    ]);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+
+    const events = await storage.query({ source: `fs:${path}`, order: "asc" });
+    const atoms = events.map((event) => {
+      const atom = normalizeEvent(event);
+      if (atom === null) throw new Error("expected Codex event to normalize");
+      return atom;
+    });
+    const projected = projectLogicalTurns(atoms);
+
+    expect(events).toHaveLength(2);
+    expect(events[0]?.metadata).not.toHaveProperty("logical_turn_id");
+    expect(events[0]?.metadata?.["observation_kind"]).toBe("unknown");
+    expect(events[1]?.metadata?.["logical_turn_id"]).toBe(genuineId);
+    expect(projected.atoms).toHaveLength(2);
+    expect(projected.collapsed_observation_count).toBe(0);
+  });
+
+  it("does not group blank or malformed captured ids", async () => {
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("blank id", "2026-07-22T18:44:15.000Z", ""),
+      assistantMsg("blank answer", "2026-07-22T18:44:16.000Z", ""),
+      userMsg("whitespace id", "2026-07-22T18:45:15.000Z", "   "),
+      assistantMsg("whitespace answer", "2026-07-22T18:45:16.000Z", "   "),
+      userMsg("malformed id", "2026-07-22T18:46:15.000Z", "not-a-uuid"),
+      assistantMsg(
+        "malformed answer",
+        "2026-07-22T18:46:16.000Z",
+        "not-a-uuid",
+      ),
+      taskComplete("2026-07-22T18:46:17.000Z"),
+    ]);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+
+    const events = await storage.query({ source: `fs:${path}`, order: "asc" });
+    const atoms = events.map((event) => {
+      const atom = normalizeEvent(event);
+      if (atom === null) throw new Error("expected Codex event to normalize");
+      return atom;
+    });
+    const projected = projectLogicalTurns(atoms);
+
+    expect(events).toHaveLength(3);
+    expect(
+      events.every(
+        (event) => event.metadata?.["logical_turn_id"] === undefined,
+      ),
+    ).toBe(true);
+    expect(projected.atoms).toHaveLength(3);
+    expect(projected.collapsed_observation_count).toBe(0);
+  });
+
+  it("projects mixed-offset observation clocks by instant", async () => {
+    const logicalId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("earlier instant", "2026-07-22T23:29:00+09:00", logicalId),
+      assistantMsg("earlier answer", "2026-07-22T23:30:00+09:00", logicalId),
+      userMsg("later instant", "2026-07-22T14:59:00Z", logicalId),
+      assistantMsg("later answer", "2026-07-22T15:00:00Z", logicalId),
+      taskComplete("2026-07-22T15:01:00Z"),
+    ]);
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+
+    const events = await storage.query({ source: `fs:${path}`, order: "asc" });
+    const atoms = events.map((event) => {
+      const atom = normalizeEvent(event);
+      if (atom === null) throw new Error("expected Codex event to normalize");
+      return atom;
+    });
+    const projected = projectLogicalTurns(atoms);
+
+    expect(projected.atoms).toHaveLength(1);
+    expect(projected.atoms[0]?.action.input).toBe("earlier instant");
+    expect(projected.atoms[0]?.time.observed_at).toBe("2026-07-22T15:00:00Z");
   });
 
   it("preserves an oversized multi-line cluster exactly across a crash and restart", async () => {

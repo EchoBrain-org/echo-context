@@ -94,4 +94,64 @@ describe('projectLogicalTurns', () => {
     ]);
     expect(projected.logical_turn_count).toBe(2);
   });
+
+  it('does not group blank, whitespace, control-bearing, or oversized ids', () => {
+    const malformedIds = ['', '   ', 'bad id', `bad\u0000id`, 'x'.repeat(513)];
+    const projected = projectLogicalTurns(
+      malformedIds.map((logicalTurnId, index) =>
+        observation({
+          id: `malformed-${index}`,
+          logicalTurnId,
+          kind: 'original',
+        }),
+      ),
+    );
+
+    expect(projected.logical_turn_count).toBe(malformedIds.length);
+    expect(projected.collapsed_observation_count).toBe(0);
+  });
+
+  it('does not collapse an unknown observation with a genuine logical group', () => {
+    const projected = projectLogicalTurns([
+      observation({
+        id: 'original',
+        logicalTurnId: 'turn-1',
+        kind: 'original',
+      }),
+      observation({
+        id: 'inherited',
+        logicalTurnId: 'turn-1',
+        kind: 'inherited',
+      }),
+      observation({
+        id: 'contradictory',
+        logicalTurnId: 'turn-1',
+        kind: 'unknown',
+      }),
+    ]);
+
+    expect(projected.atoms.map((atom) => atom.id).sort()).toEqual(['contradictory', 'original']);
+    expect(projected.collapsed_observation_count).toBe(1);
+  });
+
+  it('compares representative and latest observation clocks by instant across offsets', () => {
+    const projected = projectLogicalTurns([
+      observation({
+        id: 'later',
+        logicalTurnId: 'turn-offset',
+        kind: 'inherited',
+        observedAt: '2026-07-22T15:00:00Z',
+      }),
+      observation({
+        id: 'earlier',
+        logicalTurnId: 'turn-offset',
+        kind: 'inherited',
+        observedAt: '2026-07-22T23:30:00+09:00',
+      }),
+    ]);
+
+    expect(projected.atoms).toHaveLength(1);
+    expect(projected.atoms[0]?.id).toBe('earlier');
+    expect(projected.atoms[0]?.time.observed_at).toBe('2026-07-22T15:00:00Z');
+  });
 });

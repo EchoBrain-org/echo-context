@@ -113,6 +113,49 @@ interface CandidateWindow {
   untilMs?: number;
 }
 
+const LOCAL_WORKSPACE_PROJECT_PREFIX = 'local:workspace:';
+
+/** A repo-scoped storage query deliberately admits pre-project-identity rows
+ * through their legacy repo_root. Normalize only those admitted legacy rows
+ * onto the query's authoritative local-workspace identity before adapters run.
+ * This keeps nested historical working directories in one project partition
+ * while preserving the actually observed root for provenance. Rows carrying
+ * either explicit identity field remain authoritative and are never changed. */
+function normalizeLegacyProjectObservation(
+  event: CaptureEvent,
+  projectKey: string | undefined,
+): CaptureEvent {
+  if (
+    projectKey === undefined ||
+    !projectKey.startsWith(LOCAL_WORKSPACE_PROJECT_PREFIX)
+  ) {
+    return event;
+  }
+  const canonicalRoot = projectKey.slice(LOCAL_WORKSPACE_PROJECT_PREFIX.length);
+  if (canonicalRoot.length === 0) return event;
+
+  const metadata = event.metadata;
+  if (
+    metadata === undefined ||
+    Object.prototype.hasOwnProperty.call(metadata, 'project_key') ||
+    Object.prototype.hasOwnProperty.call(metadata, 'canonical_root')
+  ) {
+    return event;
+  }
+  const observedRoot = metadata['repo_root'];
+  if (typeof observedRoot !== 'string') return event;
+
+  return {
+    ...event,
+    metadata: {
+      ...metadata,
+      project_key: projectKey,
+      canonical_root: canonicalRoot,
+      observed_root: observedRoot,
+    },
+  };
+}
+
 function logicalCandidateKey(
   event: CaptureEvent,
   window: CandidateWindow,
@@ -249,8 +292,18 @@ async function queryClusterEvents(
     ...(filter.since !== undefined ? { sinceMs: Date.parse(filter.since) } : {}),
     ...(filter.until !== undefined ? { untilMs: Date.parse(filter.until) } : {}),
   };
+  // CaptureEvent.timestamp orders physical observations. The public window is
+  // defined over normalized occurrence time, so forwarding either bound to
+  // storage would silently drop delayed observations before normalization.
+  // Walk the observation ledger newest-first without temporal predicates;
+  // the finite window/count/byte budgets below keep this scan bounded and
+  // surface an explicit partial-coverage warning when it cannot exhaust the
+  // relevant storage scope.
+  const storageFilter: QueryFilter = { ...filter };
+  delete storageFilter.since;
+  delete storageFilter.until;
   let retainedBytes = 0;
-  let before = filter.before;
+  let before = storageFilter.before;
   let byteSafePageRows = CLUSTER_STORAGE_PAGE_ROWS;
 
   const finish = (
@@ -269,11 +322,15 @@ async function queryClusterEvents(
   const appendUnique = (
     rows: readonly CaptureEvent[],
   ): ClusterStoragePage['inputTruncationReason'] => {
-    for (const event of rows) {
-      if (seen.has(event.id)) continue;
+    for (const storedEvent of rows) {
+      if (seen.has(storedEvent.id)) continue;
       if (events.length >= CLUSTER_MAX_RAW_OBSERVATIONS) {
         return 'raw_observations';
       }
+      const event = normalizeLegacyProjectObservation(
+        storedEvent,
+        storageFilter.project_key,
+      );
       const storedBytes = captureEventStoredBytes(event);
       if (retainedBytes + storedBytes > CLUSTER_MAX_RAW_STORED_BYTES) {
         return 'raw_bytes';
@@ -298,7 +355,7 @@ async function queryClusterEvents(
       Math.max(remaining, Math.min(requested, 100)),
     );
     try {
-      const page = await queryClusterPage(storage, { ...filter, before }, pageLimit);
+      const page = await queryClusterPage(storage, { ...storageFilter, before }, pageLimit);
       byteSafePageRows = Math.min(byteSafePageRows, page.rowLimit);
       const rows = page.rows;
       const truncationReason = appendUnique(rows);

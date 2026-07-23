@@ -1,6 +1,10 @@
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export function isValidCodexLogicalTurnId(value: unknown): value is string {
+  return typeof value === 'string' && UUID_V7_RE.test(value);
+}
+
 /** Recover the millisecond creation time encoded in a UUIDv7 identifier.
  *
  * Codex preserves its UUIDv7 turn id when it copies parent history into a
@@ -9,7 +13,7 @@ const UUID_V7_RE =
  * the original observation and every inherited copy.
  */
 export function occurredAtFromUuidV7(id: string | undefined): string | undefined {
-  if (id === undefined || !UUID_V7_RE.test(id)) return undefined;
+  if (!isValidCodexLogicalTurnId(id)) return undefined;
   const millis = Number.parseInt(id.replaceAll('-', '').slice(0, 12), 16);
   if (!Number.isSafeInteger(millis)) return undefined;
   const date = new Date(millis);
@@ -51,7 +55,16 @@ export function classifyCodexObservation(input: {
   userTurnId: string | undefined;
   assistantTurnId: string | undefined;
   localTrigger: boolean;
+  logicalIdentityConflict?: boolean;
 }): ObservationKind {
+  if (
+    input.logicalIdentityConflict === true ||
+    (input.userTurnId !== undefined &&
+      input.assistantTurnId !== undefined &&
+      input.userTurnId !== input.assistantTurnId)
+  ) {
+    return 'unknown';
+  }
   if (input.threadKind === 'root') return 'original';
   if (input.threadKind !== 'subagent') return 'unknown';
   if (input.localTrigger) return 'original';

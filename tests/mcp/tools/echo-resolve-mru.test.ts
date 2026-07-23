@@ -69,6 +69,80 @@ function ev(
     : { source, timestamp, content };
 }
 
+describe('echoResolveMru — logical-observation freshness', () => {
+  it('does not let a newer inherited copy beat genuine work', async () => {
+    const store = new MemoryStorage();
+    const genuineSource = `${CODEX_PREFIX}genuine.jsonl`;
+    const forkSource = `${CODEX_PREFIX}fork.jsonl`;
+    await store.append(
+      ev(genuineSource, ts(10), 'genuine local turn', {
+        logical_turn_id: 'local-turn',
+        occurred_at: ts(10),
+        observed_at: ts(10),
+        observation_kind: 'original',
+      }),
+    );
+    await store.append(
+      ev(forkSource, ts(20), 'copied parent turn', {
+        logical_turn_id: 'parent-turn',
+        occurred_at: ts(0),
+        observed_at: ts(20),
+        observation_kind: 'inherited',
+      }),
+    );
+
+    const result = await echoResolveMru(store, { sources: ['codex'] });
+
+    expect(result.sources['codex']?.source).toBe(genuineSource);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('continues a bounded MRU scan past an inherited-copy burst', async () => {
+    const store = new MemoryStorage();
+    const genuineSource = `${CODEX_PREFIX}genuine-behind-burst.jsonl`;
+    await store.append(
+      ev(genuineSource, ts(0), 'genuine local turn', {
+        observation_kind: 'original',
+      }),
+    );
+    for (let minute = 1; minute <= 9; minute += 1) {
+      await store.append(
+        ev(`${CODEX_PREFIX}fork-${minute}.jsonl`, ts(minute), `copy ${minute}`, {
+          logical_turn_id: `parent-${minute}`,
+          occurred_at: ts(0),
+          observed_at: ts(minute),
+          observation_kind: 'inherited',
+        }),
+      );
+    }
+
+    const result = await echoResolveMru(store, { sources: ['codex'] });
+
+    expect(result.sources['codex']?.source).toBe(genuineSource);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps unknown observations eligible for legacy compatibility', async () => {
+    const store = new MemoryStorage();
+    const originalSource = `${CODEX_PREFIX}original.jsonl`;
+    const unknownSource = `${CODEX_PREFIX}legacy-unknown.jsonl`;
+    await store.append(
+      ev(originalSource, ts(0), 'known original', {
+        observation_kind: 'original',
+      }),
+    );
+    await store.append(
+      ev(unknownSource, ts(10), 'legacy-compatible unknown', {
+        observation_kind: 'unknown',
+      }),
+    );
+
+    const result = await echoResolveMru(store, { sources: ['codex'] });
+
+    expect(result.sources['codex']?.source).toBe(unknownSource);
+  });
+});
+
 describe('echoResolveMru — matrix: each source_app, with/without repo_path', () => {
   it('claude_code without repo_path returns the newest cc source globally', async () => {
     const store = new MemoryStorage();

@@ -19,7 +19,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
-import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
+import {
+  StorageBudgetExceededError,
+  StorageScanBudgetExceededError,
+} from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import {
   assertAbsoluteRepoPath,
@@ -30,6 +33,7 @@ import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/so
 
 export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
 export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
+const ECHO_RESOLVE_MRU_CANDIDATES_PER_WINDOW = 8;
 
 export const ECHO_RESOLVE_MRU_DESCRIPTION =
   'Resolve each requested app or exact source to one most-recently-active exact source; no bodies are fetched. App names (`cursor`, `claude_code`, `codex`, `git`, `granola`) search across that app, while other strings are exact-source lookups. Optional `repo_path` restricts eligible activity. Each non-null result is a `search_memories` descriptor: pass its `source` and spread its `filter`. This tool selects one newest source; use `wait_for_new_turns` when you need to watch all sessions for an app.';
@@ -68,18 +72,62 @@ interface ScanState {
   truncated: boolean;
 }
 
-async function hydrateFirstMatch(
+/** Only a row explicitly classified as inherited is ineligible MRU activity.
+ * Missing, `unknown`, and malformed markers remain eligible so historical
+ * rows captured before observation metadata existed retain their previous
+ * behavior. Eligible rows continue to rank by their stored event timestamp;
+ * that is the physical observation clock this raw-storage resolver has always
+ * exposed, while excluding inherited copies prevents that clock from making
+ * old logical work look newly active. */
+function isMruEligibleObservation(event: CaptureEvent): boolean {
+  return event.metadata?.['observation_kind'] !== 'inherited';
+}
+
+async function hydrateFirstEligibleMatch(
   storage: Storage,
   ids: readonly string[],
 ): Promise<CaptureEvent | null> {
-  // A limit=1 query normally cannot exhaust after admitting a match, but
-  // preserve the storage continuation contract for injected/alternate
-  // adapters without exceeding getByIds' hard request cap.
-  for (let offset = 0; offset < ids.length; offset += 100) {
-    const rows = await storage.getByIds(ids.slice(offset, offset + 100));
-    if (rows.length > 0) return rows[0]!;
+  // Hydrate one-at-a-time in the storage-provided order. Sparse descriptor
+  // matches are exceptional, and this keeps each payload request byte-safe
+  // while allowing inherited copies to be skipped without reordering MRU.
+  for (const id of ids) {
+    const [row] = await storage.getByIds([id]);
+    if (row !== undefined && isMruEligibleObservation(row)) return row;
   }
   return null;
+}
+
+interface MruCandidatePage {
+  rows: CaptureEvent[];
+  rowLimit: number;
+}
+
+/** Fetch a small descending candidate page. Raising the raw page above one
+ * lets a bounded resolver step over a short inherited-copy burst. SQLite's
+ * byte budget remains authoritative: halve the same page at the same cursor
+ * when the requested payload set is too large. */
+async function queryMruCandidatePage(
+  storage: Storage,
+  filter: QueryFilter,
+  before: QueryFilter['before'],
+  rowLimit = ECHO_RESOLVE_MRU_CANDIDATES_PER_WINDOW,
+): Promise<MruCandidatePage> {
+  try {
+    return {
+      rows: await storage.query({ ...filter, before, limit: rowLimit }),
+      rowLimit,
+    };
+  } catch (error) {
+    if (
+      error instanceof StorageBudgetExceededError &&
+      error.code === 'request_too_large' &&
+      error.operation === 'query' &&
+      rowLimit > 1
+    ) {
+      return queryMruCandidatePage(storage, filter, before, Math.max(1, Math.floor(rowLimit / 2)));
+    }
+    throw error;
+  }
 }
 
 // Fetch the newest single non-fs row matching the supplied filter. Sparse
@@ -93,11 +141,16 @@ async function newestMatching(
   let before = filter.before;
   for (let window = 0; window < ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS; window += 1) {
     try {
-      const rows = await storage.query({ ...filter, before, limit: 1 });
-      return rows[0] ?? null;
+      const page = await queryMruCandidatePage(storage, filter, before);
+      const eligible = page.rows.find(isMruEligibleObservation);
+      if (eligible !== undefined) return eligible;
+      if (page.rows.length < page.rowLimit) return null;
+      const last = page.rows[page.rows.length - 1];
+      if (last === undefined) return null;
+      before = { timestamp: last.timestamp, id: last.id };
     } catch (error) {
       if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      const admitted = await hydrateFirstMatch(storage, error.matched_ids);
+      const admitted = await hydrateFirstEligibleMatch(storage, error.matched_ids);
       if (admitted !== null) return admitted;
       before = error.resume_cursor;
     }

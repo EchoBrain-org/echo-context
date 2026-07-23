@@ -124,4 +124,22 @@ describe('codex adapter', () => {
     expect(normalized.conversation).not.toHaveProperty('observation_kind');
     expect(normalized.conversation).not.toHaveProperty('agent_depth');
   });
+
+  it('drops malformed logical ids instead of admitting them into projection keys', () => {
+    const event = {
+      ...codexFixture,
+      id: 'evt_codex_malformed_logical_ids',
+      metadata: {
+        ...codexFixture.metadata,
+        logical_turn_id: '   ',
+        parent_logical_turn_id: 'bad parent',
+        observation_kind: 'original',
+      },
+    };
+    const normalized = normalizeEvent(event);
+    if (normalized === null) throw new Error('expected adapter to match');
+
+    expect(normalized.conversation).not.toHaveProperty('logical_turn_id');
+    expect(normalized.conversation).not.toHaveProperty('parent_logical_turn_id');
+  });
 });

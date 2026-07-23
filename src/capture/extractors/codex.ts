@@ -16,6 +16,7 @@ import {
 import {
   classifyCodexObservation,
   classifyContextInitiator,
+  isValidCodexLogicalTurnId,
   occurredAtFromUuidV7,
   type ContextInitiator,
   type ObservationKind,
@@ -149,6 +150,7 @@ interface ParsedLine {
   role?: "user" | "assistant" | "agent";
   text?: string;
   turn_id?: string;
+  logical_identity_conflict?: boolean;
   trigger_turn?: boolean;
   recipient?: string;
   cwd?: string;
@@ -210,13 +212,37 @@ function extractMessageText(content: unknown): string {
 
 function turnIdFromPayload(
   payload: Record<string, unknown>,
-): string | undefined {
+): {
+  turnId?: string;
+  conflict: boolean;
+} {
   const direct = payload["turn_id"];
-  if (isNonEmptyString(direct)) return direct;
   const passthrough = payload["internal_chat_message_metadata_passthrough"];
-  if (typeof passthrough !== "object" || passthrough === null) return undefined;
-  const turnId = (passthrough as Record<string, unknown>)["turn_id"];
-  return isNonEmptyString(turnId) ? turnId : undefined;
+  const passthroughRecord =
+    typeof passthrough === "object" && passthrough !== null
+      ? (passthrough as Record<string, unknown>)
+      : undefined;
+  const passthroughTurnId =
+    passthroughRecord === undefined ? undefined : passthroughRecord["turn_id"];
+  const directId = isValidCodexLogicalTurnId(direct) ? direct : undefined;
+  const nestedId = isValidCodexLogicalTurnId(passthroughTurnId)
+    ? passthroughTurnId
+    : undefined;
+  const hasDirect = Object.prototype.hasOwnProperty.call(payload, "turn_id");
+  const hasNested =
+    passthroughRecord !== undefined &&
+    Object.prototype.hasOwnProperty.call(passthroughRecord, "turn_id");
+  if (
+    hasDirect &&
+    hasNested &&
+    (directId === undefined || nestedId === undefined || directId !== nestedId)
+  ) {
+    return { conflict: true };
+  }
+  const turnId = directId ?? nestedId;
+  return turnId === undefined
+    ? { conflict: false }
+    : { turnId, conflict: false };
 }
 
 function parseLine(line: string): ParsedLine | null {
@@ -425,12 +451,14 @@ function parseLine(line: string): ParsedLine | null {
 
   if (ptype === "agent_message") {
     const recipient = p["recipient"];
+    const identity = turnIdFromPayload(p);
     return {
       kind: "message",
       role: "agent",
       text: extractMessageText(p["content"]),
       timestamp,
-      turn_id: turnIdFromPayload(p),
+      ...(identity.turnId !== undefined ? { turn_id: identity.turnId } : {}),
+      ...(identity.conflict ? { logical_identity_conflict: true } : {}),
       ...(isNonEmptyString(recipient) ? { recipient } : {}),
     };
   }
@@ -495,12 +523,14 @@ function parseLine(line: string): ParsedLine | null {
   const role = p["role"];
   if (role !== "user" && role !== "assistant")
     return { kind: "other", timestamp };
+  const identity = turnIdFromPayload(p);
   return {
     kind: "message",
     role,
     text: extractMessageText(p["content"]),
     timestamp,
-    turn_id: turnIdFromPayload(p),
+    ...(identity.turnId !== undefined ? { turn_id: identity.turnId } : {}),
+    ...(identity.conflict ? { logical_identity_conflict: true } : {}),
   };
 }
 
@@ -538,6 +568,7 @@ interface PendingCluster {
   thinking: string[];
   userTurnId?: string;
   assistantTurnId?: string;
+  logicalIdentityConflict: boolean;
   initiator: ContextInitiator;
   localTrigger: boolean;
 }
@@ -774,7 +805,14 @@ export async function extractCodexTurns(
       had_tool_use: pending.hadTool,
       byte_offset: pending.assistantLastLineEndOffset,
     };
-    const logicalTurnId = pending.assistantTurnId ?? pending.userTurnId;
+    const logicalIdentityConflict =
+      pending.logicalIdentityConflict ||
+      (pending.userTurnId !== undefined &&
+        pending.assistantTurnId !== undefined &&
+        pending.userTurnId !== pending.assistantTurnId);
+    const logicalTurnId = logicalIdentityConflict
+      ? undefined
+      : (pending.assistantTurnId ?? pending.userTurnId);
     if (logicalTurnId !== undefined) {
       turn.logical_turn_id = logicalTurnId;
       const occurredAt = occurredAtFromUuidV7(logicalTurnId);
@@ -791,6 +829,7 @@ export async function extractCodexTurns(
       userTurnId: pending.userTurnId,
       assistantTurnId: pending.assistantTurnId,
       localTrigger: pending.localTrigger,
+      logicalIdentityConflict,
     });
     if (pending.cwd !== undefined) turn.cwd = pending.cwd;
     if (pending.git !== undefined) turn.git = pending.git;
@@ -1013,6 +1052,7 @@ export async function extractCodexTurns(
         toolCallTotal: 0,
         files: [],
         thinking: [],
+        logicalIdentityConflict: parsed.logical_identity_conflict === true,
         initiator,
         localTrigger: isTriggeredAgentInput,
       };
@@ -1029,6 +1069,14 @@ export async function extractCodexTurns(
         pending.assistantLastLineEndOffset = lineEndOffset;
         if (parsed.timestamp !== undefined)
           pending.timestamp = parsed.timestamp;
+        if (
+          parsed.logical_identity_conflict === true ||
+          (parsed.turn_id !== undefined &&
+            pending.assistantTurnId !== undefined &&
+            parsed.turn_id !== pending.assistantTurnId)
+        ) {
+          pending.logicalIdentityConflict = true;
+        }
         if (parsed.turn_id !== undefined)
           pending.assistantTurnId = parsed.turn_id;
       }

@@ -47,8 +47,9 @@ occurrence time. Existing rows without provider identity remain distinct.
 
 Thread topology is project-partitioned and bounded. Explicit root lineage is
 authoritative; repo/workspace and generic conversation references are
-descriptive only. Concrete work artifacts may connect activity, but weak file,
-document, or branch references cannot merge two explicit roots. The default
+descriptive only. Concrete strong work artifacts may connect activity; weak
+file and document references can attach unowned activity but cannot merge two
+explicit roots, while branch references are descriptive only. The default
 continuity gap stays four hours regardless of retrieval lookback, and the graph
 is emitted as a deterministic spanning forest rather than a pairwise clique.
 

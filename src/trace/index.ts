@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CaptureEvent } from '../storage/interface.js';
 import type { ArtifactRef, NormalizedContextEvent } from '../normalize/types.js';
 import { projectLogicalTurns } from '../normalize/logical-turns.js';
+import { compareTimestampInstants } from '../util/timestamp.js';
 import {
   artifactKey,
   buildGraph,
@@ -225,11 +226,11 @@ function compareByOccurredAt(
   a: NormalizedContextEvent,
   b: NormalizedContextEvent,
 ): number {
-  const ta = a.time.occurred_at;
-  const tb = b.time.occurred_at;
-  if (ta < tb) return -1;
-  if (ta > tb) return 1;
-  return 0;
+  const byInstant = compareTimestampInstants(
+    a.time.occurred_at,
+    b.time.occurred_at,
+  );
+  return byInstant === 0 ? a.id.localeCompare(b.id) : byInstant;
 }
 
 function makeClusterId(atomIds: string[]): string {
@@ -283,8 +284,12 @@ function computeTimeRange(atoms: NormalizedContextEvent[]): {
   let minTs = atoms[0]!.time.occurred_at;
   let maxTs = atoms[0]!.time.occurred_at;
   for (const a of atoms) {
-    if (a.time.occurred_at < minTs) minTs = a.time.occurred_at;
-    if (a.time.occurred_at > maxTs) maxTs = a.time.occurred_at;
+    if (compareTimestampInstants(a.time.occurred_at, minTs) < 0) {
+      minTs = a.time.occurred_at;
+    }
+    if (compareTimestampInstants(a.time.occurred_at, maxTs) > 0) {
+      maxTs = a.time.occurred_at;
+    }
   }
   return { from: minTs, to: maxTs };
 }
@@ -316,9 +321,8 @@ function truncate(
     const ordered = [...c.atom_ids].sort((a, b) => {
       const ta = atomsById.get(a)?.time.occurred_at ?? '';
       const tb = atomsById.get(b)?.time.occurred_at ?? '';
-      if (ta < tb) return -1;
-      if (ta > tb) return 1;
-      return 0;
+      const byInstant = compareTimestampInstants(ta, tb);
+      return byInstant === 0 ? a.localeCompare(b) : byInstant;
     });
     const dropped = new Set<string>();
     for (const id of ordered) {

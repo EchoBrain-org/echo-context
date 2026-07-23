@@ -7,3 +7,21 @@ export function canonicalizeTimestamp(s: string): string {
   if (Number.isNaN(d.getTime())) throw new Error(`invalid timestamp: ${s}`);
   return d.toISOString();
 }
+
+/** Compare two timestamp strings by the instant they represent, not by their
+ * textual offset spelling. Invalid values sort after valid values and then
+ * lexically so callers that operate on partially trusted data stay
+ * deterministic without pretending an invalid clock is meaningful. */
+export function compareTimestampInstants(left: string, right: string): number {
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  const leftValid = !Number.isNaN(leftMs);
+  const rightValid = !Number.isNaN(rightMs);
+  if (leftValid && rightValid) {
+    if (leftMs < rightMs) return -1;
+    if (leftMs > rightMs) return 1;
+  } else if (leftValid !== rightValid) {
+    return leftValid ? -1 : 1;
+  }
+  return left.localeCompare(right);
+}

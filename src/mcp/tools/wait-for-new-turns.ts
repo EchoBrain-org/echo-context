@@ -144,6 +144,17 @@ interface SourcePollPage {
   scanTruncated: boolean;
 }
 
+/** Freshness is an observation-level concern for this raw-storage tool.
+ * Explicit inherited copies are already-known logical work observed in a new
+ * session, so they must not wake a waiter. Missing, `unknown`, and malformed
+ * markers remain eligible: those shapes include every row captured before
+ * logical observation metadata existed, and failing them closed would make
+ * legacy activity silently disappear. The public cursor deliberately remains
+ * the stored event timestamp for lossless `since` / `next_since` chaining. */
+function isWakeEligibleObservation(event: CaptureEvent): boolean {
+  return event.metadata?.['observation_kind'] !== 'inherited';
+}
+
 async function hydrateScanMatches(
   storage: Storage,
   ids: readonly string[],
@@ -166,8 +177,34 @@ async function queryPollSource(storage: Storage, filter: QueryFilter): Promise<S
   for (let window = 0; window < WAIT_MAX_STORAGE_SCAN_WINDOWS; window += 1) {
     const remaining = requested - rows.length;
     if (remaining <= 0) return { rows: rows.slice(0, requested), scanTruncated: false };
+    let candidates: CaptureEvent[];
     try {
-      rows.push(...(await storage.query({ ...filter, after, limit: remaining })));
+      candidates = await storage.query({ ...filter, after, limit: remaining });
+    } catch (error) {
+      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
+      candidates = await hydrateScanMatches(storage, error.matched_ids);
+      for (const candidate of candidates) {
+        if (isWakeEligibleObservation(candidate)) rows.push(candidate);
+      }
+      if (rows.length >= requested) {
+        return { rows: rows.slice(0, requested), scanTruncated: false };
+      }
+      after = error.resume_cursor;
+      continue;
+    }
+
+    for (const candidate of candidates) {
+      if (isWakeEligibleObservation(candidate)) rows.push(candidate);
+    }
+    if (rows.length >= requested) {
+      return { rows: rows.slice(0, requested), scanTruncated: false };
+    }
+
+    // A short raw page proves source exhaustion at this boundary. A full raw
+    // page containing inherited copies does not: continue strictly after its
+    // last physical observation so a genuine turn behind the copies can wake
+    // the caller without letting the copies satisfy the early-stop target.
+    if (candidates.length < remaining) {
       rows.sort((left, right) => {
         if (left.timestamp < right.timestamp) return -1;
         if (left.timestamp > right.timestamp) return 1;
@@ -176,11 +213,12 @@ async function queryPollSource(storage: Storage, filter: QueryFilter): Promise<S
         return 0;
       });
       return { rows: rows.slice(0, requested), scanTruncated: false };
-    } catch (error) {
-      if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      rows.push(...(await hydrateScanMatches(storage, error.matched_ids)));
-      after = error.resume_cursor;
     }
+    const lastCandidate = candidates[candidates.length - 1];
+    if (lastCandidate === undefined) {
+      return { rows: rows.slice(0, requested), scanTruncated: false };
+    }
+    after = { timestamp: lastCandidate.timestamp, id: lastCandidate.id };
   }
 
   rows.sort((left, right) => {

@@ -1,4 +1,6 @@
 import type { NormalizedContextEvent } from './types.js';
+import { compareTimestampInstants } from '../util/timestamp.js';
+import { isValidLogicalTurnId } from './logical-turn-id.js';
 
 export interface LogicalTurnProjection {
   atoms: NormalizedContextEvent[];
@@ -10,7 +12,14 @@ export interface LogicalTurnProjection {
 
 function logicalKey(atom: NormalizedContextEvent): string | undefined {
   const conversation = atom.conversation;
-  if (conversation?.logical_turn_id === undefined) return undefined;
+  if (
+    conversation === undefined ||
+    !isValidLogicalTurnId(conversation.logical_turn_id) ||
+    (conversation.observation_kind !== 'original' &&
+      conversation.observation_kind !== 'inherited')
+  ) {
+    return undefined;
+  }
   return `${conversation.provider}\u0000${conversation.logical_turn_id}`;
 }
 
@@ -39,8 +48,8 @@ function chooseRepresentative(
     if (priority !== 0) return priority;
     const leftObserved = observedAt(left);
     const rightObserved = observedAt(right);
-    if (leftObserved < rightObserved) return -1;
-    if (leftObserved > rightObserved) return 1;
+    const observedOrder = compareTimestampInstants(leftObserved, rightObserved);
+    if (observedOrder !== 0) return observedOrder;
     return left.id.localeCompare(right.id);
   })[0]!;
 }
@@ -82,7 +91,9 @@ export function projectLogicalTurns(
     let latestObserved = observedAt(representative);
     for (const atom of group) {
       const candidate = observedAt(atom);
-      if (candidate > latestObserved) latestObserved = candidate;
+      if (compareTimestampInstants(candidate, latestObserved) > 0) {
+        latestObserved = candidate;
+      }
     }
     projected.push({
       ...representative,

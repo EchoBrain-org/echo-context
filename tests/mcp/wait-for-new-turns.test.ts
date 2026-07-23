@@ -3,12 +3,20 @@ import {
   resolveSources,
   waitForNewTurns,
   WAIT_MAX_SOURCES,
+  WAIT_PER_POLL_LIMIT_PER_SOURCE,
 } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 
-function ev(source: string, ts: string, content = 'turn'): Omit<CaptureEvent, 'id'> {
-  return { source, timestamp: ts, content };
+function ev(
+  source: string,
+  ts: string,
+  content = 'turn',
+  metadata?: Record<string, unknown>,
+): Omit<CaptureEvent, 'id'> {
+  return metadata === undefined
+    ? { source, timestamp: ts, content }
+    : { source, timestamp: ts, content, metadata };
 }
 
 describe('wait_for_new_turns — source resolution', () => {
@@ -208,6 +216,103 @@ describe('wait_for_new_turns — happy path', () => {
       { pollIntervalMs: 50 },
     );
     expect(r.turn_ids.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('wait_for_new_turns — logical-observation freshness', () => {
+  it('does not wake for a newly observed inherited copy of old logical work', async () => {
+    const store = new MemoryStorage();
+    const since = '2026-05-09T10:00:00.000Z';
+    await store.append(
+      ev('fs:/fork.jsonl', '2026-05-09T10:05:00.000Z', 'copied parent turn', {
+        logical_turn_id: 'parent-turn',
+        occurred_at: '2026-05-09T08:00:00.000Z',
+        observed_at: '2026-05-09T10:05:00.000Z',
+        observation_kind: 'inherited',
+      }),
+    );
+
+    const result = await waitForNewTurns(
+      store,
+      { sources: ['fs:/fork.jsonl'], since, timeout: 0 },
+      { pollIntervalMs: 10 },
+    );
+
+    expect(result.turn_ids).toEqual([]);
+    expect(result.timed_out).toBe(true);
+    expect(result.next_since).toBe(since);
+  });
+
+  it('skips a full inherited candidate window and wakes on genuine work behind it', async () => {
+    const store = new MemoryStorage();
+    const source = 'fs:/fork.jsonl';
+    const baseMs = Date.parse('2026-05-09T10:00:00.000Z');
+    for (let index = 1; index <= WAIT_PER_POLL_LIMIT_PER_SOURCE; index += 1) {
+      const observedAt = new Date(baseMs + index * 1_000).toISOString();
+      await store.append(
+        ev(source, observedAt, `inherited ${index}`, {
+          logical_turn_id: `parent-${index}`,
+          occurred_at: '2026-05-09T08:00:00.000Z',
+          observed_at: observedAt,
+          observation_kind: 'inherited',
+        }),
+      );
+    }
+    const genuineTimestamp = new Date(
+      baseMs + (WAIT_PER_POLL_LIMIT_PER_SOURCE + 1) * 1_000,
+    ).toISOString();
+    const genuineId = await store.append(
+      ev(source, genuineTimestamp, 'genuine local turn', {
+        logical_turn_id: 'local-turn',
+        occurred_at: genuineTimestamp,
+        observed_at: genuineTimestamp,
+        observation_kind: 'original',
+      }),
+    );
+
+    const result = await waitForNewTurns(
+      store,
+      {
+        sources: [source],
+        since: '2026-05-09T10:00:00.000Z',
+        timeout: 0,
+      },
+      { pollIntervalMs: 10 },
+    );
+
+    expect(result.turn_ids).toEqual([genuineId]);
+    expect(result.timed_out).toBe(false);
+    expect(result.next_since).toBe(genuineTimestamp);
+  });
+
+  it('keeps legacy, unknown, and malformed observation markers wake-eligible', async () => {
+    const store = new MemoryStorage();
+    const source = 'fs:/legacy.jsonl';
+    const legacyId = await store.append(
+      ev(source, '2026-05-09T10:01:00.000Z', 'legacy without marker'),
+    );
+    const unknownId = await store.append(
+      ev(source, '2026-05-09T10:02:00.000Z', 'explicitly unknown', {
+        observation_kind: 'unknown',
+      }),
+    );
+    const malformedId = await store.append(
+      ev(source, '2026-05-09T10:03:00.000Z', 'unrecognised marker', {
+        observation_kind: 'copied-ish',
+      }),
+    );
+
+    const result = await waitForNewTurns(
+      store,
+      {
+        sources: [source],
+        since: '2026-05-09T10:00:00.000Z',
+        timeout: 0,
+      },
+      { pollIntervalMs: 10 },
+    );
+
+    expect(result.turn_ids).toEqual([legacyId, unknownId, malformedId]);
   });
 });
 

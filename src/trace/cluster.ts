@@ -1,4 +1,5 @@
 import type { ArtifactRef, NormalizedContextEvent } from '../normalize/types.js';
+import { compareTimestampInstants } from '../util/timestamp.js';
 import { membershipOf, roleOf, type ArtifactMembership } from './role.js';
 import type { ArtifactKey, Edge, Graph, RawCluster } from './types.js';
 
@@ -37,8 +38,11 @@ function compareAtoms(
   left: NormalizedContextEvent,
   right: NormalizedContextEvent,
 ): number {
-  if (left.time.occurred_at < right.time.occurred_at) return -1;
-  if (left.time.occurred_at > right.time.occurred_at) return 1;
+  const byInstant = compareTimestampInstants(
+    left.time.occurred_at,
+    right.time.occurred_at,
+  );
+  if (byInstant !== 0) return byInstant;
   return left.id.localeCompare(right.id);
 }
 

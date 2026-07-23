@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CaptureEvent } from '../../storage/interface.js';
 import { repoArtifact } from '../artifacts.js';
 import { NormalizationError } from '../errors.js';
+import { isValidLogicalTurnId } from '../logical-turn-id.js';
 import type {
   ActorRef,
   ArtifactRef,
@@ -116,8 +117,6 @@ export function buildConversation(
   const conv: NonNullable<NormalizedContextEvent['conversation']> = { provider, session_id };
   if (turn_index !== undefined) conv.turn_index = turn_index;
   const stringFields = [
-    'logical_turn_id',
-    'parent_logical_turn_id',
     'thread_id',
     'root_thread_id',
     'parent_thread_id',
@@ -126,6 +125,12 @@ export function buildConversation(
   for (const field of stringFields) {
     const value = getString(metadata, field);
     if (value !== undefined) {
+      (conv as unknown as Record<string, unknown>)[field] = value;
+    }
+  }
+  for (const field of ['logical_turn_id', 'parent_logical_turn_id'] as const) {
+    const value = getString(metadata, field);
+    if (isValidLogicalTurnId(value)) {
       (conv as unknown as Record<string, unknown>)[field] = value;
     }
   }

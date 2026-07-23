@@ -309,6 +309,118 @@ describe('bounded sparse-scan MCP consumers', () => {
     expect(result.clusters).toEqual([]);
   });
 
+  it('includes a delayed MemoryStorage observation by occurrence time', async () => {
+    const storage = new MemoryStorage();
+    const delayedId = await storage.append(
+      codexTurn({
+        logicalId: 'delayed-memory',
+        timestamp: '2026-05-09T12:00:00.000Z',
+        occurredAt: '2026-05-09T09:30:00.000Z',
+      }),
+    );
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+    });
+
+    expect(Object.keys(result.atoms)).toEqual([delayedId]);
+    expect(result.truncation.atoms_total_in_window).toBe(1);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('includes a delayed SQLite observation by occurrence time', async () => {
+    const storage = new SqliteStorage(':memory:');
+    try {
+      const delayedId = await storage.append(
+        codexTurn({
+          logicalId: 'delayed-sqlite',
+          timestamp: '2026-05-09T12:00:00.000Z',
+          occurredAt: '2026-05-09T09:30:00.000Z',
+        }),
+      );
+
+      const result = await getRecentWorkContext(storage, {
+        since: '2026-05-09T09:00:00.000Z',
+        until: '2026-05-09T10:00:00.000Z',
+      });
+
+      expect(Object.keys(result.atoms)).toEqual([delayedId]);
+      expect(result.truncation.atoms_total_in_window).toBe(1);
+      expect(result.warnings).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it('rebases admitted legacy descendant roots onto the queried project partition', async () => {
+    const storage = new MemoryStorage();
+    const first = codexTurn({
+      logicalId: 'legacy-subdir-a',
+      timestamp: '2026-05-09T09:10:00.000Z',
+    });
+    first.metadata!['repo_root'] = '/repo/packages/a';
+    const second = codexTurn({
+      logicalId: 'legacy-subdir-b',
+      timestamp: '2026-05-09T09:20:00.000Z',
+    });
+    second.metadata!['repo_root'] = '/repo/packages/b';
+    await storage.append(first);
+    await storage.append(second);
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+      repo_path: '/repo',
+    });
+
+    expect(result.truncation.atoms_total_in_window).toBe(2);
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0]!.atom_ids).toHaveLength(2);
+    expect(
+      Object.values(result.atoms)
+        .map((atom) => atom.project)
+        .sort((left, right) =>
+          left!.observed_root!.localeCompare(right!.observed_root!),
+        ),
+    ).toEqual([
+      {
+        key: 'local:workspace:/repo',
+        canonical_root: '/repo',
+        observed_root: '/repo/packages/a',
+      },
+      {
+        key: 'local:workspace:/repo',
+        canonical_root: '/repo',
+        observed_root: '/repo/packages/b',
+      },
+    ]);
+  });
+
+  it('does not rewrite project fields that are already explicit', async () => {
+    const storage = new MemoryStorage();
+    const explicit = codexTurn({
+      logicalId: 'explicit-project',
+      timestamp: '2026-05-09T09:10:00.000Z',
+    });
+    explicit.metadata!['repo_root'] = '/repo/packages/a';
+    explicit.metadata!['project_key'] = 'local:workspace:/repo';
+    explicit.metadata!['canonical_root'] = '/explicit/canonical/root';
+    const explicitId = await storage.append(explicit);
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+      repo_path: '/repo',
+    });
+
+    expect(result.atoms[explicitId]!.project).toEqual({
+      key: 'local:workspace:/repo',
+      canonical_root: '/explicit/canonical/root',
+      observed_root: '/repo/packages/a',
+    });
+  });
+
   it('cluster discovery caps retained raw observations during an inherited-copy flood', async () => {
     const storage = new MemoryStorage();
     for (let index = 0; index <= CLUSTER_MAX_RAW_OBSERVATIONS; index += 1) {

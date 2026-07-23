@@ -63,6 +63,32 @@ describe('thread topology', () => {
     expect(graph.edges).toHaveLength(2);
   });
 
+  it('orders mixed-offset clocks by instant before building adjacency', () => {
+    const graph = buildGraph(
+      [
+        threadAtom({
+          id: 'fifteen-z',
+          time: '2026-07-22T20:00:00+05:00',
+          root: 'r1',
+        }),
+        threadAtom({
+          id: 'seventeen-z',
+          time: '2026-07-22T10:00:00-07:00',
+          root: 'r1',
+        }),
+        threadAtom({
+          id: 'nineteen-z',
+          time: '2026-07-22T19:00:00Z',
+          root: 'r1',
+        }),
+      ],
+      3,
+    );
+
+    expect(connectedComponents(graph)).toHaveLength(1);
+    expect(graph.edges).toHaveLength(2);
+  });
+
   it('does not leak synthetic lineage keys into shared-artifact evidence', () => {
     const file = { provider: 'local_fs', type: 'file', id: 'same.ts' };
     const graph = buildGraph([

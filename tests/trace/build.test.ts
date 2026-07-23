@@ -122,6 +122,45 @@ describe('buildRecentWorkContext', () => {
     expect(r.clusters[0]!.atom_ids).toEqual(['inside_a', 'inside_b']);
   });
 
+  it('reports mixed-offset time ranges by instant instead of clock text', () => {
+    const { events, normalize } = asCapture([
+      {
+        id: 'first',
+        app: 'cursor',
+        occurred_at: '2026-05-06T20:00:00+05:00',
+        artifacts: [{ provider: 'local_fs', type: 'file', id: 'r::a.ts' }],
+      },
+      {
+        id: 'middle',
+        app: 'cursor',
+        occurred_at: '2026-05-06T10:00:00-07:00',
+        artifacts: [{ provider: 'local_fs', type: 'file', id: 'r::a.ts' }],
+      },
+      {
+        id: 'last',
+        app: 'cursor',
+        occurred_at: '2026-05-06T19:00:00Z',
+        artifacts: [{ provider: 'local_fs', type: 'file', id: 'r::a.ts' }],
+      },
+    ]);
+
+    const response = buildRecentWorkContext(
+      events,
+      {
+        since: '2026-05-06T14:00:00Z',
+        until: '2026-05-06T20:00:00Z',
+        window_hours: 3,
+      },
+      normalize,
+    );
+
+    expect(response.clusters).toHaveLength(1);
+    expect(response.clusters[0]!.time_range).toEqual({
+      from: '2026-05-06T20:00:00+05:00',
+      to: '2026-05-06T19:00:00Z',
+    });
+  });
+
   it('retains inherited-only turns only when canonical occurrence is in the window', () => {
     const conversation = (logicalTurnId: string) => ({
       provider: 'codex',
