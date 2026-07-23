@@ -100,7 +100,10 @@ export interface QueryFilter {
   // probe arbitrary metadata fields; see METADATA_MATCH_KEY_WHITELIST.
   metadata_match?: Record<string, string>;
   /** Canonical project identity. Matches metadata.project_key, falling back to
-   * canonical_root and finally legacy repo_root without rewriting raw rows. */
+   * canonical_root and finally legacy repo_root without rewriting raw rows.
+   * With an exact `git:<legacy-root>` source filter, a row lacking all three
+   * identity fields is also eligible; present malformed or mismatched identity
+   * fields remain authoritative and fail closed. */
   project_key?: string;
   /** Internal compatibility aliases for rows captured before project_key and
    * canonical_root existed. At most three normalized absolute roots are

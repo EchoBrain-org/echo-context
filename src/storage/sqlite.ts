@@ -56,7 +56,10 @@ import {
   type StorageSelectPageObservation,
 } from "./budgets.js";
 import { migrate } from "./migrate.js";
-import { normalizeLegacyProjectRoots } from "./project-filter.js";
+import {
+  isLegacyGitSourceForProject,
+  normalizeLegacyProjectRoots,
+} from "./project-filter.js";
 import { normalizePathLikeSource, sourceHasPrefix } from "./source-match.js";
 import { canonicalizeTimestamp } from "../util/timestamp.js";
 
@@ -597,6 +600,7 @@ export class SqliteStorage implements Storage {
       throw new RangeError("QueryFilter.legacy_project_roots requires project_key");
     }
     let legacyProjectRoots: string[] = [];
+    let allowIdentityLessLegacyGitSource = false;
     if (filter?.project_key !== undefined) {
       assertStorageDescriptorField("query", "source", filter.project_key);
       legacyProjectRoots = normalizeLegacyProjectRoots(
@@ -606,6 +610,9 @@ export class SqliteStorage implements Storage {
       for (const root of legacyProjectRoots) {
         assertStorageDescriptorField("query", "source", root);
       }
+      allowIdentityLessLegacyGitSource =
+        filter.source !== undefined &&
+        isLegacyGitSourceForProject(filter.source, legacyProjectRoots);
     }
     assertCursorDescriptorFields("query", filter?.before);
     assertCursorDescriptorFields("query", filter?.after);
@@ -725,9 +732,12 @@ export class SqliteStorage implements Storage {
                WHEN typeof(json_extract(e.metadata, '$.canonical_root')) = 'text'
                  AND ('local:workspace:' || json_extract(e.metadata, '$.canonical_root')) = @__project_key
                THEN 1 ELSE 0 END
-           WHEN typeof(json_extract(e.metadata, '$.repo_root')) = 'text'
-             THEN CASE WHEN ${legacyRepoRootMatch} THEN 1 ELSE 0 END
-           ELSE 0
+           WHEN json_type(e.metadata, '$.repo_root') IS NOT NULL
+             THEN CASE
+               WHEN typeof(json_extract(e.metadata, '$.repo_root')) = 'text'
+                 AND ${legacyRepoRootMatch}
+               THEN 1 ELSE 0 END
+           ELSE ${allowIdentityLessLegacyGitSource ? "1" : "0"}
          END) = 1`,
       );
       params["__project_key"] = filter.project_key;

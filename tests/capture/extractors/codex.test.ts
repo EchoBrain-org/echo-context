@@ -1122,6 +1122,106 @@ describe("extractCodexTurns (pure)", () => {
     },
   );
 
+  it("fails a canonical rollout filename/header identity mismatch closed while retaining generic import fallback", async () => {
+    const wrongPhysicalId = "019f85c3-f6b4-7022-b0bd-241fd489616c";
+    const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const lines = [
+      sessionMeta({
+        id: wrongPhysicalId,
+        session_id: wrongPhysicalId,
+        thread_source: "user",
+      }),
+      userMsg(
+        "mismatched physical session",
+        "2026-07-22T18:44:15.000Z",
+        turnId,
+      ),
+      assistantMsg("remain physical", "2026-07-22T18:44:16.000Z", turnId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ];
+    writeJsonl(path, lines);
+
+    const canonical = await extractCodexTurns(path, 0);
+
+    expect(canonical.turns).toHaveLength(1);
+    expect(canonical.turns[0]).toMatchObject({
+      session_id: "019de2b0-6551-7682-a51b-2affaa0a7bbf",
+      observation_kind: "unknown",
+      codex: { thread_kind: "unknown" },
+    });
+    expect(canonical.turns[0]?.codex).not.toHaveProperty("thread_id");
+    expect(canonical.turns[0]?.codex).not.toHaveProperty("root_thread_id");
+
+    const importedPath = join(dir, "renamed-import.jsonl");
+    writeJsonl(importedPath, lines);
+    const imported = await extractCodexTurns(importedPath, 0);
+
+    expect(imported.turns).toHaveLength(1);
+    expect(imported.turns[0]).toMatchObject({
+      session_id: "renamed-import",
+      observation_kind: "original",
+      codex: {
+        thread_id: wrongPhysicalId,
+        root_thread_id: wrongPhysicalId,
+        thread_kind: "root",
+      },
+    });
+  });
+
+  it("fails contradictory nonzero checkpoint lineage against the rollout filename closed", async () => {
+    const wrongPhysicalId = "019f85c3-f6b4-7022-b0bd-241fd489616c";
+    const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [sessionMeta()]);
+    const prefix = await extractCodexTurns(path, 0);
+    appendJsonl(path, [
+      userMsg("after checkpoint", "2026-07-22T18:44:15.000Z", turnId),
+      assistantMsg("remain physical", "2026-07-22T18:44:16.000Z", turnId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, prefix.newOffset, {
+      lastKnownCodex: {
+        thread_id: wrongPhysicalId,
+        root_thread_id: wrongPhysicalId,
+        thread_kind: "root",
+      },
+    });
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      observation_kind: "unknown",
+      codex: { thread_kind: "unknown" },
+    });
+    expect(result.turns[0]?.codex).not.toHaveProperty("thread_id");
+  });
+
+  it("keeps an already clean fail-closed checkpoint identity reference-stable", async () => {
+    const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const checkpointCodex = {
+      model: "gpt-5.5",
+      thread_kind: "unknown" as const,
+    };
+    writeJsonl(path, [sessionMeta()]);
+    const prefix = await extractCodexTurns(path, 0);
+    appendJsonl(path, [
+      userMsg(
+        "after fail-closed checkpoint",
+        "2026-07-22T18:44:15.000Z",
+        turnId,
+      ),
+      assistantMsg("remain fail closed", "2026-07-22T18:44:16.000Z", turnId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, prefix.newOffset, {
+      lastKnownCodex: checkpointCodex,
+    });
+
+    expect(result.codex).toBe(checkpointCodex);
+    expect(result.turns[0]?.codex).toBe(checkpointCodex);
+    expect(result.turns[0]?.observation_kind).toBe("unknown");
+  });
+
   it("fails contradictory user and assistant turn ids closed", async () => {
     const userId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
     const assistantId = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
@@ -1333,6 +1433,56 @@ describe("extractCodexTurns (pure)", () => {
     });
   });
 
+  it("expires stale agent context at an incompatible boundary and advances the checkpoint before the next targeted turn", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
+    const childPath = "/root/reviewer";
+    const staleId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const freshId = "019f8b25-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        parent_thread_id: parentId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 1,
+      }),
+      turnContext({ turn_id: staleId }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      taskComplete("2026-07-22T18:44:15.500Z"),
+    ]);
+
+    const first = await extractCodexTurns(path, 0);
+
+    expect(first.turns).toEqual([]);
+    expect(first.newOffset).toBe(readFileSync(path).length);
+    appendJsonl(path, [
+      turnContext({ turn_id: freshId }),
+      interAgentTrigger("2026-07-22T18:44:16.000Z"),
+      agentMessage(
+        "use only the fresh context",
+        childPath,
+        freshId,
+        "2026-07-22T18:44:16.001Z",
+      ),
+      assistantMsg("fresh context used", "2026-07-22T18:44:17.000Z", freshId),
+      taskComplete("2026-07-22T18:44:18.000Z"),
+    ]);
+    const second = await extractCodexTurns(path, first.newOffset, {
+      lastKnownCodex: first.codex,
+    });
+
+    expect(second.turns).toHaveLength(1);
+    expect(second.turns[0]).toMatchObject({
+      user_message: "use only the fresh context",
+      logical_turn_id: freshId,
+      initiator: "agent",
+      observation_kind: "original",
+    });
+    expect(second.turns[0]?.logical_turn_id).not.toBe(staleId);
+  });
+
   it("does not let an unrelated turn consume a stale inter-agent trigger", async () => {
     const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
     const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
@@ -1458,7 +1608,8 @@ describe("extractCodexTurns (pure)", () => {
   });
 
   it("retains thread lineage even when session config fields are absent", async () => {
-    writeJsonl(path, [
+    const importedPath = join(dir, "session-without-config.jsonl");
+    writeJsonl(importedPath, [
       // session_meta with cwd only — no source/cli_version/git
       {
         timestamp: "2026-05-01T10:00:00.000Z",
@@ -1469,7 +1620,7 @@ describe("extractCodexTurns (pure)", () => {
       assistantMsg("a"),
       userMsg("next"),
     ]);
-    const r = await extractCodexTurns(path, 0);
+    const r = await extractCodexTurns(importedPath, 0);
     expect(r.turns[0]?.git).toBeUndefined();
     expect(r.turns[0]?.codex).toMatchObject({
       thread_id: "x",
@@ -2995,6 +3146,84 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       thread_kind: "subagent",
       agent_path: childPath,
     });
+  });
+
+  it("fails a legacy header backfill closed when its physical id contradicts the rollout filename", async () => {
+    const wrongPhysicalId = "019f85c3-f6b4-7022-b0bd-241fd489616c";
+    const oldId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
+    const freshId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta({
+        id: wrongPhysicalId,
+        session_id: wrongPhysicalId,
+        thread_source: "user",
+      }),
+      userMsg("already captured", "2026-07-22T18:44:08.000Z", oldId),
+      assistantMsg("old answer", "2026-07-22T18:44:08.001Z", oldId),
+      taskComplete("2026-07-22T18:44:09.000Z"),
+    ]);
+    const historical = await extractCodexTurns(path, 0);
+    const oldTurn = historical.turns[0]!;
+    await storage.append({
+      source: `fs:${path}`,
+      timestamp: oldTurn.timestamp,
+      content: `USER: ${oldTurn.user_message}\n\nASSISTANT: ${oldTurn.assistant_message}`,
+      metadata: {
+        session_id: oldTurn.session_id,
+        turn_index: 0,
+        byte_offset: oldTurn.byte_offset,
+      },
+    });
+    await storage.upsertCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+      position: oldTurn.byte_offset,
+      ordinal: 0,
+      state: {
+        cwd: oldTurn.cwd,
+        codex: { model: "legacy-model" },
+      },
+      updated_at: "2026-07-22T18:44:10.000Z",
+    });
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+    expect(await storage.count()).toBe(1);
+    const upgraded = await storage.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(upgraded?.state["codex"]).toEqual({
+      model: "legacy-model",
+      thread_kind: "unknown",
+    });
+
+    appendJsonl(path, [
+      userMsg("fresh after mismatch", "2026-07-22T18:44:15.000Z", freshId),
+      assistantMsg(
+        "captured conservatively",
+        "2026-07-22T18:44:16.000Z",
+        freshId,
+      ),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+    await waitFor(async () => (await storage.count()) >= 2);
+
+    const events = await storage.query({ source: `fs:${path}`, order: "asc" });
+    const fresh = events.find((event) =>
+      event.content.includes("captured conservatively"),
+    );
+    expect(fresh?.metadata).toMatchObject({
+      logical_turn_id: freshId,
+      observation_kind: "unknown",
+      thread_kind: "unknown",
+      codex: {
+        model: "legacy-model",
+        thread_kind: "unknown",
+      },
+    });
+    expect(fresh?.metadata).not.toHaveProperty("thread_id");
+    expect(fresh?.metadata).not.toHaveProperty("root_thread_id");
   });
 
   it("mirrors metadata.cwd into metadata.repo_root (cross-source canonical name)", async () => {

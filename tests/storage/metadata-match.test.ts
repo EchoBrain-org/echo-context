@@ -218,6 +218,51 @@ describe.each(ADAPTERS)('QueryFilter.metadata_match parity ($name)', ({ create, 
     ]);
   });
 
+  it('exact legacy Git source scans past newer authoritative mismatches without widening project scope', async () => {
+    const projectKey = 'local:workspace:/repo-a';
+    const source = 'git:/repo-a';
+    const poisonedRows: Array<Omit<CaptureEvent, 'id'>> = [];
+    for (let minute = 1; minute <= 10; minute += 1) {
+      const metadata: Record<string, unknown> =
+        minute % 4 === 0
+          ? { project_key: 'local:workspace:/other', repo_root: '/repo-a' }
+          : minute % 4 === 1
+            ? { project_key: null, repo_root: '/repo-a' }
+            : minute % 4 === 2
+              ? { canonical_root: '/other', repo_root: '/repo-a' }
+              : { canonical_root: null, repo_root: '/repo-a' };
+      poisonedRows.push({
+        source,
+        timestamp: new Date(Date.UTC(2026, 4, 11, 10, minute)).toISOString(),
+        content: `ineligible-${minute}`,
+        metadata,
+      });
+    }
+    await seed([
+      {
+        source,
+        timestamp: '2026-05-11T10:00:00.000Z',
+        content: 'metadata-less-legacy',
+      },
+      ...poisonedRows,
+    ]);
+
+    const exact = await store.query({
+      source,
+      project_key: projectKey,
+      legacy_project_roots: ['/repo-a'],
+      limit: 1,
+    });
+    expect(exact.map((event) => event.content)).toEqual(['metadata-less-legacy']);
+
+    const prefix = await store.query({
+      source_prefix: 'git:',
+      project_key: projectKey,
+      legacy_project_roots: ['/repo-a'],
+    });
+    expect(prefix).toEqual([]);
+  });
+
   it('normalizes and deduplicates the bounded legacy root aliases', async () => {
     await seed([
       {

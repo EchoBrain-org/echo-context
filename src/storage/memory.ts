@@ -34,6 +34,7 @@ import {
 import { sourceEquals, sourceHasPrefix } from './source-match.js';
 import { canonicalizeTimestamp } from '../util/timestamp.js';
 import {
+  isLegacyGitSourceForProject,
   metadataMatchesProject,
   normalizeLegacyProjectRoots,
 } from './project-filter.js';
@@ -132,6 +133,7 @@ export class MemoryStorage implements Storage {
       throw new RangeError('QueryFilter.legacy_project_roots requires project_key');
     }
     let legacyProjectRoots: string[] = [];
+    let allowIdentityLessLegacyGitSource = false;
     if (filter?.project_key !== undefined) {
       assertStorageDescriptorField('query', 'source', filter.project_key);
       legacyProjectRoots = normalizeLegacyProjectRoots(
@@ -141,6 +143,8 @@ export class MemoryStorage implements Storage {
       for (const root of legacyProjectRoots) {
         assertStorageDescriptorField('query', 'source', root);
       }
+      allowIdentityLessLegacyGitSource =
+        source !== undefined && isLegacyGitSourceForProject(source, legacyProjectRoots);
     }
     if (filter?.before !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.before.timestamp);
@@ -217,7 +221,16 @@ export class MemoryStorage implements Storage {
       }
       if (filter?.project_key !== undefined) {
         const md = event.metadata as Record<string, unknown> | undefined;
-        if (!metadataMatchesProject(md, filter.project_key, legacyProjectRoots)) continue;
+        if (
+          !metadataMatchesProject(
+            md,
+            filter.project_key,
+            legacyProjectRoots,
+            allowIdentityLessLegacyGitSource,
+          )
+        ) {
+          continue;
+        }
       }
       filtered.push(event);
     }

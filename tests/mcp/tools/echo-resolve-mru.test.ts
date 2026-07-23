@@ -282,8 +282,60 @@ describe('echoResolveMru — git two-path OR (R3 Codex #2 port from 037 AC6 Note
     expect(r.sources['git']).not.toBeNull();
     const desc = r.sources['git']!;
     expect(desc.source).toBe(`git:${REPO_A}`);
-    // Path B won — no metadata_match in filter (source path encodes repo).
-    expect(desc.filter).toEqual({});
+    // Path B won. The downstream project predicate preserves this source-only
+    // legacy row while remaining fail-closed for modern identity.
+    expect(desc.filter).toEqual({ repo_path: REPO_A });
+    const search = await searchMemories(store, {
+      source: desc.source,
+      ...desc.filter,
+      limit: 10,
+    });
+    expect(search.matches.map((match) => match.content)).toEqual(['legacy commit']);
+  });
+
+  it('scans past newer mismatched or malformed identity and returns a downstream-safe descriptor', async () => {
+    const store = new MemoryStorage();
+    const source = `git:${REPO_A}`;
+    for (let minute = 1; minute <= 10; minute += 1) {
+      const metadata: Record<string, unknown> =
+        minute % 4 === 0
+          ? {
+              project_key: `local:workspace:${REPO_B}`,
+              repo_root: REPO_A,
+            }
+          : minute % 4 === 1
+            ? { project_key: null, repo_root: REPO_A }
+            : minute % 4 === 2
+              ? { canonical_root: REPO_B, repo_root: REPO_A }
+              : { canonical_root: null, repo_root: REPO_A };
+      await store.append(ev(source, ts(minute), `wrong project ${minute}`, metadata));
+    }
+
+    const mismatchesOnly = await echoResolveMru(store, {
+      sources: ['git'],
+      repo_path: REPO_A,
+    });
+    expect(mismatchesOnly.sources['git']).toBeNull();
+
+    await store.append(ev(source, ts(0), 'metadata-less legacy commit'));
+    const result = await echoResolveMru(store, {
+      sources: ['git'],
+      repo_path: REPO_A,
+    });
+
+    expect(result.sources['git']).toEqual({
+      source,
+      filter: { repo_path: REPO_A },
+    });
+    expect(result.warnings).toEqual([]);
+
+    const descriptor = result.sources['git']!;
+    const search = await searchMemories(store, {
+      source: descriptor.source,
+      ...descriptor.filter,
+      limit: 20,
+    });
+    expect(search.matches.map((match) => match.content)).toEqual(['metadata-less legacy commit']);
   });
 
   it('recovers a metadata-less legacy git source through a symlinked caller path', async () => {
@@ -302,7 +354,9 @@ describe('echoResolveMru — git two-path OR (R3 Codex #2 port from 037 AC6 Note
       });
 
       expect(result.sources['git']?.source).toBe(`git:${actualRepo}`);
-      expect(result.sources['git']?.filter).toEqual({});
+      expect(result.sources['git']?.filter).toEqual({
+        repo_path: repoAlias,
+      });
     } finally {
       rmSync(linkParent, { recursive: true, force: true });
       rmSync(actualRepo, { recursive: true, force: true });

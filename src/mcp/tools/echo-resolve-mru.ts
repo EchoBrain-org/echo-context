@@ -187,7 +187,15 @@ async function resolveAppNameEntry(
         scanState,
       ),
       ...exactSources.map((source) =>
-        newestMatching(storage, withFsExclusion({ source }), scanState),
+        newestMatching(
+          storage,
+          withFsExclusion({
+            source,
+            project_key: repoPath.project_key,
+            legacy_project_roots: repoPath.legacy_project_roots,
+          }),
+          scanState,
+        ),
       ),
     ]);
     const rowB = exactRows.reduce<CaptureEvent | null>((newest, row) => {
@@ -212,12 +220,15 @@ async function resolveAppNameEntry(
         filter: { repo_path: repoPath.normalized_path },
       };
     }
-    // Query B's row: exact-source `git:<repo_path>` IS the scoping
-    // predicate; no metadata_match needed because the source path encodes
-    // the repo. Downstream search_memories(source=desc.source) is sufficient.
+    // Query B admits metadata-less legacy rows only because its exact
+    // `git:<repo_path>` source structurally identifies this project. Preserve
+    // that same fail-closed project predicate in the downstream descriptor:
+    // search_memories combines the exact source with repo_path, admitting
+    // metadata-less legacy rows while rejecting present mismatched or
+    // malformed project identity.
     return {
       source: rowB!.source,
-      filter: {},
+      filter: { repo_path: repoPath.normalized_path },
     };
   }
 

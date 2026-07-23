@@ -182,16 +182,20 @@ function inspectLogicalCandidate(
   if (window.untilMs !== undefined && occurredMs >= window.untilMs) {
     return { inWindow: false };
   }
-  // Retain inherited rows in the projection buffer, but do not let a newer
-  // copy satisfy the early-stop target before an older stored original can be
-  // fetched. Inherited-only groups are emitted if the scan reaches exhaustion
-  // or a truthful bounded-input warning.
-  if (atom.conversation?.observation_kind === 'inherited') {
+  const conversation = atom.conversation;
+  // Mirror projectLogicalTurns' fail-closed identity contract exactly:
+  // inherited rows remain available as representatives but cannot satisfy the
+  // early-stop target before an older stored original is fetched. Unknown or
+  // absent observation markers remain distinct physical candidates even when
+  // they carry a syntactically valid logical id.
+  if (conversation?.observation_kind === 'inherited') {
     return { inWindow: true };
   }
-  const conversation = atom.conversation;
   const logicalTurnId = conversation?.logical_turn_id;
-  if (conversation !== undefined && logicalTurnId !== undefined) {
+  if (
+    conversation?.observation_kind === 'original' &&
+    logicalTurnId !== undefined
+  ) {
     return {
       inWindow: true,
       logicalKey: `${conversation.provider}\u0000${logicalTurnId}`,

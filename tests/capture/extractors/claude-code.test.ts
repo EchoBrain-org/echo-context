@@ -419,6 +419,19 @@ describe("extractClaudeCodeTurns (pure)", () => {
           line.agentId = "ambiguous-agent";
         },
       },
+      {
+        name: "wrong-type-sidechain-marker",
+        mutate: (line) => {
+          (line as unknown as Record<string, unknown>)["isSidechain"] = "false";
+        },
+      },
+      {
+        name: "wrong-type-root-agent",
+        mutate: (line) => {
+          line.isSidechain = false;
+          (line as unknown as Record<string, unknown>)["agentId"] = 42;
+        },
+      },
     ];
 
     for (const testCase of cases) {
@@ -519,6 +532,70 @@ describe("extractClaudeCodeTurns (pure)", () => {
     }
   });
 
+  it("fails present malformed stable lineage on any contributing assistant record closed", async () => {
+    const cases: Array<{
+      name: string;
+      mutateAssistant: (line: Record<string, unknown>) => void;
+    }> = [
+      {
+        name: "blank-session-id",
+        mutateAssistant: (line) => {
+          line["sessionId"] = "";
+        },
+      },
+      {
+        name: "wrong-type-session-id",
+        mutateAssistant: (line) => {
+          line["sessionId"] = 42;
+        },
+      },
+      {
+        name: "wrong-type-sidechain",
+        mutateAssistant: (line) => {
+          line["isSidechain"] = "false";
+        },
+      },
+      {
+        name: "blank-agent-id",
+        mutateAssistant: (line) => {
+          line["agentId"] = "   ";
+        },
+      },
+      {
+        name: "wrong-type-agent-id",
+        mutateAssistant: (line) => {
+          line["agentId"] = { unexpected: true };
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const path = join(dir, `assistant-malformed-${testCase.name}.jsonl`);
+      const user = userText("root-session", "user-record", "root task");
+      user.isSidechain = false;
+      const assistant = assistantEndTurn(
+        "root-session",
+        "assistant-record",
+        "observed",
+      );
+      assistant.isSidechain = false;
+      testCase.mutateAssistant(assistant as unknown as Record<string, unknown>);
+      writeJsonlFresh(path, [user, assistant]);
+
+      const { turns } = await extractClaudeCodeTurns(path, 0);
+
+      expect(turns, testCase.name).toHaveLength(1);
+      expect(turns[0], testCase.name).toMatchObject({
+        logical_turn_id: "user-record",
+        thread_kind: "unknown",
+        observation_kind: "unknown",
+      });
+      expect(turns[0], testCase.name).not.toHaveProperty("thread_id");
+      expect(turns[0], testCase.name).not.toHaveProperty("root_thread_id");
+      expect(turns[0], testCase.name).not.toHaveProperty("agent_id");
+    }
+  });
+
   it("keeps a turn failed closed after conflicting tool-only lineage", async () => {
     const path = join(dir, "tool-lineage-conflict.jsonl");
     const user = userText("root-session", "user-record", "run the tool");
@@ -540,6 +617,30 @@ describe("extractClaudeCodeTurns (pure)", () => {
     expect(turns[0]).not.toHaveProperty("thread_id");
     expect(turns[0]).not.toHaveProperty("root_thread_id");
     expect(turns[0]).not.toHaveProperty("agent_id");
+  });
+
+  it("carries malformed lineage from a buffered tool record into the turn it contributes to", async () => {
+    const path = join(dir, "buffered-tool-lineage-conflict.jsonl");
+    const bufferedTool = assistantToolUse("root-session", "tool-record");
+    bufferedTool.isSidechain = false;
+    (bufferedTool as unknown as Record<string, unknown>)["sessionId"] = 42;
+    const user = userText("root-session", "user-record", "use buffered result");
+    user.isSidechain = false;
+    const answer = assistantEndTurn("root-session", "answer-record", "done");
+    answer.isSidechain = false;
+    writeJsonlFresh(path, [bufferedTool, user, answer]);
+
+    const { turns } = await extractClaudeCodeTurns(path, 0);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      logical_turn_id: "user-record",
+      had_tool_use: true,
+      thread_kind: "unknown",
+      observation_kind: "unknown",
+    });
+    expect(turns[0]).not.toHaveProperty("thread_id");
+    expect(turns[0]).not.toHaveProperty("root_thread_id");
   });
 
   it("does not let a system reminder replace a pending human prompt", async () => {

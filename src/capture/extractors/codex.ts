@@ -603,13 +603,20 @@ function parseLine(line: string): ParsedLine | null {
 }
 
 function deriveSessionId(jsonlPath: string): string {
+  const rolloutThreadId = deriveRolloutPhysicalThreadId(jsonlPath);
+  if (rolloutThreadId !== undefined) return rolloutThreadId;
   const base = basename(jsonlPath);
-  // rollout-<ISO>-<uuid>.jsonl  → take the trailing UUID, fall back to filename
+  return base.endsWith(".jsonl") ? base.slice(0, -".jsonl".length) : base;
+}
+
+function deriveRolloutPhysicalThreadId(jsonlPath: string): string | undefined {
+  const base = basename(jsonlPath);
+  // rollout-<ISO>-<uuid>.jsonl → take the trailing UUID. Generic fixture and
+  // imported filenames intentionally retain header-only identity fallback.
   const m = base.match(
     /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
   );
-  if (m && m[1] !== undefined) return m[1];
-  return base.endsWith(".jsonl") ? base.slice(0, -".jsonl".length) : base;
+  return m?.[1];
 }
 
 interface PendingToolCall {
@@ -795,7 +802,10 @@ async function readCodexSessionHeader(
     return { codex: { thread_kind: "unknown" } };
   }
   const header: CodexSessionHeader = {
-    codex: mergeCodexMeta(undefined, codexMetaPatch(parsed)),
+    codex: reconcileCodexPhysicalSession(
+      mergeCodexMeta(undefined, codexMetaPatch(parsed)),
+      deriveRolloutPhysicalThreadId(jsonlPath),
+    ),
   };
   if (parsed.cwd !== undefined) header.cwd = parsed.cwd;
   if (parsed.git !== undefined) header.git = parsed.git;
@@ -850,6 +860,34 @@ function replaceCodexLineage(
     }
   }
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** A canonical rollout filename and its first physical session header are two
+ * independent observations of the same Codex thread. Never promote lineage
+ * when they disagree. Generic/imported filenames intentionally retain the
+ * header-only fallback used by supported capture imports. */
+function reconcileCodexPhysicalSession(
+  meta: CodexSessionMeta | undefined,
+  expectedThreadId: string | undefined,
+): CodexSessionMeta | undefined {
+  if (meta === undefined || expectedThreadId === undefined) return meta;
+  if (meta.thread_kind === "unknown") {
+    const hasStaleLineage = CODEX_LINEAGE_KEYS.some(
+      (key) => key !== "thread_kind" && meta[key] !== undefined,
+    );
+    return hasStaleLineage
+      ? replaceCodexLineage(meta, { thread_kind: "unknown" })
+      : meta;
+  }
+  if (meta.thread_id === undefined) {
+    return meta.thread_kind === "root" || meta.thread_kind === "subagent"
+      ? replaceCodexLineage(meta, { thread_kind: "unknown" })
+      : meta;
+  }
+  if (meta.thread_id.toLowerCase() === expectedThreadId.toLowerCase()) {
+    return meta;
+  }
+  return replaceCodexLineage(meta, { thread_kind: "unknown" });
 }
 
 function samePhysicalCodexSession(
@@ -912,13 +950,17 @@ function isCopiedCodexAncestor(
 function mergeCodexSessionMeta(
   current: CodexSessionMeta | undefined,
   incoming: Partial<CodexSessionMeta>,
+  expectedPhysicalThreadId: string | undefined,
 ): CodexSessionMeta | undefined {
   const merged = mergeCodexMeta(current, incoming);
   const currentLineage = codexLineagePatch(current);
   const incomingLineage = codexLineagePatch(incoming);
 
   if (currentLineage.thread_kind === undefined) {
-    return replaceCodexLineage(merged, incomingLineage);
+    return reconcileCodexPhysicalSession(
+      replaceCodexLineage(merged, incomingLineage),
+      expectedPhysicalThreadId,
+    );
   }
   if (
     currentLineage.thread_kind === "unknown" ||
@@ -980,15 +1022,20 @@ export async function extractCodexTurns(
     };
   }
   const session_id = deriveSessionId(jsonlPath);
+  const expectedPhysicalThreadId = deriveRolloutPhysicalThreadId(jsonlPath);
 
   const turns: CodexTurn[] = [];
   let pending: PendingCluster | null = null;
   let queuedTurnIdentity: QueuedTurnIdentity | undefined;
+  let queuedTurnIdentityIsAgentAssociated = false;
   let nextAgentMessageTriggersTurn = false;
   let triggerMarkerStartOffset: number | undefined;
   let cwd: string | undefined = input.lastKnownCwd;
   let git: CodexGitMeta | undefined = input.lastKnownGit;
-  let codexMeta: CodexSessionMeta | undefined = input.lastKnownCodex;
+  let codexMeta: CodexSessionMeta | undefined = reconcileCodexPhysicalSession(
+    input.lastKnownCodex,
+    expectedPhysicalThreadId,
+  );
   // Tracks the END of the last line that contributed to an EMITTED turn.
   // Pending-cluster lines (user + assistants without a closing next-user) are
   // intentionally NOT past confirmedThroughOffset, so the next pass re-reads
@@ -1013,6 +1060,14 @@ export async function extractCodexTurns(
   function clearPendingAgentTrigger(): void {
     nextAgentMessageTriggersTurn = false;
     triggerMarkerStartOffset = undefined;
+  }
+
+  function invalidatePendingAgentTrigger(): void {
+    clearPendingAgentTrigger();
+    if (queuedTurnIdentityIsAgentAssociated) {
+      queuedTurnIdentity = undefined;
+      queuedTurnIdentityIsAgentAssociated = false;
+    }
   }
 
   function emitPendingIfComplete(): void {
@@ -1095,7 +1150,7 @@ export async function extractCodexTurns(
       lineIndex === 0 ? firstLineOffset : lineEndOffsets[lineIndex - 1]!;
     const parsed = parseLine(line);
     if (parsed === null) {
-      clearPendingAgentTrigger();
+      invalidatePendingAgentTrigger();
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -1103,16 +1158,25 @@ export async function extractCodexTurns(
     if (parsed.kind === "session_meta") {
       if (parsed.cwd !== undefined) cwd = parsed.cwd;
       if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
-      codexMeta = mergeCodexSessionMeta(codexMeta, codexMetaPatch(parsed));
+      codexMeta = mergeCodexSessionMeta(
+        codexMeta,
+        codexMetaPatch(parsed),
+        expectedPhysicalThreadId,
+      );
       markSafeThrough(lineEndOffset);
       continue;
     }
 
     if (parsed.kind === "inter_agent_metadata") {
-      nextAgentMessageTriggersTurn = parsed.trigger_turn === true;
-      triggerMarkerStartOffset = nextAgentMessageTriggersTurn
-        ? lineStartOffset
-        : undefined;
+      if (parsed.trigger_turn === true) {
+        nextAgentMessageTriggersTurn = true;
+        triggerMarkerStartOffset = lineStartOffset;
+        if (queuedTurnIdentity !== undefined) {
+          queuedTurnIdentityIsAgentAssociated = true;
+        }
+      } else {
+        invalidatePendingAgentTrigger();
+      }
       // A true marker changes the meaning of the immediately following
       // agent_message. Keep both records behind the durable boundary until
       // that turn closes so a restart cannot lose the trigger.
@@ -1166,6 +1230,9 @@ export async function extractCodexTurns(
             queuedTurnIdentity,
             identity,
           );
+          if (nextAgentMessageTriggersTurn) {
+            queuedTurnIdentityIsAgentAssociated = true;
+          }
         }
       }
       markSafeThrough(lineEndOffset);
@@ -1177,7 +1244,7 @@ export async function extractCodexTurns(
     // continues incompatible work and must make the marker impossible to
     // consume later.
     if (parsed.kind !== "message" || parsed.role !== "agent") {
-      clearPendingAgentTrigger();
+      invalidatePendingAgentTrigger();
     }
 
     if (parsed.kind === "tool_call") {
@@ -1273,6 +1340,7 @@ export async function extractCodexTurns(
       // A targeted-turn marker/context followed by an ineligible agent message
       // belongs to that rejected input, not to a later human turn.
       queuedTurnIdentity = undefined;
+      queuedTurnIdentityIsAgentAssociated = false;
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -1306,6 +1374,7 @@ export async function extractCodexTurns(
       }
       let contextIdentity = queuedTurnIdentity;
       queuedTurnIdentity = undefined;
+      queuedTurnIdentityIsAgentAssociated = false;
       // A new user closes any prior cluster.
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
@@ -1563,11 +1632,46 @@ async function backfillLegacyCodexLineage(
   path: string,
   entry: OffsetEntry,
 ): Promise<OffsetEntry> {
-  if (entry.offset <= 0 || entry.codex?.thread_kind !== undefined) return entry;
+  const expectedPhysicalThreadId = deriveRolloutPhysicalThreadId(path);
+  const reconciledCodex = reconcileCodexPhysicalSession(
+    entry.codex,
+    expectedPhysicalThreadId,
+  );
+  const reconciledPageStartCodex = reconcileCodexPhysicalSession(
+    entry.page_start?.codex,
+    expectedPhysicalThreadId,
+  );
+  const codexChanged = reconciledCodex !== entry.codex;
+  const pageStartCodexChanged =
+    reconciledPageStartCodex !== entry.page_start?.codex;
+  let enriched: OffsetEntry =
+    codexChanged || pageStartCodexChanged ? { ...entry } : entry;
+  if (codexChanged) {
+    if (reconciledCodex === undefined) delete enriched.codex;
+    else enriched.codex = reconciledCodex;
+  }
+  if (pageStartCodexChanged && enriched.page_start !== undefined) {
+    enriched.page_start = { ...enriched.page_start };
+    if (reconciledPageStartCodex === undefined) {
+      delete enriched.page_start.codex;
+    } else {
+      enriched.page_start.codex = reconciledPageStartCodex;
+    }
+    // A contradictory rewind snapshot is part of the same checkpoint proof.
+    // Do not let a later header backfill silently repair only the hot entry.
+    if (enriched.codex?.thread_kind === undefined) {
+      enriched.codex = replaceCodexLineage(enriched.codex, {
+        thread_kind: "unknown",
+      });
+    }
+  }
+  if (enriched.offset <= 0 || enriched.codex?.thread_kind !== undefined) {
+    return enriched;
+  }
   const header = await readCodexSessionHeader(path);
-  if (header === null) return entry;
+  if (header === null) return enriched;
 
-  const enriched: OffsetEntry = { ...entry };
+  if (enriched === entry) enriched = { ...entry };
   if (enriched.cwd === undefined && header.cwd !== undefined) {
     enriched.cwd = header.cwd;
   }

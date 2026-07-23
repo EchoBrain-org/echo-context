@@ -1,4 +1,5 @@
 import { isAbsolute, normalize as pathNormalize } from 'node:path';
+import { sourceEquals } from './source-match.js';
 
 export const MAX_LEGACY_PROJECT_ROOTS = 3;
 
@@ -58,26 +59,43 @@ export function pathEqualsOrDescendsFrom(path: string, root: string): boolean {
   return path.startsWith(prefix);
 }
 
+/** Whether an exact legacy Git source structurally names this project.
+ * Callers must only use this for an exact-source query; a prefix query does
+ * not prove that an identity-less row belongs to one project. */
+export function isLegacyGitSourceForProject(
+  source: string,
+  legacyRoots: readonly string[],
+): boolean {
+  return legacyRoots.some((root) => sourceEquals(source, `git:${root}`));
+}
+
 /** MemoryStorage's reference implementation of authoritative project matching.
  * Presence, rather than type validity, controls precedence: malformed explicit
- * fields fail closed instead of widening into legacy repo_root matching. */
+ * fields fail closed instead of widening into legacy repo_root matching.
+ * Identity-less legacy Git rows may be admitted only when an exact source
+ * filter has already proved that `git:<root>` names the requested project. */
 export function metadataMatchesProject(
   metadata: Record<string, unknown> | undefined,
   projectKey: string,
   legacyRoots: readonly string[],
+  allowIdentityLessLegacyGitSource = false,
 ): boolean {
-  if (metadata === undefined) return false;
-  if (Object.prototype.hasOwnProperty.call(metadata, 'project_key')) {
+  if (metadata !== undefined && Object.prototype.hasOwnProperty.call(metadata, 'project_key')) {
     return metadata['project_key'] === projectKey;
   }
-  if (Object.prototype.hasOwnProperty.call(metadata, 'canonical_root')) {
+  if (metadata !== undefined && Object.prototype.hasOwnProperty.call(metadata, 'canonical_root')) {
     const canonicalRoot = metadata['canonical_root'];
     return (
       typeof canonicalRoot === 'string' &&
       `${LOCAL_WORKSPACE_PROJECT_PREFIX}${canonicalRoot}` === projectKey
     );
   }
-  const repoRoot = metadata['repo_root'];
-  if (typeof repoRoot !== 'string') return false;
-  return legacyRoots.some((root) => pathEqualsOrDescendsFrom(repoRoot, root));
+  if (metadata !== undefined && Object.prototype.hasOwnProperty.call(metadata, 'repo_root')) {
+    const repoRoot = metadata['repo_root'];
+    return (
+      typeof repoRoot === 'string' &&
+      legacyRoots.some((root) => pathEqualsOrDescendsFrom(repoRoot, root))
+    );
+  }
+  return allowIdentityLessLegacyGitSource;
 }

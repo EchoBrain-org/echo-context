@@ -266,6 +266,42 @@ describe('bounded sparse-scan MCP consumers', () => {
     expect(storage.queryCalls).toBe(1);
   });
 
+  it('counts fail-closed unknown observations as distinct raw candidates', async () => {
+    const storage = new SparseWindowStorage(0, {
+      timestamp: '2026-05-09T08:00:00.000Z',
+      id: 'unused',
+    });
+    for (let index = 0; index < 11; index += 1) {
+      const timestamp = `2026-05-09T09:${String(index).padStart(2, '0')}:00.000Z`;
+      const turn = codexTurn({
+        logicalId: 'shared-but-untrusted',
+        timestamp,
+      });
+      await storage.append({
+        ...turn,
+        metadata: {
+          ...turn.metadata,
+          thread_kind: 'unknown',
+          observation_kind: 'unknown',
+          initiator: 'unknown',
+        },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+      limit: 1,
+    });
+
+    // Unknown observations are deliberately not collapsed by
+    // projectLogicalTurns, so each physical row must also charge the scan's
+    // limit * STORAGE_OVERFETCH candidate target.
+    expect(result.truncation.atoms_total_in_window).toBe(10);
+    expect(result.warnings.join('\n')).toMatch(/storage cap hit/);
+    expect(storage.queryCalls).toBe(1);
+  });
+
   it('does not let successfully stored but unnormalizable noise satisfy the logical scan target', async () => {
     const storage = new SparseWindowStorage(0, {
       timestamp: '2026-05-09T08:00:00.000Z',

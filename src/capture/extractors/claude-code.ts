@@ -185,9 +185,12 @@ interface ParsedLine {
   version: string | undefined;
   model: string | undefined;
   sessionId: string | undefined;
+  sessionIdMalformed: boolean;
   uuid: string | undefined;
   isSidechain: boolean | undefined;
+  isSidechainMalformed: boolean;
   agentId: string | undefined;
+  agentIdMalformed: boolean;
   files: string[];
   toolUses: ParsedToolUse[];
   toolResults: ParsedToolResult[];
@@ -314,6 +317,20 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
   const uuid = obj["uuid"];
   const isSidechain = obj["isSidechain"];
   const agentId = obj["agentId"];
+  const validSessionId =
+    isNonEmptyString(sessionId) && sessionId.trim().length > 0
+      ? sessionId
+      : undefined;
+  const validAgentId =
+    isNonEmptyString(agentId) && agentId.trim().length > 0
+      ? agentId
+      : undefined;
+  const hasSessionId = Object.prototype.hasOwnProperty.call(obj, "sessionId");
+  const hasIsSidechain = Object.prototype.hasOwnProperty.call(
+    obj,
+    "isSidechain",
+  );
+  const hasAgentId = Object.prototype.hasOwnProperty.call(obj, "agentId");
   const isEndTurn = role === "assistant" && msg["stop_reason"] === "end_turn";
   return {
     role,
@@ -328,10 +345,13 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
       : undefined,
     version: isNonEmptyString(version) ? version : undefined,
     model: isNonEmptyString(model) ? model : undefined,
-    sessionId: isNonEmptyString(sessionId) ? sessionId : undefined,
+    sessionId: validSessionId,
+    sessionIdMalformed: hasSessionId && validSessionId === undefined,
     uuid: isNonEmptyString(uuid) ? uuid : undefined,
     isSidechain: typeof isSidechain === "boolean" ? isSidechain : undefined,
-    agentId: isNonEmptyString(agentId) ? agentId : undefined,
+    isSidechainMalformed: hasIsSidechain && typeof isSidechain !== "boolean",
+    agentId: validAgentId,
+    agentIdMalformed: hasAgentId && validAgentId === undefined,
     files: ec.files,
     toolUses: ec.toolUses,
     toolResults: ec.toolResults,
@@ -350,12 +370,20 @@ function deriveProject(jsonlPath: string): string {
 
 type ClaudeThreadKind = "root" | "subagent" | "unknown";
 
+interface ClaudeStableLineage {
+  sessionId?: string;
+  isSidechain?: boolean;
+  agentId?: string;
+}
+
 function classifyClaudeThreadKind(input: {
   sessionId: string | undefined;
   logicalTurnId: string | undefined;
   isSidechain: boolean | undefined;
   agentId: string | undefined;
+  lineageMalformed: boolean;
 }): ClaudeThreadKind {
+  if (input.lineageMalformed) return "unknown";
   if (input.sessionId === undefined || input.logicalTurnId === undefined) {
     return "unknown";
   }
@@ -366,19 +394,68 @@ function classifyClaudeThreadKind(input: {
 }
 
 function hasClaudeLineageConflict(
-  expected: {
-    sessionId: string | undefined;
-    isSidechain: boolean | undefined;
-    agentId: string | undefined;
-  },
+  expected: ClaudeStableLineage,
   observed: ParsedLine,
 ): boolean {
   return (
+    observed.sessionIdMalformed ||
+    observed.isSidechainMalformed ||
+    observed.agentIdMalformed ||
     (observed.sessionId !== undefined &&
       observed.sessionId !== expected.sessionId) ||
     (observed.isSidechain !== undefined &&
       observed.isSidechain !== expected.isSidechain) ||
     (observed.agentId !== undefined && observed.agentId !== expected.agentId)
+  );
+}
+
+interface AccumulatedClaudeLineage extends ClaudeStableLineage {
+  poisoned: boolean;
+}
+
+function accumulateClaudeLineage(
+  current: AccumulatedClaudeLineage | undefined,
+  observed: ParsedLine,
+): AccumulatedClaudeLineage {
+  const next: AccumulatedClaudeLineage = current ?? { poisoned: false };
+  if (
+    observed.sessionIdMalformed ||
+    observed.isSidechainMalformed ||
+    observed.agentIdMalformed
+  ) {
+    next.poisoned = true;
+  }
+  for (const key of [
+    "sessionId",
+    "isSidechain",
+    "agentId",
+  ] as const satisfies readonly (keyof ClaudeStableLineage)[]) {
+    const value = observed[key];
+    if (value === undefined) continue;
+    if (next[key] !== undefined && next[key] !== value) {
+      next.poisoned = true;
+    } else {
+      (next as Record<keyof ClaudeStableLineage, string | boolean | undefined>)[
+        key
+      ] = value;
+    }
+  }
+  return next;
+}
+
+function accumulatedClaudeLineageConflicts(
+  accumulated: AccumulatedClaudeLineage | undefined,
+  expected: ClaudeStableLineage,
+): boolean {
+  if (accumulated === undefined) return false;
+  return (
+    accumulated.poisoned ||
+    (accumulated.sessionId !== undefined &&
+      accumulated.sessionId !== expected.sessionId) ||
+    (accumulated.isSidechain !== undefined &&
+      accumulated.isSidechain !== expected.isSidechain) ||
+    (accumulated.agentId !== undefined &&
+      accumulated.agentId !== expected.agentId)
   );
 }
 
@@ -441,6 +518,7 @@ export async function extractClaudeCodeTurns(
   let toolUsesBetween: ParsedToolUse[] = [];
   let toolResultsBetween: ParsedToolResult[] = [];
   let thinkingBetween: string[] = [];
+  let lineageBetween: AccumulatedClaudeLineage | undefined;
   let betweenStartOffset: number | null = null;
   let lineStartOffset = firstLineOffset;
   // Tracks the END of the last line that contributed to an EMITTED turn.
@@ -585,6 +663,9 @@ export async function extractClaudeCodeTurns(
         if (carriesBetweenState && !hasBetweenState()) {
           betweenStartOffset = lineStartOffset;
         }
+        if (carriesBetweenState) {
+          lineageBetween = accumulateClaudeLineage(lineageBetween, parsed);
+        }
         if (parsed.hasTool) hadToolBetween = true;
         if (parsed.files.length > 0) filesBetween.push(...parsed.files);
         if (parsed.toolUses.length > 0)
@@ -601,12 +682,26 @@ export async function extractClaudeCodeTurns(
 
     if (parsed.role === "user") {
       if (firstUserOffset === undefined) firstUserOffset = lineStartOffset;
-      const threadKind = classifyClaudeThreadKind({
+      let threadKind = classifyClaudeThreadKind({
         sessionId: parsed.sessionId,
         logicalTurnId: parsed.uuid,
         isSidechain: parsed.isSidechain,
         agentId: parsed.agentId,
+        lineageMalformed:
+          parsed.sessionIdMalformed ||
+          parsed.isSidechainMalformed ||
+          parsed.agentIdMalformed,
       });
+      if (
+        threadKind !== "unknown" &&
+        accumulatedClaudeLineageConflicts(lineageBetween, {
+          sessionId: parsed.sessionId,
+          isSidechain: parsed.isSidechain,
+          agentId: parsed.agentId,
+        })
+      ) {
+        threadKind = "unknown";
+      }
       const fallbackInitiator: Exclude<ContextInitiator, "system"> =
         parsed.isSidechain === true
           ? parsed.agentId !== undefined
@@ -681,6 +776,7 @@ export async function extractClaudeCodeTurns(
       toolUsesBetween = [];
       toolResultsBetween = [];
       thinkingBetween = [];
+      lineageBetween = undefined;
       betweenStartOffset = null;
     } else {
       // text-bearing assistant
