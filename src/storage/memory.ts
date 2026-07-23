@@ -37,6 +37,7 @@ import {
   isLegacyGitSourceForProject,
   metadataMatchesProject,
   normalizeLegacyProjectRoots,
+  preserveUndefinedProjectIdentityForJson,
 } from './project-filter.js';
 
 // 057a AC3 — monotonic insertion counter parallel to SQLite's rowid.
@@ -75,7 +76,16 @@ export class MemoryStorage implements Storage {
     assertStorageDescriptorField('append', 'timestamp', event.timestamp);
     if (dedupe && this.events.some((candidate) => candidate.id === id)) return id;
     const timestamp = canonicalizeTimestamp(event.timestamp);
-    const metadataJson = event.metadata === undefined ? null : JSON.stringify(event.metadata);
+    const durableMetadata =
+      event.metadata === undefined
+        ? undefined
+        : preserveUndefinedProjectIdentityForJson(event.metadata);
+    const serializedMetadata =
+      durableMetadata === undefined ? null : JSON.stringify(durableMetadata);
+    if (serializedMetadata === undefined) {
+      throw new TypeError('append metadata must serialize to a JSON value');
+    }
+    const metadataJson = serializedMetadata;
     const storedBytes = eventStoredBytes({
       id,
       source: event.source,
@@ -95,6 +105,7 @@ export class MemoryStorage implements Storage {
     this.seqCounter += 1;
     this.events.push({
       ...event,
+      metadata: durableMetadata,
       timestamp,
       id,
       _seq: this.seqCounter,

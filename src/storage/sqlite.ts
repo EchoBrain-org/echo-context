@@ -59,6 +59,8 @@ import { migrate } from "./migrate.js";
 import {
   isLegacyGitSourceForProject,
   normalizeLegacyProjectRoots,
+  pathEqualsOrDescendsFrom,
+  preserveUndefinedProjectIdentityForJson,
 } from "./project-filter.js";
 import { normalizePathLikeSource, sourceHasPrefix } from "./source-match.js";
 import { canonicalizeTimestamp } from "../util/timestamp.js";
@@ -364,6 +366,20 @@ export class SqliteStorage implements Storage {
     // NORMAL is safe under WAL and avoids per-append fsync — recommended by SQLite for app use.
     this.db.pragma("synchronous = NORMAL");
     this.db.pragma("foreign_keys = ON");
+    // Project filtering runs only across bounded descriptor pages. Register the
+    // shared path predicate as a deterministic scalar so SQLite and the memory
+    // adapter normalize both stored repo_root values and requested roots with
+    // identical dot-segment and component-boundary semantics.
+    this.db.function(
+      "echo_path_equals_or_descends_from",
+      { deterministic: true },
+      (candidate: unknown, root: unknown): number =>
+        typeof candidate === "string" &&
+        typeof root === "string" &&
+        pathEqualsOrDescendsFrom(candidate, root)
+          ? 1
+          : 0,
+    );
     if (createsAuthority) {
       // SQLite normally derives these modes from the database, but assert the
       // authority boundary explicitly for platforms where they currently exist.
@@ -433,7 +449,11 @@ export class SqliteStorage implements Storage {
     assertStorageDescriptorField("append", "timestamp", event.timestamp);
     if (dedupe && this.eventIdExistsStmt.get(id) !== undefined) return id;
     const serializedMetadata =
-      event.metadata !== undefined ? JSON.stringify(event.metadata) : null;
+      event.metadata !== undefined
+        ? JSON.stringify(
+            preserveUndefinedProjectIdentityForJson(event.metadata),
+          )
+        : null;
     if (serializedMetadata === undefined) {
       throw new TypeError("append metadata must serialize to a JSON value");
     }
@@ -710,11 +730,11 @@ export class SqliteStorage implements Storage {
     if (filter?.project_key !== undefined) {
       const legacyRepoRootPredicates = legacyProjectRoots.map((root, index) => {
         const rootParam = `__legacy_project_root_${index}`;
-        const prefixParam = `__legacy_project_prefix_${index}`;
         params[rootParam] = root;
-        params[prefixParam] = root.endsWith("/") ? root : `${root}/`;
-        return `(json_extract(e.metadata, '$.repo_root') = @${rootParam}
-                  OR substr(json_extract(e.metadata, '$.repo_root'), 1, length(@${prefixParam})) = @${prefixParam})`;
+        return `echo_path_equals_or_descends_from(
+                  json_extract(e.metadata, '$.repo_root'),
+                  @${rootParam}
+                ) = 1`;
       });
       const legacyRepoRootMatch =
         legacyRepoRootPredicates.length === 0
@@ -735,6 +755,7 @@ export class SqliteStorage implements Storage {
            WHEN json_type(e.metadata, '$.repo_root') IS NOT NULL
              THEN CASE
                WHEN typeof(json_extract(e.metadata, '$.repo_root')) = 'text'
+                 AND length(CAST(json_extract(e.metadata, '$.repo_root') AS BLOB)) <= ${STORAGE_DESCRIPTOR_SOURCE_BYTES}
                  AND ${legacyRepoRootMatch}
                THEN 1 ELSE 0 END
            ELSE ${allowIdentityLessLegacyGitSource ? "1" : "0"}

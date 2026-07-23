@@ -338,6 +338,33 @@ describe('echoResolveMru — git two-path OR (R3 Codex #2 port from 037 AC6 Note
     expect(search.matches.map((match) => match.content)).toEqual(['metadata-less legacy commit']);
   });
 
+  it('does not let a dot-segment repo_root escape survive MRU descriptor composition', async () => {
+    const store = new MemoryStorage();
+    await store.append(ev(`git:${REPO_A}`, ts(0), 'repo A commit', { repo_root: REPO_A }));
+    await store.append(
+      ev(`git:${REPO_B}`, ts(20), 'repo B escaped commit', {
+        repo_root: `${REPO_A}/../${REPO_B.slice(REPO_B.lastIndexOf('/') + 1)}`,
+      }),
+    );
+
+    const resolved = await echoResolveMru(store, {
+      sources: ['git'],
+      repo_path: REPO_A,
+    });
+
+    expect(resolved.sources['git']).toEqual({
+      source: `git:${REPO_A}`,
+      filter: { repo_path: REPO_A },
+    });
+    const descriptor = resolved.sources['git']!;
+    const search = await searchMemories(store, {
+      source: descriptor.source,
+      ...descriptor.filter,
+      limit: 20,
+    });
+    expect(search.matches.map((match) => match.content)).toEqual(['repo A commit']);
+  });
+
   it('recovers a metadata-less legacy git source through a symlinked caller path', async () => {
     const actualRepo = realpathSync(mkdtempSync(join(tmpdir(), 'echo-mru-actual-')));
     const linkParent = realpathSync(mkdtempSync(join(tmpdir(), 'echo-mru-link-')));

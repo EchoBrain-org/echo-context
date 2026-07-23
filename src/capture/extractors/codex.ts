@@ -779,6 +779,46 @@ function codexMetaPatch(parsed: ParsedLine): Partial<CodexSessionMeta> {
   };
 }
 
+const CODEX_TURN_CONTEXT_KEYS = [
+  "model",
+  "reasoning_effort",
+  "personality",
+  "approval_policy",
+  "sandbox_policy_type",
+  "sandbox_network_access",
+  "sandbox_writable_roots",
+  "sandbox_exclude_tmpdir_env_var",
+  "sandbox_exclude_slash_tmp",
+  "permission_profile_type",
+  "permission_file_system_type",
+  "permission_network",
+  "file_system_sandbox_kind",
+] as const satisfies readonly (keyof CodexSessionMeta)[];
+
+function codexTurnContextPatch(
+  meta: CodexSessionMeta | undefined,
+): Partial<CodexSessionMeta> {
+  const patch: Partial<CodexSessionMeta> = {};
+  if (meta === undefined) return patch;
+  const mutablePatch = patch as Record<keyof CodexSessionMeta, CodexMetaValue>;
+  for (const key of CODEX_TURN_CONTEXT_KEYS) {
+    const value = meta[key];
+    if (value !== undefined) mutablePatch[key] = value;
+  }
+  return patch;
+}
+
+/** Rebuild a legacy checkpoint from the physical first header while retaining
+ * only fields whose authority comes from turn_context records. Older
+ * extractors let copied ancestor session_meta records overwrite cwd/git and
+ * session-level fields, so those values cannot be trusted during migration. */
+function repairLegacyCodexMetaFromHeader(
+  header: CodexSessionMeta | undefined,
+  checkpoint: CodexSessionMeta | undefined,
+): CodexSessionMeta | undefined {
+  return mergeCodexMeta(header, codexTurnContextPatch(checkpoint));
+}
+
 interface CodexSessionHeader {
   cwd?: string;
   git?: CodexGitMeta;
@@ -904,6 +944,14 @@ function samePhysicalCodexSession(
   );
 }
 
+type CodexSessionMetaDisposition =
+  "initial" | "same_physical" | "copied_ancestor" | "conflict";
+
+interface CodexSessionMetaMerge {
+  codex: CodexSessionMeta | undefined;
+  disposition: CodexSessionMetaDisposition;
+}
+
 function hasCodexLineageConflict(
   current: Partial<CodexSessionMeta>,
   incoming: Partial<CodexSessionMeta>,
@@ -951,34 +999,52 @@ function mergeCodexSessionMeta(
   current: CodexSessionMeta | undefined,
   incoming: Partial<CodexSessionMeta>,
   expectedPhysicalThreadId: string | undefined,
-): CodexSessionMeta | undefined {
+): CodexSessionMetaMerge {
   const merged = mergeCodexMeta(current, incoming);
   const currentLineage = codexLineagePatch(current);
   const incomingLineage = codexLineagePatch(incoming);
 
   if (currentLineage.thread_kind === undefined) {
-    return reconcileCodexPhysicalSession(
-      replaceCodexLineage(merged, incomingLineage),
-      expectedPhysicalThreadId,
-    );
+    return {
+      codex: reconcileCodexPhysicalSession(
+        replaceCodexLineage(merged, incomingLineage),
+        expectedPhysicalThreadId,
+      ),
+      disposition: "initial",
+    };
   }
   if (
     currentLineage.thread_kind === "unknown" ||
     incomingLineage.thread_kind === undefined ||
     incomingLineage.thread_kind === "unknown"
   ) {
-    return replaceCodexLineage(merged, { thread_kind: "unknown" });
+    return {
+      codex: replaceCodexLineage(current, { thread_kind: "unknown" }),
+      disposition: "conflict",
+    };
   }
   if (isCopiedCodexAncestor(currentLineage, incomingLineage)) {
-    return replaceCodexLineage(merged, currentLineage);
+    // The complete copied session_meta record belongs to inherited history.
+    // Its cwd/git/config are no more authoritative for this physical child
+    // than its lineage, so the caller must ignore the whole record.
+    return { codex: current, disposition: "copied_ancestor" };
   }
   if (
     samePhysicalCodexSession(currentLineage, incomingLineage) &&
     !hasCodexLineageConflict(currentLineage, incomingLineage)
   ) {
-    return replaceCodexLineage(merged, currentLineage);
+    return {
+      codex: replaceCodexLineage(
+        merged,
+        mergeCodexMeta(currentLineage as CodexSessionMeta, incomingLineage),
+      ),
+      disposition: "same_physical",
+    };
   }
-  return replaceCodexLineage(merged, { thread_kind: "unknown" });
+  return {
+    codex: replaceCodexLineage(current, { thread_kind: "unknown" }),
+    disposition: "conflict",
+  };
 }
 
 function gitStateFromCodexGit(
@@ -1062,9 +1128,11 @@ export async function extractCodexTurns(
     triggerMarkerStartOffset = undefined;
   }
 
-  function invalidatePendingAgentTrigger(): void {
+  function invalidatePendingAgentTrigger(
+    clearUnassociatedIdentity = false,
+  ): void {
     clearPendingAgentTrigger();
-    if (queuedTurnIdentityIsAgentAssociated) {
+    if (clearUnassociatedIdentity || queuedTurnIdentityIsAgentAssociated) {
       queuedTurnIdentity = undefined;
       queuedTurnIdentityIsAgentAssociated = false;
     }
@@ -1150,19 +1218,28 @@ export async function extractCodexTurns(
       lineIndex === 0 ? firstLineOffset : lineEndOffsets[lineIndex - 1]!;
     const parsed = parseLine(line);
     if (parsed === null) {
-      invalidatePendingAgentTrigger();
+      // A malformed record is an opaque boundary. Do not let either a trigger
+      // marker or an unassociated turn identity cross it and attach to later
+      // work whose relationship we cannot prove.
+      invalidatePendingAgentTrigger(true);
       markSafeThrough(lineEndOffset);
       continue;
     }
 
     if (parsed.kind === "session_meta") {
-      if (parsed.cwd !== undefined) cwd = parsed.cwd;
-      if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
-      codexMeta = mergeCodexSessionMeta(
+      const sessionMetaMerge = mergeCodexSessionMeta(
         codexMeta,
         codexMetaPatch(parsed),
         expectedPhysicalThreadId,
       );
+      codexMeta = sessionMetaMerge.codex;
+      if (
+        sessionMetaMerge.disposition === "initial" ||
+        sessionMetaMerge.disposition === "same_physical"
+      ) {
+        if (parsed.cwd !== undefined) cwd = parsed.cwd;
+        if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
+      }
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -1210,7 +1287,16 @@ export async function extractCodexTurns(
           ...(parsed.turn_id !== undefined ? { turnId: parsed.turn_id } : {}),
           conflict: parsed.logical_identity_conflict === true,
         };
-        if (pending !== null && pending.assistantTexts.length === 0) {
+        const repeatsOpenTurn =
+          pending !== null &&
+          identity.turnId !== undefined &&
+          (identity.turnId === pending.contextTurnId ||
+            identity.turnId === pending.userTurnId ||
+            identity.turnId === pending.assistantTurnId);
+        if (
+          pending !== null &&
+          (pending.assistantTexts.length === 0 || repeatsOpenTurn)
+        ) {
           if (
             pending.contextTurnId !== undefined &&
             identity.turnId !== undefined &&
@@ -1244,7 +1330,14 @@ export async function extractCodexTurns(
     // continues incompatible work and must make the marker impossible to
     // consume later.
     if (parsed.kind !== "message" || parsed.role !== "agent") {
-      invalidatePendingAgentTrigger();
+      const clearsQueuedTurnIdentity =
+        parsed.kind === "other" ||
+        parsed.kind === "tool_call" ||
+        parsed.kind === "tool_output" ||
+        parsed.kind === "reasoning" ||
+        parsed.kind === "task_complete" ||
+        (parsed.kind === "message" && parsed.role === "assistant");
+      invalidatePendingAgentTrigger(clearsQueuedTurnIdentity);
     }
 
     if (parsed.kind === "tool_call") {
@@ -1672,25 +1765,41 @@ async function backfillLegacyCodexLineage(
   if (header === null) return enriched;
 
   if (enriched === entry) enriched = { ...entry };
-  if (enriched.cwd === undefined && header.cwd !== undefined) {
+  if (header.cwd !== undefined) {
     enriched.cwd = header.cwd;
+  } else {
+    delete enriched.cwd;
   }
   if (header.git !== undefined) {
-    enriched.git = { ...header.git, ...(enriched.git ?? {}) };
+    enriched.git = header.git;
+  } else {
+    delete enriched.git;
   }
-  enriched.codex = replaceCodexLineage(
-    mergeCodexMeta(header.codex, enriched.codex ?? {}),
-    codexLineagePatch(header.codex),
+  enriched.codex = repairLegacyCodexMetaFromHeader(
+    header.codex,
+    enriched.codex,
   );
   if (enriched.page_start !== undefined) {
-    const pageStartCodex = replaceCodexLineage(
+    const pageStartCodex = repairLegacyCodexMetaFromHeader(
+      header.codex,
       enriched.page_start.codex,
-      codexLineagePatch(header.codex),
     );
-    enriched.page_start = {
-      ...enriched.page_start,
-      ...(pageStartCodex !== undefined ? { codex: pageStartCodex } : {}),
-    };
+    enriched.page_start = { ...enriched.page_start };
+    if (header.cwd !== undefined) {
+      enriched.page_start.cwd = header.cwd;
+    } else {
+      delete enriched.page_start.cwd;
+    }
+    if (header.git !== undefined) {
+      enriched.page_start.git = header.git;
+    } else {
+      delete enriched.page_start.git;
+    }
+    if (pageStartCodex !== undefined) {
+      enriched.page_start.codex = pageStartCodex;
+    } else {
+      delete enriched.page_start.codex;
+    }
   }
   return enriched;
 }

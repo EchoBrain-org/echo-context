@@ -184,6 +184,38 @@ describe('thread topology', () => {
     expect(components).toHaveLength(2);
   });
 
+  it('does not recover a rejected project identity from scope artifacts', () => {
+    const workspace = { provider: 'local', type: 'workspace', id: '/repo-a' };
+    const file = { provider: 'local_fs', type: 'file', id: 'workspace:/repo-a::same.ts' };
+    const conversation = {
+      provider: 'codex',
+      session_id: 'shared-session',
+      thread_id: 'shared-session',
+      root_thread_id: 'shared-session',
+      thread_kind: 'root' as const,
+    };
+    const valid = makeAtom({
+      id: 'valid-project',
+      app: 'codex',
+      occurred_at: '2026-07-22T18:00:00Z',
+      project: PROJECT_A,
+      artifacts: [workspace, file],
+      conversation,
+    });
+    // This is the normalized shape produced when an authoritative project_key
+    // was explicitly present but malformed: project is absent, while capture
+    // evidence may still retain workspace/file artifacts for observability.
+    const malformed = makeAtom({
+      id: 'malformed-project',
+      app: 'codex',
+      occurred_at: '2026-07-22T18:01:00Z',
+      artifacts: [workspace, file],
+      conversation,
+    });
+
+    expect(connectedComponents(buildGraph([valid, malformed]))).toHaveLength(2);
+  });
+
   it('attaches unlineaged git work to the nearest eligible root', () => {
     const file = { provider: 'local_fs', type: 'file', id: 'shared.ts' };
     const components = connectedComponents(

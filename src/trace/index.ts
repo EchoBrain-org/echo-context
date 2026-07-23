@@ -16,6 +16,7 @@ import { rankClusters, rankReasonsFor } from './rank.js';
 import { roleOf } from './role.js';
 import type {
   Cluster,
+  Edge,
   Query,
   RecentWorkContextResponse,
 } from './types.js';
@@ -108,35 +109,9 @@ export function buildRecentWorkContext(
 
   // 3. Compute cluster fields. Hint resolution is thread-local: activity in
   // another project/root thread cannot accidentally resolve this one.
-  let clusters: Cluster[] = rawClusters.map((rc) => {
-    const clusterAtoms = rc.atom_ids
-      .map((id) => atomsById.get(id))
-      .filter((a): a is NormalizedContextEvent => a !== undefined);
-    const cluster_id = makeClusterId(rc.atom_ids);
-    const label = heuristicLabel(clusterAtoms);
-    clusterAtoms.sort(compareByOccurredAt);
-    const open_loop_hints = enrichHints(clusterAtoms);
-    const anchor_artifacts = topArtifacts(clusterAtoms, 3);
-    const source_breakdown = countByApp(clusterAtoms);
-    const time_range = computeTimeRange(clusterAtoms);
-    const cluster: Cluster = {
-      cluster_id,
-      rank: 0,
-      rank_reason: [],
-      anchor_artifacts,
-      atom_ids: rc.atom_ids,
-      // Drop scope/session-only edges. Cluster membership (`atom_ids`) is
-      // computed from the unfiltered graph above; this filter trims redundant
-      // pairwise restatements without changing topology. See
-      // `raw/internal/decisions/2026-05-07-trace-edge-filter-design.md`.
-      edges: filterRedundantEdges(rc.edges),
-      open_loop_hints,
-      source_breakdown,
-      time_range,
-    };
-    if (label !== undefined) cluster.label = label;
-    return cluster;
-  });
+  let clusters: Cluster[] = rawClusters.map((rc) =>
+    deriveCluster(rc.atom_ids, rc.edges, atomsById),
+  );
 
   // 4. Filter by artifact_hint if provided
   if (query.artifact_hint !== undefined) {
@@ -152,25 +127,34 @@ export function buildRecentWorkContext(
   }
 
   // 5. Rank
-  clusters = rankClusters(clusters, atomsById, query);
-  clusters.forEach((c, i) => {
-    c.rank = i + 1;
-    c.rank_reason = rankReasonsFor(c, atomsById, query);
-  });
+  clusters = rankAndAnnotate(clusters, atomsById, query);
 
   const clustersTotal = clusters.length;
 
   // 6. Truncate by atom limit (lowest-rank cluster atoms drop first)
   const truncated = truncate(clusters, atomsById, limit);
+  // A partially retained cluster is a new membership set. Rebuild every
+  // membership-derived field rather than leaving labels, hints, counts, time
+  // bounds, rank signals, or cluster identity pointing at removed atoms.
+  const returnedClusters = truncated.didTruncate
+    ? rankAndAnnotate(
+        truncated.clusters.map((cluster) =>
+          deriveCluster(cluster.atom_ids, cluster.edges, atomsById),
+        ),
+        atomsById,
+        query,
+      )
+    : truncated.clusters;
 
   // 7. Build atoms map (only those still referenced)
   const atomsMap: Record<string, NormalizedContextEvent> = {};
-  for (const c of truncated.clusters) {
+  for (const c of returnedClusters) {
     for (const id of c.atom_ids) {
       const a = atomsById.get(id);
       if (a !== undefined) atomsMap[id] = a;
     }
   }
+  const atomsReturned = Object.keys(atomsMap).length;
 
   const warnings = buildWarnings(errCounts);
   // Loud signal when truncation drops entire clusters — the structured
@@ -178,7 +162,7 @@ export function buildRecentWorkContext(
   // a consumer to miss, and the silently-lost cluster is exactly what the
   // user was asking about more than half the time (see 2026-05-07 dogfooding
   // 16:33 + Round 3 themes).
-  const clustersDropped = clustersTotal - truncated.clusters.length;
+  const clustersDropped = clustersTotal - returnedClusters.length;
   if (clustersDropped > 0) {
     warnings.push(
       `limit dropped ${clustersDropped} entire cluster(s); ` +
@@ -197,12 +181,12 @@ export function buildRecentWorkContext(
       window_hours: windowHours,
       repo_path: query.repo_path ?? null,
     },
-    clusters: truncated.clusters,
+    clusters: returnedClusters,
     atoms: atomsMap,
     truncation: {
-      atoms_returned: truncated.atomsReturned,
+      atoms_returned: atomsReturned,
       atoms_total_in_window: atomsTotalInWindow,
-      clusters_returned: truncated.clusters.length,
+      clusters_returned: returnedClusters.length,
       clusters_total: clustersTotal,
       truncated: truncated.didTruncate,
       source_breakdown: windowSourceBreakdown,
@@ -238,6 +222,52 @@ function makeClusterId(atomIds: string[]): string {
   const payload = `${SCHEMA_VERSION}${sorted.join(',')}`;
   const digest = createHash('sha256').update(payload, 'utf8').digest('hex');
   return `ctx_${digest.slice(0, 8)}`;
+}
+
+function deriveCluster(
+  atomIds: string[],
+  edges: Edge[],
+  atomsById: Map<string, NormalizedContextEvent>,
+): Cluster {
+  const retainedIds = atomIds.filter((id) => atomsById.has(id));
+  const retainedSet = new Set(retainedIds);
+  const clusterAtoms = retainedIds
+    .map((id) => atomsById.get(id))
+    .filter((atom): atom is NormalizedContextEvent => atom !== undefined)
+    .sort(compareByOccurredAt);
+  const label = heuristicLabel(clusterAtoms);
+  const cluster: Cluster = {
+    cluster_id: makeClusterId(retainedIds),
+    rank: 0,
+    rank_reason: [],
+    anchor_artifacts: topArtifacts(clusterAtoms, 3),
+    atom_ids: retainedIds,
+    // Drop scope/session-only edges and any edge whose endpoint is outside the
+    // retained membership. Cluster membership is authoritative after limits.
+    edges: filterRedundantEdges(
+      edges.filter(
+        (edge) => retainedSet.has(edge.from) && retainedSet.has(edge.to),
+      ),
+    ),
+    open_loop_hints: enrichHints(clusterAtoms),
+    source_breakdown: countByApp(clusterAtoms),
+    time_range: computeTimeRange(clusterAtoms),
+  };
+  if (label !== undefined) cluster.label = label;
+  return cluster;
+}
+
+function rankAndAnnotate(
+  clusters: Cluster[],
+  atomsById: Map<string, NormalizedContextEvent>,
+  query: Query,
+): Cluster[] {
+  const ranked = rankClusters(clusters, atomsById, query);
+  ranked.forEach((cluster, index) => {
+    cluster.rank = index + 1;
+    cluster.rank_reason = rankReasonsFor(cluster, atomsById, query);
+  });
+  return ranked;
 }
 
 function topArtifacts(
@@ -297,7 +327,6 @@ function computeTimeRange(atoms: NormalizedContextEvent[]): {
 interface TruncResult {
   clusters: Cluster[];
   didTruncate: boolean;
-  atomsReturned: number;
 }
 
 function truncate(
@@ -308,7 +337,7 @@ function truncate(
   let total = 0;
   for (const c of clusters) total += c.atom_ids.length;
   if (total <= limit) {
-    return { clusters, didTruncate: false, atomsReturned: total };
+    return { clusters, didTruncate: false };
   }
 
   // Drop atoms from lowest-rank clusters first; if a cluster ends up empty, drop it.
@@ -334,12 +363,10 @@ function truncate(
   }
 
   const out: Cluster[] = [];
-  let returned = 0;
   for (const c of clusters) {
     const dropped = droppedFromCluster.get(c.cluster_id);
     if (dropped === undefined || dropped.size === 0) {
       out.push(c);
-      returned += c.atom_ids.length;
       continue;
     }
     const keptIds = c.atom_ids.filter((id) => !dropped.has(id));
@@ -351,7 +378,6 @@ function truncate(
       edges: c.edges.filter((e) => keptSet.has(e.from) && keptSet.has(e.to)),
     };
     out.push(trimmed);
-    returned += keptIds.length;
   }
-  return { clusters: out, didTruncate: true, atomsReturned: returned };
+  return { clusters: out, didTruncate: true };
 }

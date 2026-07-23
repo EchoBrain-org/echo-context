@@ -1,9 +1,16 @@
-import { isAbsolute, normalize as pathNormalize } from 'node:path';
+import {
+  isAbsolute,
+  normalize as pathNormalize,
+  relative as pathRelative,
+  sep as pathSeparator,
+} from 'node:path';
+import { STORAGE_DESCRIPTOR_SOURCE_BYTES } from './budgets.js';
 import { sourceEquals } from './source-match.js';
 
 export const MAX_LEGACY_PROJECT_ROOTS = 3;
 
 const LOCAL_WORKSPACE_PROJECT_PREFIX = 'local:workspace:';
+const PROJECT_IDENTITY_FIELDS = ['project_key', 'canonical_root', 'repo_root'] as const;
 
 function canonicalRootFromProjectKey(projectKey: string): string | undefined {
   if (!projectKey.startsWith(LOCAL_WORKSPACE_PROJECT_PREFIX)) return undefined;
@@ -12,7 +19,7 @@ function canonicalRootFromProjectKey(projectKey: string): string | undefined {
 }
 
 function normalizeAbsoluteRoot(root: string): string {
-  if (!isAbsolute(root)) {
+  if (!isAbsolute(root) || root.includes('\u0000')) {
     throw new RangeError('QueryFilter.legacy_project_roots entries must be absolute paths');
   }
   const normalized = pathNormalize(root);
@@ -52,11 +59,41 @@ export function normalizeLegacyProjectRoots(
   return normalized;
 }
 
+/** Preserve presence-based authority when metadata crosses JSON storage.
+ * JSON.stringify normally drops an own property whose value is `undefined`,
+ * which would turn an explicitly malformed project identity into an absent
+ * field and incorrectly enable a weaker fallback. Encode only those three
+ * authority fields as JSON null; unrelated undefined metadata keeps the
+ * storage layer's historical serialization behavior. */
+export function preserveUndefinedProjectIdentityForJson(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  let encoded = metadata;
+  for (const field of PROJECT_IDENTITY_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(metadata, field) && metadata[field] === undefined) {
+      if (encoded === metadata) encoded = { ...metadata };
+      encoded[field] = null;
+    }
+  }
+  return encoded;
+}
+
 export function pathEqualsOrDescendsFrom(path: string, root: string): boolean {
+  if (
+    !isAbsolute(path) ||
+    !isAbsolute(root) ||
+    path.includes('\u0000') ||
+    root.includes('\u0000') ||
+    Buffer.byteLength(path) > STORAGE_DESCRIPTOR_SOURCE_BYTES ||
+    Buffer.byteLength(root) > STORAGE_DESCRIPTOR_SOURCE_BYTES
+  ) {
+    return false;
+  }
+  const normalizedPath = pathNormalize(path);
   const normalizedRoot = pathNormalize(root);
-  if (path === normalizedRoot) return true;
-  const prefix = normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`;
-  return path.startsWith(prefix);
+  const relative = pathRelative(normalizedRoot, normalizedPath);
+  if (relative.length === 0) return true;
+  return relative !== '..' && !relative.startsWith(`..${pathSeparator}`) && !isAbsolute(relative);
 }
 
 /** Whether an exact legacy Git source structurally names this project.

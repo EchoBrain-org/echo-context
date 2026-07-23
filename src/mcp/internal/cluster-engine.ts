@@ -162,6 +162,19 @@ interface LogicalCandidateInspection {
   logicalKey?: string;
 }
 
+function timestampFallsWithinCandidateWindow(
+  timestamp: string,
+  window: CandidateWindow,
+): boolean {
+  const timestampMs = Date.parse(timestamp);
+  if (Number.isNaN(timestampMs)) return false;
+  if (window.sinceMs !== undefined && timestampMs < window.sinceMs)
+    return false;
+  if (window.untilMs !== undefined && timestampMs >= window.untilMs)
+    return false;
+  return true;
+}
+
 function inspectLogicalCandidate(
   event: CaptureEvent,
   window: CandidateWindow,
@@ -170,28 +183,35 @@ function inspectLogicalCandidate(
   try {
     atom = normalizeEvent(event);
   } catch {
-    return { inWindow: false };
+    // Preserve malformed observations selected by the indexed physical-time
+    // lane so buildRecentWorkContext can emit its existing bounded, deduped
+    // normalization warning. They deliberately receive no logical key and
+    // therefore cannot satisfy the early-stop target. A delayed physical
+    // observation at/after `until` is not retained merely because it failed to
+    // reveal a trustworthy occurrence time.
+    return {
+      inWindow: timestampFallsWithinCandidateWindow(event.timestamp, window),
+    };
   }
   if (atom === null) return { inWindow: false };
 
-  const occurredMs = Date.parse(atom.time.occurred_at);
-  if (Number.isNaN(occurredMs)) return { inWindow: false };
-  if (window.sinceMs !== undefined && occurredMs < window.sinceMs) {
-    return { inWindow: false };
-  }
-  if (window.untilMs !== undefined && occurredMs >= window.untilMs) {
+  if (!timestampFallsWithinCandidateWindow(atom.time.occurred_at, window)) {
     return { inWindow: false };
   }
   const conversation = atom.conversation;
+  const logicalTurnId = conversation?.logical_turn_id;
   // Mirror projectLogicalTurns' fail-closed identity contract exactly:
   // inherited rows remain available as representatives but cannot satisfy the
-  // early-stop target before an older stored original is fetched. Unknown or
-  // absent observation markers remain distinct physical candidates even when
-  // they carry a syntactically valid logical id.
-  if (conversation?.observation_kind === 'inherited') {
+  // early-stop target before an older stored original is fetched, but only
+  // when they have a valid projected identity with which that original could
+  // collapse. Unknown, absent, or identity-less markers remain distinct
+  // physical candidates.
+  if (
+    conversation?.observation_kind === 'inherited' &&
+    logicalTurnId !== undefined
+  ) {
     return { inWindow: true };
   }
-  const logicalTurnId = conversation?.logical_turn_id;
   if (
     conversation?.observation_kind === 'original' &&
     logicalTurnId !== undefined

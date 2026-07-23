@@ -15,11 +15,10 @@ interface LinkCandidate {
 }
 
 function projectKey(atom: NormalizedContextEvent): string {
-  if (atom.project !== undefined) return atom.project.key;
-  const scope = atom.artifacts.find(
-    (artifact) => artifact.type === 'workspace' || artifact.type === 'repo',
-  );
-  return scope === undefined ? 'unscoped' : artifactKey(scope);
+  // Normalization has already applied authoritative project-field precedence.
+  // Absence can therefore mean explicit invalid identity, not merely legacy
+  // data; deriving from scope artifacts here would undo that fail-closed gate.
+  return atom.project?.key ?? 'unscoped';
 }
 
 function lineageOwner(atom: NormalizedContextEvent): string | undefined {

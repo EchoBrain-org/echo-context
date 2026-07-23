@@ -263,6 +263,78 @@ describe.each(ADAPTERS)('QueryFilter.metadata_match parity ($name)', ({ create, 
     expect(prefix).toEqual([]);
   });
 
+  it('normalizes stored legacy repo roots before descendant matching', async () => {
+    await seed([
+      {
+        source: 'fs:normalized-descendant',
+        timestamp: '2026-05-10T10:00:00.000Z',
+        content: 'normalized-descendant',
+        metadata: { repo_root: '/repo-a/packages/../services/app' },
+      },
+      {
+        source: 'fs:dot-segment-escape',
+        timestamp: '2026-05-10T11:00:00.000Z',
+        content: 'dot-segment-escape',
+        metadata: { repo_root: '/repo-a/../repo-b' },
+      },
+      {
+        source: 'fs:relative-root',
+        timestamp: '2026-05-10T12:00:00.000Z',
+        content: 'relative-root',
+        metadata: { repo_root: 'repo-a/packages/app' },
+      },
+    ]);
+
+    const got = await store.query({
+      project_key: 'local:workspace:/repo-a',
+      legacy_project_roots: ['/repo-a/./'],
+    });
+
+    expect(got.map((event) => event.content)).toEqual(['normalized-descendant']);
+  });
+
+  it('preserves malformed undefined project identity fields across JSON storage', async () => {
+    const source = 'git:/repo-a';
+    await store.append({
+      source,
+      timestamp: '2026-05-10T10:00:00.000Z',
+      content: 'identity-less-legacy',
+    });
+    const malformedIds = await Promise.all([
+      store.append({
+        source,
+        timestamp: '2026-05-10T11:00:00.000Z',
+        content: 'undefined-project-key',
+        metadata: { project_key: undefined, repo_root: '/repo-a' },
+      }),
+      store.append({
+        source,
+        timestamp: '2026-05-10T12:00:00.000Z',
+        content: 'undefined-canonical-root',
+        metadata: { canonical_root: undefined, repo_root: '/repo-a' },
+      }),
+      store.append({
+        source,
+        timestamp: '2026-05-10T13:00:00.000Z',
+        content: 'undefined-repo-root',
+        metadata: { repo_root: undefined },
+      }),
+    ]);
+
+    const got = await store.query({
+      source,
+      project_key: 'local:workspace:/repo-a',
+      legacy_project_roots: ['/repo-a'],
+    });
+
+    expect(got.map((event) => event.content)).toEqual(['identity-less-legacy']);
+    expect((await store.getByIds(malformedIds)).map((event) => event.metadata)).toEqual([
+      { project_key: null, repo_root: '/repo-a' },
+      { canonical_root: null, repo_root: '/repo-a' },
+      { repo_root: null },
+    ]);
+  });
+
   it('normalizes and deduplicates the bounded legacy root aliases', async () => {
     await seed([
       {

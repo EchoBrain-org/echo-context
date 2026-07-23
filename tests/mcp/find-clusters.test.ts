@@ -10,9 +10,9 @@ import type { CaptureEvent } from '../../src/storage/interface.js';
 
 // V1.6 (item 030) — find_clusters tests.
 //
-// Acceptance #1 contract: same inputs → same set of clusters when each
-// cluster is identified by the FULL sorted `atom_ids[]` set from the
-// trace builder's un-clipped cluster membership, AND ranks match.
+// Acceptance #1 contract for worksets within the trace builder's bounded
+// MAX_LIMIT: same inputs → same set of clusters when each cluster is
+// identified by the sorted `atom_ids[]` membership, AND ranks match.
 // Explicitly NOT comparing against `buildSkeletonResponse` (which clips
 // atom_ids[] at 50 — the very thing find_clusters fixes).
 
@@ -378,6 +378,46 @@ describe('find_clusters', () => {
     // Per-cluster cap fired AND that gets surfaced at result_caps.truncated.
     expect(r.clusters.some((c) => c.atom_ids_truncated === true)).toBe(true);
     expect(r.result_caps.truncated).toBe(true);
+  });
+
+  it('keeps >500-atom cluster summaries and hints truthful to bounded retained membership', async () => {
+    const store = new MemoryStorage();
+    const sharedFile = `${PROJECT_ECHO}/src/over-trace-limit.ts`;
+    const startMs = Date.parse('2026-05-09T10:00:00.000Z');
+    const N = 510;
+    for (let i = 0; i < N; i++) {
+      const timestamp = new Date(startMs + i * 5_000).toISOString();
+      const turn = claudeCodeTurn(i, sharedFile, timestamp);
+      turn.content = `USER: we will follow up later on iteration ${i}\n\nASSISTANT: noted`;
+      await store.append(turn);
+    }
+
+    const r = await findClusters(store, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T12:00:00.000Z',
+    });
+    const cluster = r.clusters.find(
+      (candidate) => candidate.atom_ids_truncated === true,
+    );
+    if (cluster === undefined) throw new Error('expected bounded giant cluster');
+
+    // The trace builder retained the newest MAX_LIMIT=500 atoms, then the
+    // bodyless response applied its independently signalled ID slice.
+    expect(r.result_caps.atoms_total_in_window).toBe(N);
+    expect(r.result_caps.truncated).toBe(true);
+    expect(cluster.atom_ids_total).toBe(500);
+    expect(cluster.source_breakdown).toEqual({ claude_code: 500 });
+    expect(cluster.time_range).toEqual({
+      from: new Date(startMs + 10 * 5_000).toISOString(),
+      to: new Date(startMs + (N - 1) * 5_000).toISOString(),
+    });
+
+    const visibleIds = new Set(cluster.atom_ids);
+    expect(cluster.open_loop_hints.length).toBeGreaterThan(0);
+    for (const hint of cluster.open_loop_hints) {
+      expect(visibleIds.has(hint.atom_id)).toBe(true);
+    }
+    expect(cluster.open_loop_hints_omitted).toBeGreaterThan(0);
   });
 
   it('REGRESSION (post-build review): response-level envelope ceiling actually enforced — trailing clusters trimmed when total exceeds 25k', async () => {

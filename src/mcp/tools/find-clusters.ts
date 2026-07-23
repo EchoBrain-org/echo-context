@@ -11,10 +11,12 @@
 // machinery is shared. Differences from `get_recent_work_context`'s
 // `format='skeleton'` wire shape:
 //
-//   - atom_ids[] stays complete when the response budget permits. If it does
-//     not, explicit atom_ids_truncated/atom_ids_total signals accompany a
-//     head+tail slice; response shaping shrinks membership before dropping a
-//     sibling cluster header.
+//   - atom_ids[] stays complete for the trace builder's bounded membership
+//     when the response budget permits. If it does not, explicit
+//     atom_ids_truncated/atom_ids_total signals accompany a head+tail slice;
+//     response shaping shrinks membership before dropping a sibling header.
+//     Work windows above the trace builder's MAX_LIMIT are already a bounded
+//     partial view and surface result_caps.truncated.
 //   - `result_caps` (renamed from `truncation`) describes RESPONSE-LEVEL
 //     budget application. `truncations: string[]` (per-FIELD clipping
 //     inside an atom) lives on `get_atoms` results, not here. Different
@@ -144,7 +146,6 @@ function projectCluster(
   c: Cluster,
   atomIdCap: number = PER_CLUSTER_ATOM_IDS_HARD_CAP,
 ): FindClustersCluster {
-  const hints = clipOpenLoopHintsArray(c.open_loop_hints, SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP);
   // Per-cluster atom_ids hard cap. Keep head+tail so the consumer still
   // sees both ends of the cluster (relevant when the consumer paginates
   // get_atoms over the slice). Atom IDs are ~36 chars — even at the cap
@@ -161,6 +162,21 @@ function projectCluster(
     atomIdsTruncated = true;
     atomIdsTotal = c.atom_ids.length;
   }
+  const visibleAtomIds = new Set(atomIds);
+  // Hints are only actionable when their originating atom and any resolver
+  // evidence are present in the directly hydratable ID slice. Treat all other
+  // hints as omitted instead of returning dangling references.
+  const visibleHints = c.open_loop_hints.filter(
+    (hint) =>
+      visibleAtomIds.has(hint.atom_id) &&
+      (hint.resolved_by_atom_id === undefined ||
+        visibleAtomIds.has(hint.resolved_by_atom_id)),
+  );
+  const hints = clipOpenLoopHintsArray(
+    visibleHints,
+    SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP,
+  );
+  const hintsOmitted = c.open_loop_hints.length - hints.kept.length;
 
   const out: FindClustersCluster = {
     cluster_id: c.cluster_id,
@@ -177,7 +193,7 @@ function projectCluster(
   if (c.label !== undefined) out.label = c.label;
   if (atomIdsTruncated !== undefined) out.atom_ids_truncated = atomIdsTruncated;
   if (atomIdsTotal !== undefined) out.atom_ids_total = atomIdsTotal;
-  if (hints.omitted > 0) out.open_loop_hints_omitted = hints.omitted;
+  if (hintsOmitted > 0) out.open_loop_hints_omitted = hintsOmitted;
   return out;
 }
 
@@ -188,9 +204,10 @@ export async function findClusters(
 ): Promise<FindClustersResult> {
   // Re-use getRecentWorkContext for: no-args 4h→24h auto-expand,
   // TZ-naive warning, storage-cap warning, exclude_metadata_surface=['fs'].
-  // Pass MAX_LIMIT so the trace-builder's atom-limit truncation does NOT
-  // silently drop atom_ids from low-rank clusters — find_clusters' contract
-  // is FULL atom_ids per returned cluster.
+  // Pass MAX_LIMIT to maximize the trace builder's bounded membership. A work
+  // window above this limit remains explicitly partial through
+  // result_caps.truncated; the trace builder rebuilds every returned cluster
+  // summary from the membership it actually retained.
   //
   // `format: 'skeleton'` is passed through as a marker for the query echo,
   // even though we don't use the skeleton wire shape ourselves — atoms

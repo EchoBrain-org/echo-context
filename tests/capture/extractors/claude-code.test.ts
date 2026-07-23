@@ -461,6 +461,48 @@ describe("extractClaudeCodeTurns (pure)", () => {
     }
   });
 
+  it.each([
+    { name: "whitespace", uuid: "   " },
+    { name: "control-bearing", uuid: "bad\u0001id" },
+    { name: "oversized", uuid: "x".repeat(513) },
+  ])(
+    "rejects a $name Claude user UUID for both root and subagent turns",
+    async ({ name, uuid }) => {
+      for (const scope of ["root", "subagent"] as const) {
+        const path = join(dir, `malformed-${name}-${scope}.jsonl`);
+        const user = userText(
+          "root-session",
+          uuid,
+          scope === "subagent"
+            ? '<teammate-message teammate_id="reviewer">Review.</teammate-message>'
+            : "Continue the root task.",
+        );
+        const assistant = assistantEndTurn(
+          "root-session",
+          `assistant-record-${scope}`,
+          "observed",
+        );
+        user.isSidechain = scope === "subagent";
+        assistant.isSidechain = scope === "subagent";
+        if (scope === "subagent") {
+          user.agentId = "reviewer@team";
+          assistant.agentId = "reviewer@team";
+        }
+        writeJsonlFresh(path, [user, assistant]);
+
+        const { turns } = await extractClaudeCodeTurns(path, 0);
+
+        expect(turns, `${name}-${scope}`).toHaveLength(1);
+        expect(turns[0]?.logical_turn_id, `${name}-${scope}`).toBeUndefined();
+        expect(turns[0]?.thread_kind, `${name}-${scope}`).toBe("unknown");
+        expect(turns[0]?.observation_kind, `${name}-${scope}`).toBe("unknown");
+        expect(turns[0]?.thread_id, `${name}-${scope}`).toBeUndefined();
+        expect(turns[0]?.root_thread_id, `${name}-${scope}`).toBeUndefined();
+        expect(turns[0]?.agent_id, `${name}-${scope}`).toBeUndefined();
+      }
+    },
+  );
+
   it("fails conflicting assistant session lineage closed without comparing record UUIDs", async () => {
     const cases: Array<{
       name: string;

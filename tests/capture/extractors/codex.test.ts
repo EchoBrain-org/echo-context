@@ -864,9 +864,22 @@ describe("extractCodexTurns (pure)", () => {
     const childPath = "/root/reviewer";
     const inheritedId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
     const localId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const physicalGit = {
+      commit_hash: "child-sha",
+      branch: "feat/child",
+      repository_url: "https://example.test/child.git",
+    };
+    const copiedAncestorGit = {
+      commit_hash: "ancestor-sha",
+      branch: "stale/root",
+      repository_url: "https://example.test/root.git",
+    };
     writeJsonl(path, [
       sessionMeta({
         ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/physical-child",
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
         session_id: rootId,
         forked_from_id: parentId,
         parent_thread_id: parentId,
@@ -874,6 +887,7 @@ describe("extractCodexTurns (pure)", () => {
         agent_path: childPath,
         history_mode: "legacy",
         agent_depth: 2,
+        git: physicalGit,
       }),
       // Current Codex subagent files copy the root session header directly
       // after the authoritative physical child header. The copied header is
@@ -881,8 +895,13 @@ describe("extractCodexTurns (pure)", () => {
       sessionMeta({
         id: rootId,
         ts: "2026-07-22T18:44:05.001Z",
+        cwd: "/Users/x/copied-root",
+        source: "cli",
+        cli_version: "0.01.0-ancestor",
+        model_provider: "ancestor-provider",
         session_id: rootId,
         thread_source: "user",
+        git: copiedAncestorGit,
       }),
       userMsg(
         "copied parent question",
@@ -916,6 +935,12 @@ describe("extractCodexTurns (pure)", () => {
       occurred_at: occurredAtFromUuidV7(inheritedId),
       observed_at: "2026-07-22T18:44:08.001Z",
       observation_kind: "inherited",
+      cwd: "/Users/x/physical-child",
+      git: {
+        sha: "child-sha",
+        branch: "feat/child",
+        origin_url: "https://example.test/child.git",
+      },
     });
     expect(result.turns[1]).toMatchObject({
       user_message: "review the HTTP boundary",
@@ -924,7 +949,15 @@ describe("extractCodexTurns (pure)", () => {
       observed_at: "2026-07-22T18:49:36.000Z",
       observation_kind: "original",
       initiator: "agent",
+      cwd: "/Users/x/physical-child",
+      git: {
+        sha: "child-sha",
+        branch: "feat/child",
+        origin_url: "https://example.test/child.git",
+      },
       codex: {
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
         root_thread_id: rootId,
         parent_thread_id: parentId,
         thread_kind: "subagent",
@@ -932,6 +965,7 @@ describe("extractCodexTurns (pure)", () => {
         agent_depth: 2,
       },
     });
+    expect(result.codex).not.toHaveProperty("source");
   });
 
   it("preserves physical child lineage when a copied root header arrives after a nonzero checkpoint", async () => {
@@ -939,14 +973,21 @@ describe("extractCodexTurns (pure)", () => {
     const parentId = "019f88f9-3aba-77f0-9683-18fae4a82acb";
     const childPath = "/root/reviewer";
     const inheritedId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
+    const physicalGit = {
+      commit_hash: "child-sha",
+      branch: "feat/child",
+      repository_url: "https://example.test/child.git",
+    };
     writeJsonl(path, [
       sessionMeta({
         ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/physical-child",
         session_id: rootId,
         parent_thread_id: parentId,
         thread_source: "subagent",
         agent_path: childPath,
         agent_depth: 2,
+        git: physicalGit,
       }),
     ]);
 
@@ -963,8 +1004,14 @@ describe("extractCodexTurns (pure)", () => {
       sessionMeta({
         id: rootId,
         ts: "2026-07-22T18:44:05.001Z",
+        cwd: "/Users/x/copied-root",
         session_id: rootId,
         thread_source: "user",
+        git: {
+          commit_hash: "ancestor-sha",
+          branch: "stale/root",
+          repository_url: "https://example.test/root.git",
+        },
       }),
       userMsg("copied question", "2026-07-22T18:44:08.000Z", inheritedId),
       assistantMsg("copied answer", "2026-07-22T18:44:08.001Z", inheritedId),
@@ -972,17 +1019,72 @@ describe("extractCodexTurns (pure)", () => {
     ]);
 
     const second = await extractCodexTurns(path, first.newOffset, {
+      lastKnownCwd: first.cwd,
+      lastKnownGit: first.git,
       lastKnownCodex: first.codex,
     });
     expect(second.turns).toHaveLength(1);
     expect(second.turns[0]).toMatchObject({
       logical_turn_id: inheritedId,
       observation_kind: "inherited",
+      cwd: "/Users/x/physical-child",
+      git: {
+        sha: "child-sha",
+        branch: "feat/child",
+        origin_url: "https://example.test/child.git",
+      },
       codex: {
         root_thread_id: rootId,
         parent_thread_id: parentId,
         thread_kind: "subagent",
         agent_path: childPath,
+      },
+    });
+  });
+
+  it("accepts a later header update from the same physical Codex session", async () => {
+    const physicalId = "019de2b0-6551-7682-a51b-2affaa0a7bbf";
+    const turnId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta({
+        id: physicalId,
+        ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/before",
+        source: "cli",
+        cli_version: "0.98.0",
+        model_provider: "openai",
+        thread_source: "user",
+        git: { commit_hash: "before-sha", branch: "before" },
+      }),
+      sessionMeta({
+        id: physicalId,
+        ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/after",
+        source: "vscode",
+        cli_version: "0.99.0",
+        model_provider: "openai",
+        thread_source: "user",
+        git: { commit_hash: "after-sha", branch: "after" },
+      }),
+      userMsg("same physical update", "2026-07-22T18:44:15.000Z", turnId),
+      assistantMsg("accepted", "2026-07-22T18:44:16.000Z", turnId),
+      taskComplete("2026-07-22T18:44:17.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      logical_turn_id: turnId,
+      observation_kind: "original",
+      cwd: "/Users/x/after",
+      git: { sha: "after-sha", branch: "after" },
+      codex: {
+        source: "vscode",
+        cli_version: "0.99.0",
+        thread_id: physicalId,
+        root_thread_id: physicalId,
+        thread_kind: "root",
       },
     });
   });
@@ -1358,6 +1460,189 @@ describe("extractCodexTurns (pure)", () => {
       result.turns.every((turn) => turn.observation_kind === "original"),
     ).toBe(true);
   });
+
+  it("keeps repeated mid-turn context deterministic across a task-complete checkpoint", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const childPath = "/root/reviewer";
+    const firstId = "019f8cac-0a7a-7981-abd9-354857007eae";
+    const secondId = "019f8cb3-ad09-7750-b29d-fccc4f508cd0";
+    const header = sessionMeta({
+      ts: "2026-07-22T18:44:05.000Z",
+      session_id: rootId,
+      parent_thread_id: rootId,
+      thread_source: "subagent",
+      agent_path: childPath,
+      agent_depth: 1,
+    });
+    const firstTurn = [
+      turnContext({ turn_id: firstId }),
+      interAgentTrigger("2026-07-22T18:44:15.000Z"),
+      agentMessage(
+        "first review",
+        childPath,
+        firstId,
+        "2026-07-22T18:44:15.001Z",
+      ),
+      assistantMsg("working", "2026-07-22T18:44:16.000Z", firstId),
+      // Codex repeats the current context after compaction even though an
+      // assistant message already exists. It still belongs to this turn.
+      turnContext({ turn_id: firstId }),
+      assistantMsg("first done", "2026-07-22T18:44:17.000Z", firstId),
+      taskComplete("2026-07-22T18:44:18.000Z"),
+    ];
+    const secondTurn = [
+      turnContext({ turn_id: secondId }),
+      interAgentTrigger("2026-07-22T18:45:15.000Z"),
+      agentMessage(
+        "second review",
+        childPath,
+        secondId,
+        "2026-07-22T18:45:15.001Z",
+      ),
+      assistantMsg("second done", "2026-07-22T18:45:16.000Z", secondId),
+      taskComplete("2026-07-22T18:45:17.000Z"),
+    ];
+
+    writeJsonl(path, [header, ...firstTurn, ...secondTurn]);
+    const onePass = await extractCodexTurns(path, 0);
+
+    const splitPath = join(dir, "repeated-context-split.jsonl");
+    writeJsonl(splitPath, [header, ...firstTurn]);
+    const prefix = await extractCodexTurns(splitPath, 0);
+    expect(prefix.newOffset).toBe(readFileSync(splitPath).length);
+    appendJsonl(splitPath, secondTurn);
+    const suffix = await extractCodexTurns(splitPath, prefix.newOffset, {
+      lastKnownCwd: prefix.cwd,
+      lastKnownGit: prefix.git,
+      lastKnownCodex: prefix.codex,
+    });
+
+    const summarize = (turns: typeof onePass.turns) =>
+      turns.map((turn) => ({
+        id: turn.logical_turn_id,
+        kind: turn.observation_kind,
+        initiator: turn.initiator,
+      }));
+    expect(summarize(onePass.turns)).toEqual([
+      { id: firstId, kind: "original", initiator: "agent" },
+      { id: secondId, kind: "original", initiator: "agent" },
+    ]);
+    expect(summarize([...prefix.turns, ...suffix.turns])).toEqual(
+      summarize(onePass.turns),
+    );
+  });
+
+  it("clears an unassociated queued context at task completion", async () => {
+    const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+    const childPath = "/root/reviewer";
+    const staleId = "019f8cac-0a7a-7981-abd9-354857007eae";
+    const freshId = "019f8cb3-ad09-7750-b29d-fccc4f508cd0";
+    writeJsonl(path, [
+      sessionMeta({
+        ts: "2026-07-22T18:44:05.000Z",
+        session_id: rootId,
+        parent_thread_id: rootId,
+        thread_source: "subagent",
+        agent_path: childPath,
+        agent_depth: 1,
+      }),
+      turnContext({ turn_id: staleId }),
+      taskComplete("2026-07-22T18:44:15.000Z"),
+      turnContext({ turn_id: freshId }),
+      interAgentTrigger("2026-07-22T18:44:16.000Z"),
+      agentMessage(
+        "fresh task",
+        childPath,
+        freshId,
+        "2026-07-22T18:44:16.001Z",
+      ),
+      assistantMsg("fresh done", "2026-07-22T18:44:17.000Z", freshId),
+      taskComplete("2026-07-22T18:44:18.000Z"),
+    ]);
+
+    const result = await extractCodexTurns(path, 0);
+
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({
+      logical_turn_id: freshId,
+      observation_kind: "original",
+      initiator: "agent",
+    });
+  });
+
+  it.each([
+    {
+      name: "a malformed JSON record",
+      boundary: "{ definitely-not-json",
+    },
+    {
+      name: "an opaque task-boundary event",
+      boundary: JSON.stringify({
+        timestamp: "2026-07-22T18:44:15.000Z",
+        type: "event_msg",
+        payload: { type: "task_started" },
+      }),
+    },
+    {
+      name: "an interposed developer message",
+      boundary: JSON.stringify({
+        timestamp: "2026-07-22T18:44:15.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text: "new task boundary" }],
+        },
+      }),
+    },
+  ])(
+    "does not carry unassociated context across $name",
+    async ({ name, boundary }) => {
+      const rootId = "019f85c3-f6b4-7022-b0bd-241fd489616b";
+      const childPath = "/root/reviewer";
+      const staleId = "019f8cac-0a7a-7981-abd9-354857007eae";
+      const freshId = "019f8cb3-ad09-7750-b29d-fccc4f508cd0";
+      const records: Array<CodexLine | string> = [
+        sessionMeta({
+          ts: "2026-07-22T18:44:05.000Z",
+          session_id: rootId,
+          parent_thread_id: rootId,
+          thread_source: "subagent",
+          agent_path: childPath,
+          agent_depth: 1,
+        }),
+        turnContext({ turn_id: staleId }),
+        boundary,
+        turnContext({ turn_id: freshId }),
+        interAgentTrigger("2026-07-22T18:44:16.000Z"),
+        agentMessage(
+          `fresh task after ${name}`,
+          childPath,
+          freshId,
+          "2026-07-22T18:44:16.001Z",
+        ),
+        assistantMsg("fresh done", "2026-07-22T18:44:17.000Z", freshId),
+        taskComplete("2026-07-22T18:44:18.000Z"),
+      ];
+      writeFileSync(
+        path,
+        `${records
+          .map((record) =>
+            typeof record === "string" ? record : JSON.stringify(record),
+          )
+          .join("\n")}\n`,
+      );
+
+      const result = await extractCodexTurns(path, 0);
+
+      expect(result.turns, name).toHaveLength(1);
+      expect(result.turns[0], name).toMatchObject({
+        logical_turn_id: freshId,
+        observation_kind: "original",
+        initiator: "agent",
+      });
+    },
+  );
 
   it("fails blank or contradictory turn_context identity closed", async () => {
     const messageId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
@@ -3009,9 +3294,17 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
     const inheritedId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
     const firstLocalId = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
     const secondLocalId = "019f8b25-7fd7-79d2-831e-ebeb897a19a7";
+    const physicalGit = {
+      commit_hash: "physical-child-sha",
+      branch: "feat/physical-child",
+      repository_url: "https://example.test/physical.git",
+    };
     writeJsonl(path, [
       sessionMeta({
         ts: "2026-07-22T18:44:05.000Z",
+        cwd: "/Users/x/physical-child",
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
         session_id: rootId,
         forked_from_id: parentId,
         parent_thread_id: parentId,
@@ -3019,6 +3312,22 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
         agent_path: childPath,
         history_mode: "legacy",
         agent_depth: 2,
+        git: physicalGit,
+      }),
+      sessionMeta({
+        id: rootId,
+        ts: "2026-07-22T18:44:05.001Z",
+        cwd: "/Users/x/copied-ancestor",
+        source: "cli",
+        cli_version: "0.01.0-ancestor",
+        model_provider: "ancestor-provider",
+        session_id: rootId,
+        thread_source: "user",
+        git: {
+          commit_hash: "ancestor-sha",
+          branch: "stale/root",
+          repository_url: "https://example.test/ancestor.git",
+        },
       }),
       userMsg("already captured", "2026-07-22T18:44:08.000Z", inheritedId),
       assistantMsg("old answer", "2026-07-22T18:44:08.001Z", inheritedId),
@@ -3045,8 +3354,18 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       position: oldTurn.byte_offset,
       ordinal: 0,
       state: {
-        cwd: oldTurn.cwd,
-        codex: { model: "legacy-model" },
+        cwd: "/Users/x/copied-ancestor",
+        git: {
+          sha: "ancestor-sha",
+          branch: "stale/root",
+          origin_url: "https://example.test/ancestor.git",
+        },
+        codex: {
+          model: "legacy-model",
+          source: "cli",
+          cli_version: "0.01.0-ancestor",
+          model_provider: "ancestor-provider",
+        },
       },
       updated_at: "2026-07-22T18:44:10.000Z",
     });
@@ -3059,8 +3378,16 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       resource: path,
     });
     expect(upgraded?.position).toBe(oldTurn.byte_offset);
+    expect(upgraded?.state["cwd"]).toBe("/Users/x/physical-child");
+    expect(upgraded?.state["git"]).toEqual({
+      sha: "physical-child-sha",
+      branch: "feat/physical-child",
+      origin_url: "https://example.test/physical.git",
+    });
     expect(upgraded?.state["codex"]).toMatchObject({
       model: "legacy-model",
+      cli_version: "0.99.0-child",
+      model_provider: "child-provider",
       thread_id: "019de2b0-6551-7682-a51b-2affaa0a7bbf",
       root_thread_id: rootId,
       parent_thread_id: parentId,
@@ -3072,6 +3399,7 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       history_mode: "legacy",
       session_started_at: "2026-07-22T18:44:05.000Z",
     });
+    expect(upgraded?.state["codex"]).not.toHaveProperty("source");
 
     appendJsonl(path, [
       interAgentTrigger("2026-07-22T18:44:15.000Z"),
@@ -3104,8 +3432,16 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       agent_depth: 2,
       agent_nickname: "TestAgent",
       history_mode: "legacy",
+      cwd: "/Users/x/physical-child",
+      git: {
+        sha: "physical-child-sha",
+        branch: "feat/physical-child",
+        origin_url: "https://example.test/physical.git",
+      },
       codex: {
         model: "legacy-model",
+        cli_version: "0.99.0-child",
+        model_provider: "child-provider",
         root_thread_id: rootId,
         thread_kind: "subagent",
       },
@@ -3146,6 +3482,81 @@ describe("startCodexExtractor (lifecycle + integration)", () => {
       thread_kind: "subagent",
       agent_path: childPath,
     });
+  });
+
+  it("clears untrusted legacy cwd and git when the physical header omits them", async () => {
+    const physicalId = "019de2b0-6551-7682-a51b-2affaa0a7bbf";
+    const oldId = "019f6ef0-75dc-7873-a25e-d58644a2fb27";
+    const headerWithoutCwdOrGit: CodexLine = {
+      timestamp: "2026-07-22T18:44:05.000Z",
+      type: "session_meta",
+      payload: {
+        id: physicalId,
+        session_id: physicalId,
+        thread_source: "user",
+        cli_version: "0.99.0-physical",
+        model_provider: "physical-provider",
+      },
+    };
+    writeJsonl(path, [
+      headerWithoutCwdOrGit,
+      userMsg("already captured", "2026-07-22T18:44:08.000Z", oldId),
+      assistantMsg("old answer", "2026-07-22T18:44:08.001Z", oldId),
+      taskComplete("2026-07-22T18:44:09.000Z"),
+    ]);
+    const historical = await extractCodexTurns(path, 0);
+    const oldTurn = historical.turns[0]!;
+    await storage.append({
+      source: `fs:${path}`,
+      timestamp: oldTurn.timestamp,
+      content: `USER: ${oldTurn.user_message}\n\nASSISTANT: ${oldTurn.assistant_message}`,
+      metadata: {
+        session_id: oldTurn.session_id,
+        turn_index: 0,
+        byte_offset: oldTurn.byte_offset,
+      },
+    });
+    await storage.upsertCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+      position: oldTurn.byte_offset,
+      ordinal: 0,
+      state: {
+        cwd: "/Users/x/copied-ancestor",
+        git: {
+          sha: "ancestor-sha",
+          branch: "stale/root",
+          origin_url: "https://example.test/ancestor.git",
+        },
+        codex: {
+          model: "turn-context-model",
+          source: "cli",
+          cli_version: "0.01.0-ancestor",
+          model_provider: "ancestor-provider",
+        },
+      },
+      updated_at: "2026-07-22T18:44:10.000Z",
+    });
+
+    handle = await startCodexExtractor(storage, { sessionsPrefix });
+    await handle.initialCatchUp;
+
+    expect(await storage.count()).toBe(1);
+    const upgraded = await storage.getCaptureCheckpoint({
+      extractor: "codex",
+      resource: path,
+    });
+    expect(upgraded?.state).not.toHaveProperty("cwd");
+    expect(upgraded?.state).not.toHaveProperty("git");
+    expect(upgraded?.state["codex"]).toMatchObject({
+      model: "turn-context-model",
+      cli_version: "0.99.0-physical",
+      model_provider: "physical-provider",
+      thread_id: physicalId,
+      root_thread_id: physicalId,
+      thread_kind: "root",
+    });
+    expect(upgraded?.state["codex"]).not.toHaveProperty("source");
   });
 
   it("fails a legacy header backfill closed when its physical id contradicts the rollout filename", async () => {

@@ -302,6 +302,110 @@ describe('bounded sparse-scan MCP consumers', () => {
     expect(storage.queryCalls).toBe(1);
   });
 
+  it('counts identity-less inherited observations as distinct raw candidates', async () => {
+    const storage = new SparseWindowStorage(0, {
+      timestamp: '2026-05-09T08:00:00.000Z',
+      id: 'unused',
+    });
+    for (let index = 0; index < 200; index += 1) {
+      const timestamp = new Date(Date.UTC(2026, 4, 9, 9, 0, index)).toISOString();
+      await storage.append({
+        source: 'fs:/repo/.codex/sessions/identity-less-inherited.jsonl',
+        timestamp,
+        content: `USER: inherited ${index}\n\nASSISTANT: copied`,
+        metadata: {
+          session_id: 'identity-less-inherited',
+          thread_id: 'fork-thread',
+          root_thread_id: 'root-thread',
+          thread_kind: 'subagent',
+          observation_kind: 'inherited',
+          occurred_at: timestamp,
+        },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+      limit: 1,
+    });
+
+    expect(result.truncation.atoms_total_in_window).toBe(10);
+    expect(result.warnings.join('\n')).toMatch(/storage cap hit/);
+    expect(storage.queryCalls).toBe(1);
+  });
+
+  it('retains bounded on-time normalization failures for deduped warnings without counting them', async () => {
+    const storage = new SparseWindowStorage(0, {
+      timestamp: '2026-05-09T08:00:00.000Z',
+      id: 'unused',
+    });
+    const contextId = await storage.append(
+      codexTurn({
+        logicalId: 'valid-behind-malformed',
+        timestamp: '2026-05-09T09:00:00.000Z',
+      }),
+    );
+    for (let index = 0; index < 10; index += 1) {
+      const timestamp = `2026-05-09T10:${String(index).padStart(2, '0')}:00.000Z`;
+      await storage.append({
+        source: 'fs:/repo/.codex/sessions/malformed.jsonl',
+        timestamp,
+        content: `USER: malformed ${index}\n\nASSISTANT: skipped`,
+        metadata: {
+          logical_turn_id: `malformed-${index}`,
+          observation_kind: 'original',
+          occurred_at: timestamp,
+          // Deliberately no session_id: the Codex adapter throws.
+        },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T08:00:00.000Z',
+      until: '2026-05-09T11:00:00.000Z',
+      limit: 1,
+    });
+
+    expect(Object.keys(result.atoms)).toEqual([contextId]);
+    expect(result.warnings.join('\n')).toMatch(
+      /codex: missing metadata\.session_id \(10× events skipped\)/,
+    );
+    // Ten malformed rows fill the first page but cannot satisfy the logical
+    // target; the valid older row requires a second indexed query. The final
+    // empty query is the bounded delayed-observation lane.
+    expect(storage.queryCalls).toBe(3);
+  });
+
+  it('does not treat a delayed malformed observation as in-window evidence', async () => {
+    const storage = new MemoryStorage();
+    const contextId = await storage.append(
+      codexTurn({
+        logicalId: 'valid-on-time',
+        timestamp: '2026-05-09T09:00:00.000Z',
+      }),
+    );
+    await storage.append({
+      source: 'fs:/repo/.codex/sessions/delayed-malformed.jsonl',
+      timestamp: '2026-05-09T12:00:00.000Z',
+      content: 'USER: malformed delayed\n\nASSISTANT: skipped',
+      metadata: {
+        logical_turn_id: 'delayed-malformed',
+        observation_kind: 'original',
+        occurred_at: '2026-05-09T09:30:00.000Z',
+        // Deliberately no session_id: occurrence time is not trustworthy.
+      },
+    });
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+    });
+
+    expect(Object.keys(result.atoms)).toEqual([contextId]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('does not let successfully stored but unnormalizable noise satisfy the logical scan target', async () => {
     const storage = new SparseWindowStorage(0, {
       timestamp: '2026-05-09T08:00:00.000Z',

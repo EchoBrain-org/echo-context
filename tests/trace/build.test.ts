@@ -299,6 +299,105 @@ describe('buildRecentWorkContext', () => {
     ).toBe(false);
   });
 
+  it('rebuilds every cluster summary from the atoms retained by the limit', () => {
+    const shared = (label: string) => ({
+      provider: 'local_fs',
+      type: 'file',
+      id: 'r::shared.ts',
+      label,
+    });
+    const { events, normalize } = asCapture([
+      {
+        id: 'old-1',
+        app: 'codex',
+        occurred_at: '2026-05-06T08:00:00.000Z',
+        artifacts: [shared('discarded label')],
+        input: 'Should we revisit this?',
+        output: 'I will follow up later',
+        hints: ['ends_with_question', 'explicit_followup'],
+      },
+      {
+        id: 'old-2',
+        app: 'cursor',
+        occurred_at: '2026-05-06T08:01:00.000Z',
+        artifacts: [shared('discarded label')],
+        input: 'yes',
+      },
+      {
+        id: 'old-3',
+        app: 'codex',
+        occurred_at: '2026-05-06T08:02:00.000Z',
+        artifacts: [shared('discarded label')],
+      },
+      {
+        id: 'old-4',
+        app: 'cursor',
+        occurred_at: '2026-05-06T08:03:00.000Z',
+        artifacts: [shared('discarded label')],
+      },
+      {
+        id: 'kept-1',
+        app: 'claude_code',
+        occurred_at: '2026-05-06T08:04:00.000Z',
+        artifacts: [shared('retained label')],
+      },
+      {
+        id: 'kept-2',
+        app: 'claude_code',
+        occurred_at: '2026-05-06T08:05:00.000Z',
+        artifacts: [shared('retained label')],
+      },
+    ]);
+
+    const complete = buildRecentWorkContext(events, QUERY, normalize);
+    const limited = buildRecentWorkContext(
+      events,
+      { ...QUERY, limit: 2 },
+      normalize,
+    );
+    const cluster = limited.clusters[0]!;
+    const retained = new Set(cluster.atom_ids);
+
+    expect(
+      complete.clusters[0]!.open_loop_hints.some(
+        (hint) => hint.resolved_by_atom_id === 'old-1',
+      ),
+    ).toBe(true);
+    expect(complete.clusters[0]!.rank_reason).toEqual(
+      expect.arrayContaining(['has_unresolved_open_loop', 'dense']),
+    );
+    expect(cluster.atom_ids).toEqual(['kept-1', 'kept-2']);
+    expect(Object.keys(limited.atoms).sort()).toEqual(['kept-1', 'kept-2']);
+    expect(cluster.cluster_id).not.toBe(complete.clusters[0]!.cluster_id);
+    expect(cluster.label).toBe('discussion about retained label');
+    expect(cluster.anchor_artifacts).toEqual([
+      expect.objectContaining({ id: 'r::shared.ts', label: 'retained label' }),
+    ]);
+    expect(cluster.open_loop_hints).toEqual([]);
+    expect(cluster.source_breakdown).toEqual({ claude_code: 2 });
+    expect(cluster.time_range).toEqual({
+      from: '2026-05-06T08:04:00.000Z',
+      to: '2026-05-06T08:05:00.000Z',
+    });
+    expect(cluster.rank).toBe(1);
+    expect(cluster.rank_reason).not.toContain('has_unresolved_open_loop');
+    expect(cluster.rank_reason).not.toContain('dense');
+    expect(cluster.edges.length).toBeGreaterThan(0);
+    for (const edge of cluster.edges) {
+      expect(retained.has(edge.from)).toBe(true);
+      expect(retained.has(edge.to)).toBe(true);
+    }
+    for (const hint of cluster.open_loop_hints) {
+      expect(retained.has(hint.atom_id)).toBe(true);
+      if (hint.resolved_by_atom_id !== undefined) {
+        expect(retained.has(hint.resolved_by_atom_id)).toBe(true);
+      }
+    }
+    expect(
+      Object.values(cluster.source_breakdown).reduce((sum, count) => sum + count, 0),
+    ).toBe(cluster.atom_ids.length);
+  });
+
   it('emits a warning when limit drops entire clusters', () => {
     // Three disjoint clusters (no shared artifacts), 4 atoms each → 12 total.
     // Limit=5 forces the lowest-rank cluster to drop entirely.

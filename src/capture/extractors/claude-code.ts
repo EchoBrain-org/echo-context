@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 import { isNonEmptyString } from "../../guards.js";
 import { createLogger } from "../../logging/index.js";
+import { isValidLogicalTurnId } from "../../normalize/logical-turn-id.js";
 import type { Storage } from "../../storage/interface.js";
 import { probeGitState, readBranch } from "../git-state.js";
 import {
@@ -187,6 +188,7 @@ interface ParsedLine {
   sessionId: string | undefined;
   sessionIdMalformed: boolean;
   uuid: string | undefined;
+  uuidMalformed: boolean;
   isSidechain: boolean | undefined;
   isSidechainMalformed: boolean;
   agentId: string | undefined;
@@ -325,7 +327,9 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
     isNonEmptyString(agentId) && agentId.trim().length > 0
       ? agentId
       : undefined;
+  const validUuid = isValidLogicalTurnId(uuid) ? uuid : undefined;
   const hasSessionId = Object.prototype.hasOwnProperty.call(obj, "sessionId");
+  const hasUuid = Object.prototype.hasOwnProperty.call(obj, "uuid");
   const hasIsSidechain = Object.prototype.hasOwnProperty.call(
     obj,
     "isSidechain",
@@ -347,7 +351,8 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
     model: isNonEmptyString(model) ? model : undefined,
     sessionId: validSessionId,
     sessionIdMalformed: hasSessionId && validSessionId === undefined,
-    uuid: isNonEmptyString(uuid) ? uuid : undefined,
+    uuid: validUuid,
+    uuidMalformed: hasUuid && validUuid === undefined,
     isSidechain: typeof isSidechain === "boolean" ? isSidechain : undefined,
     isSidechainMalformed: hasIsSidechain && typeof isSidechain !== "boolean",
     agentId: validAgentId,
@@ -689,6 +694,7 @@ export async function extractClaudeCodeTurns(
         agentId: parsed.agentId,
         lineageMalformed:
           parsed.sessionIdMalformed ||
+          parsed.uuidMalformed ||
           parsed.isSidechainMalformed ||
           parsed.agentIdMalformed,
       });
