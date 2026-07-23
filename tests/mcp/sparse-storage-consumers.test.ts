@@ -10,6 +10,7 @@ import { waitForNewTurns } from '../../src/mcp/tools/wait-for-new-turns.js';
 import { StorageScanBudgetExceededError } from '../../src/storage/budgets.js';
 import type { CaptureEvent, QueryFilter } from '../../src/storage/interface.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
+import { SqliteStorage } from '../../src/storage/sqlite.js';
 
 /** Models SQLite reaching an 8,192-row sparse descriptor window while
  * retaining MemoryStorage's deterministic payload/query behavior afterward. */
@@ -36,6 +37,104 @@ class SparseWindowStorage extends MemoryStorage {
     }
     return super.query(filter);
   }
+}
+
+class SparseMatchedSqliteStorage extends SqliteStorage {
+  queryCalls = 0;
+  getByIdsCalls = 0;
+  observedProjectKey: string | undefined;
+  observedLegacyProjectRoots: readonly string[] | undefined;
+  private boundaryPending = true;
+
+  constructor(private readonly matchedIds: readonly string[]) {
+    super(':memory:');
+  }
+
+  override async query(filter?: QueryFilter): Promise<CaptureEvent[]> {
+    this.queryCalls += 1;
+    this.observedProjectKey = filter?.project_key;
+    this.observedLegacyProjectRoots = filter?.legacy_project_roots;
+    if (this.boundaryPending) {
+      this.boundaryPending = false;
+      throw new StorageScanBudgetExceededError({
+        order: filter?.order ?? 'desc',
+        scanned_rows: 8_192,
+        matched_ids: [...this.matchedIds],
+        resume_cursor: {
+          timestamp: '2026-05-09T08:00:00.000Z',
+          id: 'sparse-resume',
+        },
+      });
+    }
+    return super.query(filter);
+  }
+
+  override async getByIds(ids: readonly string[]): Promise<CaptureEvent[]> {
+    this.getByIdsCalls += 1;
+    return super.getByIds(ids);
+  }
+}
+
+function codexTurn(input: {
+  logicalId: string;
+  timestamp: string;
+  occurredAt?: string;
+  observationKind?: 'original' | 'inherited';
+  content?: string;
+  projectKey?: string;
+}): Omit<CaptureEvent, 'id'> {
+  const observationKind = input.observationKind ?? 'original';
+  const metadata: Record<string, unknown> = {
+    session_id: 'root-thread',
+    logical_turn_id: input.logicalId,
+    thread_id:
+      observationKind === 'original'
+        ? 'root-thread'
+        : `fork-${input.logicalId}`,
+    root_thread_id: 'root-thread',
+    thread_kind: observationKind === 'original' ? 'root' : 'subagent',
+    observation_kind: observationKind,
+    initiator: observationKind === 'original' ? 'human' : 'agent',
+    occurred_at: input.occurredAt ?? input.timestamp,
+    observed_at: input.timestamp,
+  };
+  if (input.projectKey !== undefined) {
+    metadata['repo_root'] = '/repo';
+    metadata['canonical_root'] = '/repo';
+    metadata['project_key'] = input.projectKey;
+  }
+  return {
+    source: 'fs:/repo/.codex/sessions/2026/05/09/root-thread.jsonl',
+    timestamp: input.timestamp,
+    content:
+      input.content ?? `USER: turn ${input.logicalId}\n\nASSISTANT: done`,
+    metadata,
+  };
+}
+
+const LARGE_TURN_CONTENT = `USER: ${'x'.repeat(4 * 1024 * 1024 - 16 * 1024)}\n\nASSISTANT: inherited`;
+
+async function appendLargeInheritedTurns(
+  storage: MemoryStorage | SqliteStorage,
+  count: number,
+  projectKey?: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    ids.push(
+      await storage.append(
+        codexTurn({
+          logicalId: `large-inherited-${index}`,
+          timestamp: `2026-05-09T10:00:0${index}.000Z`,
+          occurredAt: `2026-05-09T09:00:0${index}.000Z`,
+          observationKind: 'inherited',
+          content: LARGE_TURN_CONTENT,
+          ...(projectKey !== undefined ? { projectKey } : {}),
+        }),
+      ),
+    );
+  }
+  return ids;
 }
 
 describe('bounded sparse-scan MCP consumers', () => {
@@ -137,6 +236,79 @@ describe('bounded sparse-scan MCP consumers', () => {
     expect(storage.queryCalls).toBe(CLUSTER_MAX_STORAGE_SCAN_WINDOWS);
   });
 
+  it('compares logical occurrence bounds as instants when callers use timezone offsets', async () => {
+    const storage = new SparseWindowStorage(0, {
+      timestamp: '2026-05-09T08:00:00.000Z',
+      id: 'unused',
+    });
+    for (let index = 0; index < 10; index += 1) {
+      await storage.append(
+        codexTurn({
+          logicalId: `offset-${index}`,
+          timestamp: `2026-05-09T09:${String(index).padStart(2, '0')}:00.000Z`,
+        }),
+      );
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T01:00:00.000-07:00',
+      until: '2026-05-09T03:00:00.000-07:00',
+      limit: 1,
+    });
+
+    expect(result.truncation.atoms_total_in_window).toBe(10);
+    expect(storage.queryCalls).toBe(1);
+  });
+
+  it('does not let successfully stored but unnormalizable noise satisfy the logical scan target', async () => {
+    const storage = new SparseWindowStorage(0, {
+      timestamp: '2026-05-09T08:00:00.000Z',
+      id: 'unused',
+    });
+    const contextId = await storage.append(
+      codexTurn({
+        logicalId: 'real-context',
+        timestamp: '2026-05-09T09:00:00.000Z',
+      }),
+    );
+    for (let index = 0; index < 10; index += 1) {
+      await storage.append({
+        source: `coord:noise:${index}`,
+        timestamp: `2026-05-09T10:${String(index).padStart(2, '0')}:00.000Z`,
+        content: 'substrate row with no context normalizer',
+        metadata: { surface: 'coord' },
+      });
+    }
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T08:00:00.000Z',
+      until: '2026-05-09T11:00:00.000Z',
+      limit: 1,
+    });
+
+    expect(Object.keys(result.atoms)).toEqual([contextId]);
+    expect(storage.queryCalls).toBe(2);
+  });
+
+  it('treats until as an exclusive logical-occurrence boundary', async () => {
+    const storage = new MemoryStorage();
+    await storage.append(
+      codexTurn({
+        logicalId: 'at-until',
+        timestamp: '2026-05-09T09:59:59.000Z',
+        occurredAt: '2026-05-09T10:00:00.000Z',
+      }),
+    );
+
+    const result = await getRecentWorkContext(storage, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T10:00:00.000Z',
+    });
+
+    expect(result.truncation.atoms_total_in_window).toBe(0);
+    expect(result.clusters).toEqual([]);
+  });
+
   it('cluster discovery caps retained raw observations during an inherited-copy flood', async () => {
     const storage = new MemoryStorage();
     for (let index = 0; index <= CLUSTER_MAX_RAW_OBSERVATIONS; index += 1) {
@@ -163,29 +335,18 @@ describe('bounded sparse-scan MCP consumers', () => {
     });
 
     expect(result.truncation.truncated).toBe(true);
-    expect(result.warnings.join('\n')).toMatch(/STORAGE_INPUT_BUDGET.*raw observations/);
+    expect(result.warnings.join('\n')).toMatch(
+      /STORAGE_INPUT_BUDGET.*raw observations/,
+    );
   });
 
   it('cluster discovery caps retained raw bytes even when row count is small', async () => {
     const storage = new MemoryStorage();
-    const content = `USER: ${'x'.repeat(4 * 1024 * 1024 - 16 * 1024)}\n\nASSISTANT: inherited`;
-    const rowsNeeded = Math.ceil(CLUSTER_MAX_RAW_STORED_BYTES / Buffer.byteLength(content)) + 1;
-    for (let index = 0; index < rowsNeeded; index += 1) {
-      await storage.append({
-        source: 'fs:/repo/.codex/sessions/large-inherited-flood.jsonl',
-        timestamp: '2026-05-09T10:00:00.000Z',
-        content,
-        metadata: {
-          session_id: 'large-inherited-flood',
-          logical_turn_id: `large-inherited-${index}`,
-          thread_id: 'large-fork-thread',
-          root_thread_id: 'root-thread',
-          thread_kind: 'subagent',
-          observation_kind: 'inherited',
-          occurred_at: '2026-05-09T09:00:00.000Z',
-        },
-      });
-    }
+    const rowsNeeded =
+      Math.ceil(
+        CLUSTER_MAX_RAW_STORED_BYTES / Buffer.byteLength(LARGE_TURN_CONTENT),
+      ) + 1;
+    await appendLargeInheritedTurns(storage, rowsNeeded);
 
     const result = await getRecentWorkContext(storage, {
       since: '2026-05-09T00:00:00.000Z',
@@ -194,6 +355,67 @@ describe('bounded sparse-scan MCP consumers', () => {
     });
 
     expect(result.truncation.truncated).toBe(true);
-    expect(result.warnings.join('\n')).toMatch(/STORAGE_INPUT_BUDGET.*retained bytes/);
+    expect(result.warnings.join('\n')).toMatch(
+      /STORAGE_INPUT_BUDGET.*retained bytes/,
+    );
+  });
+
+  it('adaptively shrinks a direct SQLite query before applying the cluster byte cap', async () => {
+    const storage = new SqliteStorage(':memory:');
+    try {
+      const rowsNeeded =
+        Math.ceil(
+          CLUSTER_MAX_RAW_STORED_BYTES / Buffer.byteLength(LARGE_TURN_CONTENT),
+        ) + 1;
+      await appendLargeInheritedTurns(storage, rowsNeeded);
+
+      const result = await getRecentWorkContext(storage, {
+        since: '2026-05-09T00:00:00.000Z',
+        until: '2026-05-10T00:00:00.000Z',
+        limit: 500,
+      });
+
+      expect(result.truncation.truncated).toBe(true);
+      expect(result.warnings.join('\n')).toMatch(
+        /STORAGE_INPUT_BUDGET.*retained bytes/,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it('adaptively hydrates byte-heavy SQLite matches from a sparse project scan', async () => {
+    const matchedIds: string[] = [];
+    const storage = new SparseMatchedSqliteStorage(matchedIds);
+    try {
+      matchedIds.push(
+        ...(await appendLargeInheritedTurns(
+          storage,
+          Math.ceil(
+            CLUSTER_MAX_RAW_STORED_BYTES /
+              Buffer.byteLength(LARGE_TURN_CONTENT),
+          ) + 1,
+          'local:workspace:/repo',
+        )),
+      );
+
+      const result = await getRecentWorkContext(storage, {
+        since: '2026-05-09T00:00:00.000Z',
+        until: '2026-05-10T00:00:00.000Z',
+        limit: 500,
+        repo_path: '/repo',
+      });
+
+      expect(result.truncation.truncated).toBe(true);
+      expect(result.warnings.join('\n')).toMatch(
+        /STORAGE_INPUT_BUDGET.*retained bytes/,
+      );
+      expect(storage.observedProjectKey).toBe('local:workspace:/repo');
+      expect(storage.observedLegacyProjectRoots).toEqual(['/repo']);
+      expect(storage.queryCalls).toBe(1);
+      expect(storage.getByIdsCalls).toBeGreaterThan(1);
+    } finally {
+      storage.close();
+    }
   });
 });

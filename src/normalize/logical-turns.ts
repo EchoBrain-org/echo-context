@@ -48,9 +48,10 @@ function chooseRepresentative(
 /** Collapse physical observations onto provider-stable logical turns.
  *
  * Raw event ids remain the only ids exposed: the representative is always one
- * stored observation, so callers can hydrate it through get_atoms. Groups
- * containing inherited copies only are omitted from current-work topology;
- * their original turn belongs to an earlier occurrence window.
+ * stored observation, so callers can hydrate it through get_atoms. The trace
+ * layer filters by canonical occurrence time before this projection, so an
+ * inherited-only group that reaches here is retained: its original may simply
+ * be absent from this ledger.
  */
 export function projectLogicalTurns(
   observations: readonly NormalizedContextEvent[],
@@ -76,7 +77,6 @@ export function projectLogicalTurns(
       group.every((atom) => atom.conversation?.observation_kind === 'inherited')
     ) {
       inheritedOnlyCount += group.length;
-      continue;
     }
     const representative = chooseRepresentative(group);
     let latestObserved = observedAt(representative);
@@ -101,8 +101,7 @@ export function projectLogicalTurns(
     atoms: projected,
     raw_observation_count: observations.length,
     logical_turn_count: projected.length,
-    collapsed_observation_count:
-      observations.length - inheritedOnlyCount - projected.length,
+    collapsed_observation_count: observations.length - projected.length,
     inherited_only_count: inheritedOnlyCount,
   };
 }

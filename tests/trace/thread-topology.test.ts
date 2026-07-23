@@ -13,18 +13,20 @@ function threadAtom(input: {
   parent?: string;
   project?: typeof PROJECT_A;
   artifact?: { provider: string; type: string; id: string };
+  artifacts?: { provider: string; type: string; id: string }[];
   app?: string;
+  provider?: string;
 }) {
   return makeAtom({
     id: input.id,
     app: input.app ?? 'codex',
     occurred_at: input.time,
     project: input.project ?? PROJECT_A,
-    artifacts: input.artifact === undefined ? [] : [input.artifact],
+    artifacts: input.artifacts ?? (input.artifact === undefined ? [] : [input.artifact]),
     ...(input.root !== undefined
       ? {
           conversation: {
-            provider: 'codex',
+            provider: input.provider ?? 'codex',
             session_id: input.thread ?? input.root,
             thread_id: input.thread ?? input.root,
             root_thread_id: input.root,
@@ -59,6 +61,62 @@ describe('thread topology', () => {
     ]);
     expect(connectedComponents(graph)).toHaveLength(1);
     expect(graph.edges).toHaveLength(2);
+  });
+
+  it('does not leak synthetic lineage keys into shared-artifact evidence', () => {
+    const file = { provider: 'local_fs', type: 'file', id: 'same.ts' };
+    const graph = buildGraph([
+      threadAtom({ id: 'a', time: '2026-07-22T18:00:00Z', root: 'r1', artifact: file }),
+      threadAtom({ id: 'b', time: '2026-07-22T18:01:00Z', root: 'r1', artifact: file }),
+    ]);
+
+    expect(graph.edges).toHaveLength(1);
+    expect(graph.edges[0]!.artifact_ids).toEqual(['local_fs:file:same.ts']);
+  });
+
+  it('keeps legacy turns grouped by provider-scoped session identity', () => {
+    const legacy = (id: string, provider: string, session: string, minute: string) =>
+      makeAtom({
+        id,
+        app: provider,
+        occurred_at: `2026-07-22T18:${minute}:00Z`,
+        project: PROJECT_A,
+        artifacts: [],
+        conversation: { provider, session_id: session },
+      });
+    const components = connectedComponents(
+      buildGraph([
+        legacy('a1', 'codex', 'legacy-a', '00'),
+        legacy('a2', 'codex', 'legacy-a', '01'),
+        legacy('b1', 'codex', 'legacy-b', '02'),
+      ]),
+    );
+    expect(components).toHaveLength(2);
+    expect(components.find((component) => component.atom_ids.includes('a1'))!.atom_ids).toEqual([
+      'a1',
+      'a2',
+    ]);
+  });
+
+  it('does not merge identical opaque root ids across providers', () => {
+    const components = connectedComponents(
+      buildGraph([
+        threadAtom({
+          id: 'codex-root',
+          time: '2026-07-22T18:00:00Z',
+          root: 'same-id',
+          provider: 'codex',
+        }),
+        threadAtom({
+          id: 'claude-root',
+          time: '2026-07-22T18:01:00Z',
+          root: 'same-id',
+          provider: 'claude_code',
+          app: 'claude_code',
+        }),
+      ]),
+    );
+    expect(components).toHaveLength(2);
   });
 
   it('does not merge distinct roots that touch the same weak file', () => {
@@ -121,6 +179,40 @@ describe('thread topology', () => {
     ]);
   });
 
+  it('does not let a shared branch chain unrelated git commits onto one root', () => {
+    const branch = { provider: 'git', type: 'branch', id: 'main' };
+    const fileA = { provider: 'local_fs', type: 'file', id: 'a.ts' };
+    const fileB = { provider: 'local_fs', type: 'file', id: 'b.ts' };
+    const components = connectedComponents(
+      buildGraph([
+        threadAtom({ id: 'root-a', time: '2026-07-22T18:00:00Z', root: 'r1', artifact: fileA }),
+        threadAtom({
+          id: 'git-a',
+          time: '2026-07-22T18:10:00Z',
+          app: 'git',
+          artifacts: [branch, fileA],
+        }),
+        threadAtom({
+          id: 'git-b',
+          time: '2026-07-22T18:11:00Z',
+          app: 'git',
+          artifacts: [branch, fileB],
+        }),
+        threadAtom({ id: 'root-b', time: '2026-07-22T18:21:00Z', root: 'r2', artifact: fileB }),
+      ]),
+    );
+
+    expect(components).toHaveLength(2);
+    expect(components.find((component) => component.atom_ids.includes('root-a'))!.atom_ids).toEqual([
+      'git-a',
+      'root-a',
+    ]);
+    expect(components.find((component) => component.atom_ids.includes('root-b'))!.atom_ids).toEqual([
+      'git-b',
+      'root-b',
+    ]);
+  });
+
   it('a dense first project cannot starve a later project', () => {
     const dense = Array.from({ length: 1_000 }, (_, index) =>
       threadAtom({
@@ -144,7 +236,6 @@ describe('thread topology', () => {
       }),
     ];
     const graph = buildGraph([...dense, ...later]);
-    expect(graph.truncated).toBeUndefined();
     expect(connectedComponents(graph)).toHaveLength(2);
     expect(graph.edges.some((edge) => edge.from === 'later-a' && edge.to === 'later-b')).toBe(true);
   });

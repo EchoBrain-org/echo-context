@@ -24,6 +24,7 @@ describe('fork-storm-v1 logical topology benchmark', () => {
       raw_observations: 460,
       logical_turns: 123,
       collapsed_observations: 337,
+      provider_counts: { codex: 85, claude_code: 38 },
       project_counts: { echo_brain: 72, echo_context: 38, hdc: 13 },
       clusters: 7,
       max_cluster_size: 24,

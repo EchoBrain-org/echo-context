@@ -21,6 +21,7 @@ const PROJECT_ECHO = '/Users/redacted/Desktop/Project_echo';
 function claudeCodeTurn(i: number, filePath: string, ts: string): Omit<CaptureEvent, 'id'> {
   // Mirror the shape claude_code/extractor produces: a USER+ASSISTANT pair
   // bag with a `files_referenced` artifact keying the cluster.
+  const rootThreadId = `fixture-root:${filePath}`;
   return {
     source: `fs:/Users/redacted/.claude/projects/-Users-redacted-Desktop-Project-echo/sess-${i}.jsonl`,
     timestamp: ts,
@@ -29,7 +30,12 @@ function claudeCodeTurn(i: number, filePath: string, ts: string): Omit<CaptureEv
       surface: 'claude_code',
       files_referenced: [filePath],
       cwd: PROJECT_ECHO,
-      session_id: `sess-${i}`,
+      session_id: rootThreadId,
+      thread_id: rootThreadId,
+      root_thread_id: rootThreadId,
+      thread_kind: 'root',
+      observation_kind: 'original',
+      initiator: 'human',
       turn_index: 0,
     },
   };

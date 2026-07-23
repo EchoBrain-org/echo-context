@@ -12,7 +12,7 @@ import {
 import {
   projectKeyForCanonicalRoot,
   resolveCanonicalRoot,
-} from "../workspace-root.js";
+} from "../../project-identity.js";
 import {
   classifyContextInitiator,
   type ContextInitiator,
@@ -91,7 +91,6 @@ export interface ClaudeCodeTurn {
   /** Model id from the assistant message (e.g. "claude-opus-4-7"). */
   model?: string;
   logical_turn_id?: string;
-  parent_logical_turn_id?: string;
   occurred_at?: string;
   observed_at?: string;
   observation_kind?: ObservationKind;
@@ -187,7 +186,6 @@ interface ParsedLine {
   model: string | undefined;
   sessionId: string | undefined;
   uuid: string | undefined;
-  parentUuid: string | undefined;
   isSidechain: boolean | undefined;
   agentId: string | undefined;
   files: string[];
@@ -314,7 +312,6 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
   const model = msg["model"];
   const sessionId = obj["sessionId"];
   const uuid = obj["uuid"];
-  const parentUuid = obj["parentUuid"];
   const isSidechain = obj["isSidechain"];
   const agentId = obj["agentId"];
   const isEndTurn = role === "assistant" && msg["stop_reason"] === "end_turn";
@@ -333,7 +330,6 @@ function parseLine(line: string, byteOffset: number): ParsedLine | null {
     model: isNonEmptyString(model) ? model : undefined,
     sessionId: isNonEmptyString(sessionId) ? sessionId : undefined,
     uuid: isNonEmptyString(uuid) ? uuid : undefined,
-    parentUuid: isNonEmptyString(parentUuid) ? parentUuid : undefined,
     isSidechain: typeof isSidechain === "boolean" ? isSidechain : undefined,
     agentId: isNonEmptyString(agentId) ? agentId : undefined,
     files: ec.files,
@@ -350,6 +346,23 @@ function deriveSessionId(jsonlPath: string): string {
 
 function deriveProject(jsonlPath: string): string {
   return basename(dirname(jsonlPath));
+}
+
+type ClaudeThreadKind = "root" | "subagent" | "unknown";
+
+function classifyClaudeThreadKind(input: {
+  sessionId: string | undefined;
+  logicalTurnId: string | undefined;
+  isSidechain: boolean | undefined;
+  agentId: string | undefined;
+}): ClaudeThreadKind {
+  if (input.sessionId === undefined || input.logicalTurnId === undefined) {
+    return "unknown";
+  }
+  if (input.isSidechain === false && input.agentId === undefined) return "root";
+  if (input.isSidechain === true && input.agentId !== undefined)
+    return "subagent";
+  return "unknown";
 }
 
 export async function extractClaudeCodeTurns(
@@ -396,9 +409,9 @@ export async function extractClaudeCodeTurns(
     model?: string;
     rawSessionId?: string;
     userUuid?: string;
-    parentUuid?: string;
     isSidechain?: boolean;
     agentId?: string;
+    threadKind: ClaudeThreadKind;
     initiator: ContextInitiator;
   }
   let pending: PendingCluster | null = null;
@@ -456,24 +469,26 @@ export async function extractClaudeCodeTurns(
       had_tool_use: pending.hadTool,
       byte_offset: pending.assistantLastLineEndOffset,
     };
-    const rootThreadId = pending.rawSessionId ?? session_id;
-    turn.root_thread_id = rootThreadId;
-    turn.thread_id = pending.agentId ?? rootThreadId;
-    turn.thread_kind =
-      pending.isSidechain === true || pending.agentId !== undefined
-        ? "subagent"
-        : pending.isSidechain === false
-          ? "root"
-          : "unknown";
-    if (pending.agentId !== undefined) turn.agent_id = pending.agentId;
+    turn.thread_kind = pending.threadKind;
+    if (pending.threadKind === "root" && pending.rawSessionId !== undefined) {
+      turn.root_thread_id = pending.rawSessionId;
+      turn.thread_id = pending.rawSessionId;
+    } else if (
+      pending.threadKind === "subagent" &&
+      pending.rawSessionId !== undefined &&
+      pending.agentId !== undefined
+    ) {
+      turn.root_thread_id = pending.rawSessionId;
+      turn.thread_id = pending.agentId;
+      turn.agent_id = pending.agentId;
+    }
     if (pending.userUuid !== undefined) turn.logical_turn_id = pending.userUuid;
-    if (pending.parentUuid !== undefined)
-      turn.parent_logical_turn_id = pending.parentUuid;
     turn.occurred_at = pending.userTimestamp;
     turn.observed_at = pending.timestamp;
     turn.initiator = pending.initiator;
     turn.observation_kind =
-      turn.thread_kind === "root" || pending.initiator === "agent"
+      turn.thread_kind === "root" ||
+      (turn.thread_kind === "subagent" && pending.initiator === "agent")
         ? "original"
         : "unknown";
     if (pending.repo_root !== undefined) turn.repo_root = pending.repo_root;
@@ -548,11 +563,24 @@ export async function extractClaudeCodeTurns(
 
     if (parsed.role === "user") {
       if (firstUserOffset === undefined) firstUserOffset = lineStartOffset;
+      const threadKind = classifyClaudeThreadKind({
+        sessionId: parsed.sessionId,
+        logicalTurnId: parsed.uuid,
+        isSidechain: parsed.isSidechain,
+        agentId: parsed.agentId,
+      });
       const fallbackInitiator: Exclude<ContextInitiator, "system"> =
-        parsed.isSidechain === true || parsed.agentId !== undefined
-          ? "agent"
-          : "human";
-      const initiator = classifyContextInitiator(parsed.text, fallbackInitiator);
+        parsed.isSidechain === true
+          ? parsed.agentId !== undefined
+            ? "agent"
+            : "unknown"
+          : parsed.agentId !== undefined
+            ? "unknown"
+            : "human";
+      const initiator = classifyContextInitiator(
+        parsed.text,
+        fallbackInitiator,
+      );
       // Do not let a system reminder displace the substantive teammate task
       // that the next assistant message answers.
       if (
@@ -595,11 +623,12 @@ export async function extractClaudeCodeTurns(
         toolUses: [...toolUsesBetween, ...parsed.toolUses],
         toolResults: [...toolResultsBetween, ...parsed.toolResults],
         thinking: [...thinkingBetween, ...parsed.thinking],
+        threadKind,
         initiator,
       };
-      if (parsed.sessionId !== undefined) pending.rawSessionId = parsed.sessionId;
+      if (parsed.sessionId !== undefined)
+        pending.rawSessionId = parsed.sessionId;
       if (parsed.uuid !== undefined) pending.userUuid = parsed.uuid;
-      if (parsed.parentUuid !== undefined) pending.parentUuid = parsed.parentUuid;
       if (parsed.isSidechain !== undefined)
         pending.isSidechain = parsed.isSidechain;
       if (parsed.agentId !== undefined) pending.agentId = parsed.agentId;
@@ -1018,6 +1047,21 @@ export async function startClaudeCodeExtractor(
   }
 
   async function handleJsonlChange(path: string): Promise<void> {
+    const projectIdentityCache = createBoundedResourceCache<{
+      canonicalRoot: string;
+      projectKey: string;
+    }>();
+    const projectIdentityFor = async (observedRoot: string) => {
+      const cached = projectIdentityCache.get(observedRoot);
+      if (cached !== undefined) return cached;
+      const canonicalRoot = await resolveCanonicalRoot(observedRoot);
+      const resolved = {
+        canonicalRoot,
+        projectKey: projectKeyForCanonicalRoot(canonicalRoot),
+      };
+      projectIdentityCache.set(observedRoot, resolved);
+      return resolved;
+    };
     let cur = await loadCheckpoint(path);
     const previousOffset = cur.offset;
     const resumeProof = await inspectJsonlCheckpointProof(
@@ -1240,8 +1284,6 @@ export async function startClaudeCodeExtractor(
         };
         if (turn.logical_turn_id !== undefined)
           metadata["logical_turn_id"] = turn.logical_turn_id;
-        if (turn.parent_logical_turn_id !== undefined)
-          metadata["parent_logical_turn_id"] = turn.parent_logical_turn_id;
         if (turn.occurred_at !== undefined)
           metadata["occurred_at"] = turn.occurred_at;
         if (turn.observed_at !== undefined)
@@ -1261,9 +1303,9 @@ export async function startClaudeCodeExtractor(
         if (turn.repo_root !== undefined)
           metadata["repo_root"] = turn.repo_root;
         if (turn.repo_root !== undefined) {
-          const canonicalRoot = await resolveCanonicalRoot(turn.repo_root);
-          metadata["canonical_root"] = canonicalRoot;
-          metadata["project_key"] = projectKeyForCanonicalRoot(canonicalRoot);
+          const projectIdentity = await projectIdentityFor(turn.repo_root);
+          metadata["canonical_root"] = projectIdentity.canonicalRoot;
+          metadata["project_key"] = projectIdentity.projectKey;
         }
         if (turn.files_referenced !== undefined)
           metadata["files_referenced"] = turn.files_referenced;

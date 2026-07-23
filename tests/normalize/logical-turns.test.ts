@@ -61,12 +61,14 @@ describe('projectLogicalTurns', () => {
     expect(projected.atoms[0]!.provenance.raw_observation_count).toBe(3);
   });
 
-  it('does not surface inherited-only history as current work', () => {
+  it('retains one inherited-only representative when the caller admitted its occurrence', () => {
     const projected = projectLogicalTurns([
       observation({ id: 'copy-a', logicalTurnId: 'old', kind: 'inherited' }),
       observation({ id: 'copy-b', logicalTurnId: 'old', kind: 'inherited' }),
     ]);
-    expect(projected.atoms).toEqual([]);
+    expect(projected.atoms).toHaveLength(1);
+    expect(projected.atoms[0]!.id).toBe('copy-a');
+    expect(projected.collapsed_observation_count).toBe(1);
     expect(projected.inherited_only_count).toBe(2);
   });
 

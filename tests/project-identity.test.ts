@@ -9,7 +9,7 @@ import {
   canonicalizePath,
   gitToplevel,
   resolveCanonicalRoot,
-} from '../../src/capture/workspace-root.js';
+} from '../src/project-identity.js';
 
 const execFileP = promisify(execFile);
 
@@ -22,7 +22,7 @@ const PROJECT_ANCHORS = [
   'pnpm-workspace.yaml',
 ] as const;
 
-describe('workspace root resolution', () => {
+describe('project identity resolution', () => {
   let cleanupDirs: string[];
   let originalHome: string | undefined;
 

@@ -52,7 +52,8 @@ export function classifyCodexObservation(input: {
   assistantTurnId: string | undefined;
   localTrigger: boolean;
 }): ObservationKind {
-  if (input.threadKind !== 'subagent') return 'original';
+  if (input.threadKind === 'root') return 'original';
+  if (input.threadKind !== 'subagent') return 'unknown';
   if (input.localTrigger) return 'original';
   if (
     input.logicalTurnId === undefined ||

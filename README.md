@@ -40,8 +40,10 @@ reconstructs identity from matching text.
 
 Retrieval projects those raw observations into logical turns before clustering
 or ranking. It groups only `(provider, logical_turn_id)`, retains an original
-stored event ID for `get_atoms`, and excludes inherited-only fork history from
-fresh activity. Existing rows without provider identity remain distinct.
+stored event ID for `get_atoms`, and never treats a later inherited copy as new
+activity. If a bounded scan contains only inherited observations, one
+representative is retained and evaluated at the logical turn's original
+occurrence time. Existing rows without provider identity remain distinct.
 
 Thread topology is project-partitioned and bounded. Explicit root lineage is
 authoritative; repo/workspace and generic conversation references are
@@ -56,9 +58,11 @@ Run the synthetic fork/copy regression benchmark with:
 node --import tsx tools/benchmark-context-topology.ts
 ```
 
-It verifies raw-ledger preservation, logical collapse, canonical project scope,
-seven-thread topology, complete `find_clusters` → `get_atoms` hydration, wire
-size, and bounded latency under a 10× inherited-copy stress case.
+It is a deterministic synthetic regression, not a substitute for capture and
+SQLite integration tests. It verifies raw-ledger preservation, logical
+collapse, canonical project scope, seven-thread topology, complete
+`find_clusters` → `get_atoms` hydration, wire size, and bounded latency under
+a 10× inherited-copy stress case.
 
 ## Adapter incubation boundary
 

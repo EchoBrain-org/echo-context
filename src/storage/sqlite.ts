@@ -56,6 +56,7 @@ import {
   type StorageSelectPageObservation,
 } from "./budgets.js";
 import { migrate } from "./migrate.js";
+import { normalizeLegacyProjectRoots } from "./project-filter.js";
 import { normalizePathLikeSource, sourceHasPrefix } from "./source-match.js";
 import { canonicalizeTimestamp } from "../util/timestamp.js";
 
@@ -589,8 +590,22 @@ export class SqliteStorage implements Storage {
     if (filter?.until !== undefined) {
       assertStorageDescriptorField("query", "timestamp", filter.until);
     }
+    if (
+      filter?.project_key === undefined &&
+      filter?.legacy_project_roots !== undefined
+    ) {
+      throw new RangeError("QueryFilter.legacy_project_roots requires project_key");
+    }
+    let legacyProjectRoots: string[] = [];
     if (filter?.project_key !== undefined) {
       assertStorageDescriptorField("query", "source", filter.project_key);
+      legacyProjectRoots = normalizeLegacyProjectRoots(
+        filter.project_key,
+        filter.legacy_project_roots,
+      );
+      for (const root of legacyProjectRoots) {
+        assertStorageDescriptorField("query", "source", root);
+      }
     }
     assertCursorDescriptorFields("query", filter?.before);
     assertCursorDescriptorFields("query", filter?.after);
@@ -686,16 +701,34 @@ export class SqliteStorage implements Storage {
       });
     }
     if (filter?.project_key !== undefined) {
+      const legacyRepoRootPredicates = legacyProjectRoots.map((root, index) => {
+        const rootParam = `__legacy_project_root_${index}`;
+        const prefixParam = `__legacy_project_prefix_${index}`;
+        params[rootParam] = root;
+        params[prefixParam] = root.endsWith("/") ? root : `${root}/`;
+        return `(json_extract(e.metadata, '$.repo_root') = @${rootParam}
+                  OR substr(json_extract(e.metadata, '$.repo_root'), 1, length(@${prefixParam})) = @${prefixParam})`;
+      });
+      const legacyRepoRootMatch =
+        legacyRepoRootPredicates.length === 0
+          ? "0"
+          : `(${legacyRepoRootPredicates.join(" OR ")})`;
       postDescriptorSqlPredicates.push(
         `(CASE
-           WHEN typeof(json_extract(e.metadata, '$.project_key')) = 'text'
-             THEN json_extract(e.metadata, '$.project_key')
-           WHEN typeof(json_extract(e.metadata, '$.canonical_root')) = 'text'
-             THEN 'local:workspace:' || json_extract(e.metadata, '$.canonical_root')
+           WHEN json_type(e.metadata, '$.project_key') IS NOT NULL
+             THEN CASE
+               WHEN typeof(json_extract(e.metadata, '$.project_key')) = 'text'
+                 AND json_extract(e.metadata, '$.project_key') = @__project_key
+               THEN 1 ELSE 0 END
+           WHEN json_type(e.metadata, '$.canonical_root') IS NOT NULL
+             THEN CASE
+               WHEN typeof(json_extract(e.metadata, '$.canonical_root')) = 'text'
+                 AND ('local:workspace:' || json_extract(e.metadata, '$.canonical_root')) = @__project_key
+               THEN 1 ELSE 0 END
            WHEN typeof(json_extract(e.metadata, '$.repo_root')) = 'text'
-             THEN 'local:workspace:' || json_extract(e.metadata, '$.repo_root')
-           ELSE NULL
-         END) = @__project_key`,
+             THEN CASE WHEN ${legacyRepoRootMatch} THEN 1 ELSE 0 END
+           ELSE 0
+         END) = 1`,
       );
       params["__project_key"] = filter.project_key;
     }

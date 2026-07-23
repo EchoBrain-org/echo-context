@@ -12,7 +12,7 @@ import {
 import {
   projectKeyForCanonicalRoot,
   resolveCanonicalRoot,
-} from "../workspace-root.js";
+} from "../../project-identity.js";
 import {
   classifyCodexObservation,
   classifyContextInitiator,
@@ -89,7 +89,7 @@ export interface CodexSessionMeta {
   root_thread_id?: string;
   parent_thread_id?: string;
   forked_from_id?: string;
-  thread_kind?: "root" | "subagent";
+  thread_kind?: "root" | "subagent" | "unknown";
   agent_path?: string;
   agent_depth?: number;
   agent_nickname?: string;
@@ -116,7 +116,6 @@ export interface CodexTurn {
   thinking?: string;
   git_state?: GitState;
   logical_turn_id?: string;
-  parent_logical_turn_id?: string;
   observed_at?: string;
   occurred_at?: string;
   observation_kind?: ObservationKind;
@@ -177,7 +176,7 @@ interface ParsedLine {
   root_thread_id?: string;
   parent_thread_id?: string;
   forked_from_id?: string;
-  thread_kind?: "root" | "subagent";
+  thread_kind?: "root" | "subagent" | "unknown";
   agent_path?: string;
   agent_depth?: number;
   agent_nickname?: string;
@@ -209,7 +208,9 @@ function extractMessageText(content: unknown): string {
   return parts.join("");
 }
 
-function turnIdFromPayload(payload: Record<string, unknown>): string | undefined {
+function turnIdFromPayload(
+  payload: Record<string, unknown>,
+): string | undefined {
   const direct = payload["turn_id"];
   if (isNonEmptyString(direct)) return direct;
   const passthrough = payload["internal_chat_message_metadata_passthrough"];
@@ -237,12 +238,10 @@ function parseLine(line: string): ParsedLine | null {
     if (typeof payload === "object" && payload !== null) {
       const p = payload as Record<string, unknown>;
       const physicalThreadId = p["id"];
-      if (isNonEmptyString(physicalThreadId)) out.thread_id = physicalThreadId;
       const rootThreadId = p["session_id"];
-      if (isNonEmptyString(rootThreadId)) out.root_thread_id = rootThreadId;
-      else if (isNonEmptyString(physicalThreadId)) out.root_thread_id = physicalThreadId;
       const parentThreadId = p["parent_thread_id"];
-      if (isNonEmptyString(parentThreadId)) out.parent_thread_id = parentThreadId;
+      if (isNonEmptyString(parentThreadId))
+        out.parent_thread_id = parentThreadId;
       const forkedFromId = p["forked_from_id"];
       if (isNonEmptyString(forkedFromId)) out.forked_from_id = forkedFromId;
       const threadSource = p["thread_source"];
@@ -251,7 +250,8 @@ function parseLine(line: string): ParsedLine | null {
       const historyMode = p["history_mode"];
       if (isNonEmptyString(historyMode)) out.history_mode = historyMode;
       const sessionStartedAt = p["timestamp"];
-      if (isNonEmptyString(sessionStartedAt)) out.session_started_at = sessionStartedAt;
+      if (isNonEmptyString(sessionStartedAt))
+        out.session_started_at = sessionStartedAt;
       else if (timestamp !== undefined) out.session_started_at = timestamp;
       const sourceMeta = p["source"];
       let hasSubagentSource = false;
@@ -263,7 +263,11 @@ function parseLine(line: string): ParsedLine | null {
           if (typeof spawn === "object" && spawn !== null) {
             const spawnMeta = spawn as Record<string, unknown>;
             const depth = spawnMeta["depth"];
-            if (typeof depth === "number" && Number.isSafeInteger(depth) && depth >= 0) {
+            if (
+              typeof depth === "number" &&
+              Number.isSafeInteger(depth) &&
+              depth >= 0
+            ) {
               out.agent_depth = depth;
             }
             const nickname = spawnMeta["agent_nickname"];
@@ -271,14 +275,38 @@ function parseLine(line: string): ParsedLine | null {
           }
         }
       }
-      out.thread_kind =
+      const hasSubagentEvidence =
         threadSource === "subagent" ||
         hasSubagentSource ||
         isNonEmptyString(parentThreadId) ||
         isNonEmptyString(forkedFromId) ||
-        isNonEmptyString(agentPath)
-          ? "subagent"
-          : "root";
+        isNonEmptyString(agentPath);
+      const stableSubagentIdentity =
+        hasSubagentEvidence &&
+        (threadSource === undefined || threadSource === "subagent") &&
+        isNonEmptyString(physicalThreadId) &&
+        isNonEmptyString(rootThreadId) &&
+        physicalThreadId !== rootThreadId;
+      const stableRootIdentity =
+        !hasSubagentEvidence &&
+        (threadSource === undefined ||
+          threadSource === "root" ||
+          threadSource === "user") &&
+        isNonEmptyString(physicalThreadId) &&
+        (!isNonEmptyString(rootThreadId) || rootThreadId === physicalThreadId);
+      if (stableSubagentIdentity) {
+        out.thread_id = physicalThreadId;
+        out.root_thread_id = rootThreadId;
+        out.thread_kind = "subagent";
+      } else if (stableRootIdentity) {
+        out.thread_id = physicalThreadId;
+        out.root_thread_id = physicalThreadId;
+        out.thread_kind = "root";
+      } else {
+        // Preserve partial lineage fields above as raw evidence, but never
+        // promote an incomplete/contradictory session identity into topology.
+        out.thread_kind = "unknown";
+      }
       const c = p["cwd"];
       if (isNonEmptyString(c)) out.cwd = c;
       const src = p["source"];
@@ -382,7 +410,9 @@ function parseLine(line: string): ParsedLine | null {
     return {
       kind: "inter_agent_metadata",
       timestamp,
-      ...(typeof triggerTurn === "boolean" ? { trigger_turn: triggerTurn } : {}),
+      ...(typeof triggerTurn === "boolean"
+        ? { trigger_turn: triggerTurn }
+        : {}),
     };
   }
 
@@ -596,6 +626,72 @@ function mergeCodexMeta(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+function codexMetaPatch(parsed: ParsedLine): Partial<CodexSessionMeta> {
+  return {
+    source: parsed.source,
+    cli_version: parsed.cli_version,
+    model_provider: parsed.model_provider,
+    thread_id: parsed.thread_id,
+    root_thread_id: parsed.root_thread_id,
+    parent_thread_id: parsed.parent_thread_id,
+    forked_from_id: parsed.forked_from_id,
+    thread_kind: parsed.thread_kind,
+    agent_path: parsed.agent_path,
+    agent_depth: parsed.agent_depth,
+    agent_nickname: parsed.agent_nickname,
+    history_mode: parsed.history_mode,
+    session_started_at: parsed.session_started_at,
+  };
+}
+
+interface CodexSessionHeader {
+  cwd?: string;
+  git?: CodexGitMeta;
+  codex?: CodexSessionMeta;
+}
+
+/** Recover only the first session_meta record through the extractor's proven,
+ * 4 MiB-bounded reader. This upgrades old nonzero checkpoints without
+ * replaying historical turns or introducing a second filesystem reader. */
+async function readCodexSessionHeader(
+  jsonlPath: string,
+): Promise<CodexSessionHeader | null> {
+  const head = await readJsonlTail(jsonlPath, 0, log);
+  if (head === null) return null;
+  if (head.snapshot !== undefined) {
+    await assertJsonlReadSnapshotCurrent(jsonlPath, head.snapshot);
+  }
+  const firstLine = head.lines[0];
+  const parsed = firstLine === undefined ? null : parseLine(firstLine);
+  if (parsed === null || parsed.kind !== "session_meta") {
+    return { codex: { thread_kind: "unknown" } };
+  }
+  const header: CodexSessionHeader = {
+    codex: mergeCodexMeta(undefined, codexMetaPatch(parsed)),
+  };
+  if (parsed.cwd !== undefined) header.cwd = parsed.cwd;
+  if (parsed.git !== undefined) header.git = parsed.git;
+  return header;
+}
+
+function codexLineagePatch(
+  meta: CodexSessionMeta | undefined,
+): Partial<CodexSessionMeta> {
+  if (meta === undefined) return {};
+  return {
+    thread_id: meta.thread_id,
+    root_thread_id: meta.root_thread_id,
+    parent_thread_id: meta.parent_thread_id,
+    forked_from_id: meta.forked_from_id,
+    thread_kind: meta.thread_kind,
+    agent_path: meta.agent_path,
+    agent_depth: meta.agent_depth,
+    agent_nickname: meta.agent_nickname,
+    history_mode: meta.history_mode,
+    session_started_at: meta.session_started_at,
+  };
+}
+
 function gitStateFromCodexGit(
   git: CodexGitMeta | undefined,
   timestamp: string,
@@ -684,14 +780,8 @@ export async function extractCodexTurns(
       const occurredAt = occurredAtFromUuidV7(logicalTurnId);
       if (occurredAt !== undefined) turn.occurred_at = occurredAt;
     }
-    if (turn.occurred_at === undefined) turn.occurred_at = pending.userTimestamp;
-    if (
-      pending.userTurnId !== undefined &&
-      pending.assistantTurnId !== undefined &&
-      pending.userTurnId !== pending.assistantTurnId
-    ) {
-      turn.parent_logical_turn_id = pending.userTurnId;
-    }
+    if (turn.occurred_at === undefined)
+      turn.occurred_at = pending.userTimestamp;
     turn.observed_at = pending.timestamp;
     turn.initiator = pending.initiator;
     turn.observation_kind = classifyCodexObservation({
@@ -746,21 +836,7 @@ export async function extractCodexTurns(
     if (parsed.kind === "session_meta") {
       if (parsed.cwd !== undefined) cwd = parsed.cwd;
       if (parsed.git !== undefined) git = { ...(git ?? {}), ...parsed.git };
-      codexMeta = mergeCodexMeta(codexMeta, {
-        source: parsed.source,
-        cli_version: parsed.cli_version,
-        model_provider: parsed.model_provider,
-        thread_id: parsed.thread_id,
-        root_thread_id: parsed.root_thread_id,
-        parent_thread_id: parsed.parent_thread_id,
-        forked_from_id: parsed.forked_from_id,
-        thread_kind: parsed.thread_kind,
-        agent_path: parsed.agent_path,
-        agent_depth: parsed.agent_depth,
-        agent_nickname: parsed.agent_nickname,
-        history_mode: parsed.history_mode,
-        session_started_at: parsed.session_started_at,
-      });
+      codexMeta = mergeCodexMeta(codexMeta, codexMetaPatch(parsed));
       markSafeThrough(lineEndOffset);
       continue;
     }
@@ -872,7 +948,8 @@ export async function extractCodexTurns(
     const isTriggeredAgentInput =
       parsed.role === "agent" &&
       nextAgentMessageTriggersTurn &&
-      (parsed.recipient === undefined || parsed.recipient === codexMeta?.agent_path);
+      parsed.recipient !== undefined &&
+      parsed.recipient === codexMeta?.agent_path;
     const inputStartOffset = isTriggeredAgentInput
       ? (triggerMarkerStartOffset ?? lineStartOffset)
       : lineStartOffset;
@@ -891,7 +968,10 @@ export async function extractCodexTurns(
           : codexMeta?.thread_kind === "subagent"
             ? "unknown"
             : "human";
-      const initiator = classifyContextInitiator(parsed.text ?? "", fallbackInitiator);
+      const initiator = classifyContextInitiator(
+        parsed.text ?? "",
+        fallbackInitiator,
+      );
       if (firstUserOffset === undefined) {
         firstUserOffset = inputStartOffset;
         firstUserCwd = cwd;
@@ -1042,7 +1122,11 @@ function readCodexMetaFromMd(
     if (isNonEmptyString(v)) out[k] = v;
   }
   const threadKind = r["thread_kind"];
-  if (threadKind === "root" || threadKind === "subagent") {
+  if (
+    threadKind === "root" ||
+    threadKind === "subagent" ||
+    threadKind === "unknown"
+  ) {
     out.thread_kind = threadKind;
   }
   for (const k of [
@@ -1124,6 +1208,35 @@ function codexPageStart(entry: OffsetEntry): CodexPageStart {
     pageStart.raw_fallback = entry.raw_fallback;
   }
   return pageStart;
+}
+
+async function backfillLegacyCodexLineage(
+  path: string,
+  entry: OffsetEntry,
+): Promise<OffsetEntry> {
+  if (entry.offset <= 0 || entry.codex?.thread_kind !== undefined) return entry;
+  const header = await readCodexSessionHeader(path);
+  if (header === null) return entry;
+
+  const enriched: OffsetEntry = { ...entry };
+  if (enriched.cwd === undefined && header.cwd !== undefined) {
+    enriched.cwd = header.cwd;
+  }
+  if (header.git !== undefined) {
+    enriched.git = { ...header.git, ...(enriched.git ?? {}) };
+  }
+  enriched.codex = mergeCodexMeta(header.codex, enriched.codex ?? {});
+  if (enriched.page_start !== undefined) {
+    const pageStartCodex = mergeCodexMeta(
+      enriched.page_start.codex,
+      codexLineagePatch(header.codex),
+    );
+    enriched.page_start = {
+      ...enriched.page_start,
+      ...(pageStartCodex !== undefined ? { codex: pageStartCodex } : {}),
+    };
+  }
+  return enriched;
 }
 
 export interface CodexExtractorOptions {
@@ -1397,6 +1510,21 @@ export async function startCodexExtractor(
   }
 
   async function handleJsonlChange(path: string): Promise<void> {
+    const projectIdentityCache = createBoundedResourceCache<{
+      canonicalRoot: string;
+      projectKey: string;
+    }>();
+    const projectIdentityFor = async (observedRoot: string) => {
+      const cached = projectIdentityCache.get(observedRoot);
+      if (cached !== undefined) return cached;
+      const canonicalRoot = await resolveCanonicalRoot(observedRoot);
+      const resolved = {
+        canonicalRoot,
+        projectKey: projectKeyForCanonicalRoot(canonicalRoot),
+      };
+      projectIdentityCache.set(observedRoot, resolved);
+      return resolved;
+    };
     let cur = await loadCheckpoint(path);
     const previousOffset = cur.offset;
     const resumeProof = await inspectJsonlCheckpointProof(
@@ -1454,6 +1582,7 @@ export async function startCodexExtractor(
         durable_boundary: retryAtDurable,
       });
     }
+    cur = await backfillLegacyCodexLineage(path, cur);
     // Keep the catch path aligned with the checkpoint that actually reached
     // storage. A snapshot wrapper can reject during its post-operation check
     // after saveCheckpoint has already committed, so `cur` is not necessarily
@@ -1611,8 +1740,6 @@ export async function startCodexExtractor(
         };
         if (turn.logical_turn_id !== undefined)
           metadata["logical_turn_id"] = turn.logical_turn_id;
-        if (turn.parent_logical_turn_id !== undefined)
-          metadata["parent_logical_turn_id"] = turn.parent_logical_turn_id;
         if (turn.occurred_at !== undefined)
           metadata["occurred_at"] = turn.occurred_at;
         if (turn.observed_at !== undefined)
@@ -1625,9 +1752,9 @@ export async function startCodexExtractor(
         if (turn.cwd !== undefined) {
           metadata["cwd"] = turn.cwd;
           metadata["repo_root"] = turn.cwd;
-          const canonicalRoot = await resolveCanonicalRoot(turn.cwd);
-          metadata["canonical_root"] = canonicalRoot;
-          metadata["project_key"] = projectKeyForCanonicalRoot(canonicalRoot);
+          const projectIdentity = await projectIdentityFor(turn.cwd);
+          metadata["canonical_root"] = projectIdentity.canonicalRoot;
+          metadata["project_key"] = projectIdentity.projectKey;
         }
         if (turn.git !== undefined) metadata["git"] = turn.git;
         if (turn.codex !== undefined) {

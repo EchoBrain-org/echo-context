@@ -3,8 +3,6 @@ import { membershipOf, roleOf, type ArtifactMembership } from './role.js';
 import type { ArtifactKey, Edge, Graph, RawCluster } from './types.js';
 
 export const DEFAULT_WINDOW_HOURS = 4;
-export const GRAPH_MAX_PAIR_INSPECTIONS = 100_000;
-export const GRAPH_MAX_EDGES = 8_192;
 export const GRAPH_MAX_SHARED_ARTIFACTS_PER_EDGE = 32;
 
 interface LinkCandidate {
@@ -26,11 +24,13 @@ function projectKey(atom: NormalizedContextEvent): string {
 function lineageOwner(atom: NormalizedContextEvent): string | undefined {
   const conversation = atom.conversation;
   if (conversation === undefined) return undefined;
-  if (conversation.root_thread_id !== undefined) return conversation.root_thread_id;
-  if (conversation.thread_kind !== undefined) {
-    return conversation.thread_id ?? conversation.session_id;
-  }
-  return undefined;
+  const owner = [
+    conversation.root_thread_id,
+    conversation.thread_id,
+    conversation.session_id,
+  ].find((candidate): candidate is string => candidate !== undefined && candidate.length > 0);
+  if (owner === undefined) return undefined;
+  return `${conversation.provider}\u0000${owner}`;
 }
 
 function compareAtoms(
@@ -177,6 +177,7 @@ export function buildGraph(
     const existing = edgeByPair.get(pairKey);
     if (existing !== undefined) {
       if (
+        candidate.membership !== 'lineage' &&
         existing.artifact_ids.length < GRAPH_MAX_SHARED_ARTIFACTS_PER_EDGE &&
         !existing.artifact_ids.includes(candidate.artifactKey)
       ) {

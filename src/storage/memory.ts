@@ -33,6 +33,10 @@ import {
 } from './budgets.js';
 import { sourceEquals, sourceHasPrefix } from './source-match.js';
 import { canonicalizeTimestamp } from '../util/timestamp.js';
+import {
+  metadataMatchesProject,
+  normalizeLegacyProjectRoots,
+} from './project-filter.js';
 
 // 057a AC3 — monotonic insertion counter parallel to SQLite's rowid.
 // Stored alongside the event so iterateCoordAtomsByAppendOrder + the
@@ -124,8 +128,19 @@ export class MemoryStorage implements Storage {
     if (filter?.until !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.until);
     }
+    if (filter?.project_key === undefined && filter?.legacy_project_roots !== undefined) {
+      throw new RangeError('QueryFilter.legacy_project_roots requires project_key');
+    }
+    let legacyProjectRoots: string[] = [];
     if (filter?.project_key !== undefined) {
       assertStorageDescriptorField('query', 'source', filter.project_key);
+      legacyProjectRoots = normalizeLegacyProjectRoots(
+        filter.project_key,
+        filter.legacy_project_roots,
+      );
+      for (const root of legacyProjectRoots) {
+        assertStorageDescriptorField('query', 'source', root);
+      }
     }
     if (filter?.before !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.before.timestamp);
@@ -145,7 +160,6 @@ export class MemoryStorage implements Storage {
       filter?.exclude_metadata_surface !== undefined && filter.exclude_metadata_surface.length > 0
         ? new Set(filter.exclude_metadata_surface)
         : undefined;
-
     // Parity with SqliteStorage: whitelist-validate at the entry of the
     // function (throw before scanning events). Empty `{}` is a no-op.
     let metadataMatchEntries: Array<[string, string]> | undefined;
@@ -203,18 +217,7 @@ export class MemoryStorage implements Storage {
       }
       if (filter?.project_key !== undefined) {
         const md = event.metadata as Record<string, unknown> | undefined;
-        const explicit = md?.['project_key'];
-        const canonicalRoot = md?.['canonical_root'];
-        const repoRoot = md?.['repo_root'];
-        const eventProjectKey =
-          typeof explicit === 'string'
-            ? explicit
-            : typeof canonicalRoot === 'string'
-              ? `local:workspace:${canonicalRoot}`
-              : typeof repoRoot === 'string'
-                ? `local:workspace:${repoRoot}`
-                : undefined;
-        if (eventProjectKey !== filter.project_key) continue;
+        if (!metadataMatchesProject(md, filter.project_key, legacyProjectRoots)) continue;
       }
       filtered.push(event);
     }

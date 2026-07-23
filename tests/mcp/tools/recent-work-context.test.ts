@@ -677,7 +677,9 @@ describe('item 025: cost-safer defaults + structured output + readOnlyHint', () 
     for (let i = 0; i < 200; i++) {
       const ts = new Date(baseMs + i * 30_000).toISOString();
       const fileIdx = i % 50;
-      await store.append(bigCcEvent(`s${i}`, 0, ts, '/repo', fileIdx));
+      await store.append(
+        bigCcEvent(`file-thread-${fileIdx}`, Math.floor(i / 50), ts, '/repo', fileIdx),
+      );
     }
     handle = await startMcpServer(store, { port: 0 });
     const result = (await withClient(handle.url, async (c) =>
@@ -820,6 +822,18 @@ describe('storage-cap warning + raw-FS filter (item 022 Bugs B + C)', () => {
     restoreStdout();
   });
 
+  function normalizableGitEvent(index: number, timestamp: string): Omit<CaptureEvent, 'id'> {
+    return {
+      source: 'git:/repo',
+      timestamp,
+      content: `COMMIT sha-${index}: event-${index}\n\n--- DIFF ---\n`,
+      metadata: {
+        sha: `sha-${index}`,
+        repo_root: '/repo',
+      },
+    };
+  }
+
   it('storage-cap warning fires when events.length === limit * STORAGE_OVERFETCH', async () => {
     // Default limit = 100, STORAGE_OVERFETCH = 10 → cap = 1000.
     // Seed cap+200 in-window events; storage returns exactly cap.
@@ -827,11 +841,7 @@ describe('storage-cap warning + raw-FS filter (item 022 Bugs B + C)', () => {
     const baseMs = Date.parse(SINCE);
     for (let i = 0; i < cap + 200; i++) {
       const ts = new Date(baseMs + i * 1000).toISOString();
-      await store.append({
-        source: 'git:repo',
-        timestamp: ts,
-        content: `event-${i}`,
-      });
+      await store.append(normalizableGitEvent(i, ts));
     }
     const r = await getRecentWorkContext(store, { since: SINCE, until: UNTIL });
     const capWarnings = r.warnings.filter((w) => w.includes('storage cap hit'));
@@ -843,11 +853,7 @@ describe('storage-cap warning + raw-FS filter (item 022 Bugs B + C)', () => {
     const baseMs = Date.parse(SINCE);
     for (let i = 0; i < 5; i++) {
       const ts = new Date(baseMs + i * 1000).toISOString();
-      await store.append({
-        source: 'git:repo',
-        timestamp: ts,
-        content: `event-${i}`,
-      });
+      await store.append(normalizableGitEvent(i, ts));
     }
     const r = await getRecentWorkContext(store, { since: SINCE, until: UNTIL });
     const capWarnings = r.warnings.filter((w) => w.includes('storage cap hit'));

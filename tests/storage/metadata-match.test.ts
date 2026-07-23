@@ -133,7 +133,7 @@ describe.each(ADAPTERS)('QueryFilter.metadata_match parity ($name)', ({ create, 
     expect(got.map((e) => e.content)).toEqual(['has-md']);
   });
 
-  it('project_key matches explicit identity and legacy canonical/repo-root fallbacks', async () => {
+  it('project_key keeps explicit identity authoritative and bounds legacy descendant aliases', async () => {
     const projectKey = 'local:workspace:/repo-a';
     await seed([
       {
@@ -143,31 +143,108 @@ describe.each(ADAPTERS)('QueryFilter.metadata_match parity ($name)', ({ create, 
         metadata: { project_key: projectKey, repo_root: '/nested/observation' },
       },
       {
-        source: 'fs:canonical',
+        source: 'fs:explicit-mismatch',
         timestamp: '2026-05-10T11:00:00.000Z',
+        content: 'explicit-mismatch',
+        metadata: {
+          project_key: 'local:workspace:/other',
+          repo_root: '/repo-a/packages/app',
+        },
+      },
+      {
+        source: 'fs:canonical',
+        timestamp: '2026-05-10T12:00:00.000Z',
         content: 'canonical-fallback',
-        metadata: { canonical_root: '/repo-a', repo_root: '/repo-a/packages/app' },
+        metadata: { canonical_root: '/repo-a', repo_root: '/elsewhere' },
+      },
+      {
+        source: 'fs:canonical-mismatch',
+        timestamp: '2026-05-10T13:00:00.000Z',
+        content: 'canonical-mismatch',
+        metadata: {
+          canonical_root: '/other',
+          repo_root: '/repo-a/packages/app',
+        },
       },
       {
         source: 'fs:legacy',
-        timestamp: '2026-05-10T12:00:00.000Z',
+        timestamp: '2026-05-10T14:00:00.000Z',
         content: 'repo-root-fallback',
         metadata: { repo_root: '/repo-a' },
       },
       {
-        source: 'fs:other',
-        timestamp: '2026-05-10T13:00:00.000Z',
-        content: 'other-project',
-        metadata: { project_key: 'local:workspace:/repo-b', repo_root: '/repo-b' },
+        source: 'fs:legacy-descendant',
+        timestamp: '2026-05-10T15:00:00.000Z',
+        content: 'repo-root-descendant',
+        metadata: { repo_root: '/repo-a/packages/app' },
+      },
+      {
+        source: 'fs:legacy-alias',
+        timestamp: '2026-05-10T16:00:00.000Z',
+        content: 'normalized-caller-alias',
+        metadata: { repo_root: '/workspace-link/packages/app' },
+      },
+      {
+        source: 'fs:sibling-prefix',
+        timestamp: '2026-05-10T17:00:00.000Z',
+        content: 'sibling-prefix',
+        metadata: { repo_root: '/repo-ab/packages/app' },
+      },
+      {
+        source: 'fs:explicit-null',
+        timestamp: '2026-05-10T18:00:00.000Z',
+        content: 'explicit-null',
+        metadata: { project_key: null, repo_root: '/repo-a/packages/app' },
+      },
+      {
+        source: 'fs:canonical-null',
+        timestamp: '2026-05-10T19:00:00.000Z',
+        content: 'canonical-null',
+        metadata: { canonical_root: null, repo_root: '/repo-a/packages/app' },
       },
     ]);
 
-    const got = await store.query({ project_key: projectKey });
+    const got = await store.query({
+      project_key: projectKey,
+      legacy_project_roots: ['/repo-a/', '/workspace-link'],
+    });
 
     expect(got.map((event) => event.content)).toEqual([
+      'normalized-caller-alias',
+      'repo-root-descendant',
       'repo-root-fallback',
       'canonical-fallback',
       'explicit',
     ]);
+  });
+
+  it('normalizes and deduplicates the bounded legacy root aliases', async () => {
+    await seed([
+      {
+        source: 'fs:legacy',
+        timestamp: '2026-05-10T10:00:00.000Z',
+        content: 'legacy',
+        metadata: { repo_root: '/repo-a/packages/app' },
+      },
+    ]);
+
+    const got = await store.query({
+      project_key: 'local:workspace:/repo-a',
+      legacy_project_roots: ['/repo-a/', '/repo-a'],
+    });
+    expect(got.map((event) => event.content)).toEqual(['legacy']);
+  });
+
+  it('rejects unbounded or unscoped legacy project aliases before scanning', async () => {
+    await expect(
+      store.query({
+        project_key: 'local:workspace:/repo-a',
+        legacy_project_roots: ['/repo-a', '/alias-a', '/alias-b', '/alias-c'],
+      }),
+    ).rejects.toThrow(/at most 3 roots/);
+
+    await expect(
+      store.query({ legacy_project_roots: ['/repo-a'] }),
+    ).rejects.toThrow(/requires project_key/);
   });
 });

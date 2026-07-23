@@ -340,7 +340,6 @@ describe("extractClaudeCodeTurns (pure)", () => {
         '<teammate-message teammate_id="reviewer">Review the topology.</teammate-message>',
       assistant_message: "The topology is bounded.",
       logical_turn_id: "019f0000-0000-7000-8000-000000000001",
-      parent_logical_turn_id: "019effff-ffff-7000-8000-000000000000",
       occurred_at: "2026-04-30T10:00:00.000Z",
       observed_at: "2026-04-30T10:00:02.000Z",
       root_thread_id: "root-session",
@@ -350,6 +349,103 @@ describe("extractClaudeCodeTurns (pure)", () => {
       initiator: "agent",
       observation_kind: "original",
     });
+    expect(turns[0]).not.toHaveProperty("parent_logical_turn_id");
+  });
+
+  it("classifies a complete root identity as original", async () => {
+    const path = join(dir, "root-identity.jsonl");
+    const user = userText(
+      "root-session",
+      "019f0000-0000-7000-8000-000000000001",
+      "Continue the root task.",
+    );
+    user.isSidechain = false;
+    writeJsonlFresh(path, [
+      user,
+      assistantEndTurn(
+        "root-session",
+        "019f0000-0001-7000-8000-000000000002",
+        "Continuing.",
+      ),
+    ]);
+
+    const { turns } = await extractClaudeCodeTurns(path, 0);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      thread_id: "root-session",
+      root_thread_id: "root-session",
+      thread_kind: "root",
+      initiator: "human",
+      observation_kind: "original",
+    });
+  });
+
+  it("fails incomplete or contradictory Claude thread identity closed", async () => {
+    const cases: Array<{
+      name: string;
+      mutate: (line: JsonlLine) => void;
+    }> = [
+      {
+        name: "missing-session",
+        mutate: (line) => {
+          (line as unknown as Record<string, unknown>)["sessionId"] = "";
+          line.isSidechain = false;
+        },
+      },
+      {
+        name: "missing-logical-turn",
+        mutate: (line) => {
+          (line as unknown as Record<string, unknown>)["uuid"] = "";
+          line.isSidechain = false;
+        },
+      },
+      {
+        name: "sidechain-without-agent",
+        mutate: (line) => {
+          line.isSidechain = true;
+        },
+      },
+      {
+        name: "root-with-agent",
+        mutate: (line) => {
+          line.isSidechain = false;
+          line.agentId = "contradictory-agent";
+        },
+      },
+      {
+        name: "agent-without-sidechain-marker",
+        mutate: (line) => {
+          line.agentId = "ambiguous-agent";
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const path = join(dir, `${testCase.name}.jsonl`);
+      const user = userText(
+        "root-session",
+        "019f0000-0000-7000-8000-000000000001",
+        `case: ${testCase.name}`,
+      );
+      testCase.mutate(user);
+      writeJsonlFresh(path, [
+        user,
+        assistantEndTurn(
+          "root-session",
+          "019f0000-0001-7000-8000-000000000002",
+          "observed",
+        ),
+      ]);
+
+      const { turns } = await extractClaudeCodeTurns(path, 0);
+      expect(turns, testCase.name).toHaveLength(1);
+      expect(turns[0]?.thread_kind, testCase.name).toBe("unknown");
+      expect(turns[0]?.observation_kind, testCase.name).toBe("unknown");
+      expect(turns[0]?.thread_id, testCase.name).toBeUndefined();
+      expect(turns[0]?.root_thread_id, testCase.name).toBeUndefined();
+      expect(turns[0]?.agent_id, testCase.name).toBeUndefined();
+    }
   });
 
   it("does not let a system reminder replace a pending human prompt", async () => {
@@ -361,7 +457,11 @@ describe("extractClaudeCodeTurns (pure)", () => {
         "system-u1",
         "<system-reminder>Use concise output.</system-reminder>",
       ),
-      assistantEndTurn("root-session", "assistant-a1", "It is the topology thread."),
+      assistantEndTurn(
+        "root-session",
+        "assistant-a1",
+        "It is the topology thread.",
+      ),
     ]);
 
     const { turns } = await extractClaudeCodeTurns(path, 0);

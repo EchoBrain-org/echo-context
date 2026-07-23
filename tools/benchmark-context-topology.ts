@@ -54,6 +54,7 @@ export interface TopologyBenchmarkReport {
   raw_observations: number;
   logical_turns: number;
   collapsed_observations: number;
+  provider_counts: Record<string, number>;
   project_counts: Record<ProjectFixture['name'], number>;
   clusters: number;
   max_cluster_size: number;
@@ -110,8 +111,12 @@ function observation(input: {
     ? rootThreadId
     : `${rootThreadId}:fork:${turnIndex}:${copyIndex}`;
   const repoRoot = observedRoot(project, turnIndex);
+  const source =
+    project.name === 'echo_context'
+      ? `fs:${repoRoot}/.claude/projects/benchmark/${physicalThreadId}.jsonl`
+      : `fs:${repoRoot}/.codex/sessions/2026/07/22/${physicalThreadId}.jsonl`;
   return {
-    source: `fs:${repoRoot}/.codex/sessions/2026/07/22/${physicalThreadId}.jsonl`,
+    source,
     timestamp: observedAt,
     content: `USER: Continue ${project.name} turn ${turnIndex}.\n\nASSISTANT: Completed turn ${turnIndex}.`,
     metadata: {
@@ -262,6 +267,7 @@ export async function benchmarkForkStorm(input: {
     raw_observations: fixture.rawObservations,
     logical_turns: logicalTurns,
     collapsed_observations: fixture.rawObservations - logicalTurns,
+    provider_counts: result.result_caps.source_breakdown,
     project_counts: projectCounts,
     clusters: result.result_caps.clusters_total,
     max_cluster_size: Math.max(0, ...result.clusters.map((cluster) => cluster.atom_ids.length)),
@@ -283,6 +289,9 @@ export async function benchmarkForkStorm(input: {
   }
   if (report.collapsed_observations !== fixture.expectedCollapsedCopies) {
     failures.push(`collapsed=${report.collapsed_observations}`);
+  }
+  if (JSON.stringify(report.provider_counts) !== JSON.stringify({ codex: 85, claude_code: 38 })) {
+    failures.push(`providers=${JSON.stringify(report.provider_counts)}`);
   }
   if (JSON.stringify(report.project_counts) !== JSON.stringify({
     echo_brain: 72,

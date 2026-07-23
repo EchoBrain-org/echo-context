@@ -14,6 +14,7 @@ import { normalizeEvent } from '../../context-adapters/normalization.js';
 import type { NormalizedContextEvent } from '../../normalize/types.js';
 import {
   eventStoredBytes,
+  StorageBudgetExceededError,
   StorageScanBudgetExceededError,
 } from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
@@ -29,8 +30,8 @@ import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, TZ_NAIVE_WARNING } from '../util/iso8601.js';
 import {
   assertAbsoluteRepoPath,
-  normaliseRepoPath,
-  projectKeyForRepoPath,
+  resolveRepoPath,
+  type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { WIRE_SHAPE_CAPS } from '../wire-shape/caps.js';
 
@@ -107,40 +108,116 @@ interface ClusterStoragePage {
   inputTruncationReason?: 'storage_windows' | 'raw_observations' | 'raw_bytes';
 }
 
-function sourceProvider(source: string): string {
-  if (source.includes('/.codex/sessions/')) return 'codex';
-  if (source.includes('/.claude/projects/')) return 'claude_code';
-  return source.split(':', 1)[0] ?? source;
+interface CandidateWindow {
+  sinceMs?: number;
+  untilMs?: number;
 }
 
 function logicalCandidateKey(
   event: CaptureEvent,
-  since: string | undefined,
-  until: string | undefined,
+  window: CandidateWindow,
 ): string | undefined {
-  const metadata = event.metadata;
-  const occurred =
-    typeof metadata?.['occurred_at'] === 'string'
-      ? metadata['occurred_at']
-      : event.timestamp;
-  if (since !== undefined && occurred < since) return undefined;
-  if (until !== undefined && occurred >= until) return undefined;
-  if (metadata?.['observation_kind'] === 'inherited') return undefined;
-  const logicalTurnId = metadata?.['logical_turn_id'];
-  return typeof logicalTurnId === 'string'
-    ? `${sourceProvider(event.source)}\u0000${logicalTurnId}`
-    : `raw\u0000${event.id}`;
+  let atom: NormalizedContextEvent | null;
+  try {
+    atom = normalizeEvent(event);
+  } catch {
+    return undefined;
+  }
+  if (atom === null) return undefined;
+
+  const occurredMs = Date.parse(atom.time.occurred_at);
+  if (Number.isNaN(occurredMs)) return undefined;
+  if (window.sinceMs !== undefined && occurredMs < window.sinceMs) return undefined;
+  if (window.untilMs !== undefined && occurredMs >= window.untilMs) return undefined;
+  // Retain inherited rows in the projection buffer, but do not let a newer
+  // copy satisfy the early-stop target before an older stored original can be
+  // fetched. Inherited-only groups are emitted if the scan reaches exhaustion
+  // or a truthful bounded-input warning.
+  if (atom.conversation?.observation_kind === 'inherited') return undefined;
+  const conversation = atom.conversation;
+  const logicalTurnId = conversation?.logical_turn_id;
+  if (conversation !== undefined && logicalTurnId !== undefined) {
+    return `${conversation.provider}\u0000${logicalTurnId}`;
+  }
+  return `raw\u0000${event.id}`;
 }
 
+function isRequestTooLarge(
+  error: unknown,
+  operation: 'query' | 'getByIds',
+): error is StorageBudgetExceededError {
+  return (
+    error instanceof StorageBudgetExceededError &&
+    error.code === 'request_too_large' &&
+    error.operation === operation
+  );
+}
+
+interface AdaptiveQueryPage {
+  rows: CaptureEvent[];
+  rowLimit: number;
+}
+
+/** SQLite admits payload bytes only after its bounded descriptor pass. A row
+ * request can therefore be count-safe but byte-unsafe. Retry the same keyset
+ * boundary with a smaller row limit until one byte-safe page is available;
+ * the caller advances only after that successful page, so no row is skipped. */
+async function queryClusterPage(
+  storage: Storage,
+  filter: QueryFilter,
+  rowLimit: number,
+): Promise<AdaptiveQueryPage> {
+  try {
+    return {
+      rows: await storage.query({ ...filter, limit: rowLimit }),
+      rowLimit,
+    };
+  } catch (error) {
+    if (!isRequestTooLarge(error, 'query') || rowLimit <= 1) throw error;
+    return queryClusterPage(storage, filter, Math.max(1, Math.floor(rowLimit / 2)));
+  }
+}
+
+type ClusterInputTruncationReason = NonNullable<ClusterStoragePage['inputTruncationReason']>;
+type ClusterRowConsumer = (
+  rows: readonly CaptureEvent[],
+) => ClusterInputTruncationReason | undefined;
+
+async function hydrateClusterIdBatch(
+  storage: Storage,
+  ids: readonly string[],
+  consume: ClusterRowConsumer,
+): Promise<ClusterInputTruncationReason | undefined> {
+  if (ids.length === 0) return undefined;
+  try {
+    return consume(await storage.getByIds(ids));
+  } catch (error) {
+    if (!isRequestTooLarge(error, 'getByIds') || ids.length <= 1) throw error;
+    const middle = Math.floor(ids.length / 2);
+    const leftReason = await hydrateClusterIdBatch(storage, ids.slice(0, middle), consume);
+    if (leftReason !== undefined) return leftReason;
+    return hydrateClusterIdBatch(storage, ids.slice(middle), consume);
+  }
+}
+
+/** Hydrate sparse-scan matches in input-budgeted increments. Adaptive binary
+ * splitting handles variable row sizes, and consuming each successful batch
+ * immediately prevents the combined hydrated set from exceeding the cluster
+ * engine's retained-byte ceiling in memory. */
 async function hydrateClusterMatches(
   storage: Storage,
   ids: readonly string[],
-): Promise<CaptureEvent[]> {
-  const events: CaptureEvent[] = [];
+  consume: ClusterRowConsumer,
+): Promise<ClusterInputTruncationReason | undefined> {
   for (let offset = 0; offset < ids.length; offset += 100) {
-    events.push(...(await storage.getByIds(ids.slice(offset, offset + 100))));
+    const reason = await hydrateClusterIdBatch(
+      storage,
+      ids.slice(offset, offset + 100),
+      consume,
+    );
+    if (reason !== undefined) return reason;
   }
-  return events;
+  return undefined;
 }
 
 function captureEventStoredBytes(event: CaptureEvent): number {
@@ -168,8 +245,13 @@ async function queryClusterEvents(
   const events: CaptureEvent[] = [];
   const seen = new Set<string>();
   const logicalCandidates = new Set<string>();
+  const candidateWindow: CandidateWindow = {
+    ...(filter.since !== undefined ? { sinceMs: Date.parse(filter.since) } : {}),
+    ...(filter.until !== undefined ? { untilMs: Date.parse(filter.until) } : {}),
+  };
   let retainedBytes = 0;
   let before = filter.before;
+  let byteSafePageRows = CLUSTER_STORAGE_PAGE_ROWS;
 
   const finish = (
     scanTruncated: boolean,
@@ -199,7 +281,7 @@ async function queryClusterEvents(
       seen.add(event.id);
       events.push(event);
       retainedBytes += storedBytes;
-      const logicalKey = logicalCandidateKey(event, filter.since, filter.until);
+      const logicalKey = logicalCandidateKey(event, candidateWindow);
       if (logicalKey !== undefined) logicalCandidates.add(logicalKey);
     }
     return undefined;
@@ -211,17 +293,20 @@ async function queryClusterEvents(
       return finish(false);
     }
     const pageLimit = Math.min(
+      byteSafePageRows,
       CLUSTER_STORAGE_PAGE_ROWS,
       Math.max(remaining, Math.min(requested, 100)),
     );
     try {
-      const rows = await storage.query({ ...filter, before, limit: pageLimit });
+      const page = await queryClusterPage(storage, { ...filter, before }, pageLimit);
+      byteSafePageRows = Math.min(byteSafePageRows, page.rowLimit);
+      const rows = page.rows;
       const truncationReason = appendUnique(rows);
       if (truncationReason !== undefined) {
         const truncated = logicalCandidates.size < requested;
         return finish(truncated, truncated ? truncationReason : undefined);
       }
-      if (logicalCandidates.size >= requested || rows.length < pageLimit) {
+      if (logicalCandidates.size >= requested || rows.length < page.rowLimit) {
         return finish(false);
       }
       const last = rows[rows.length - 1];
@@ -229,8 +314,10 @@ async function queryClusterEvents(
       before = { timestamp: last.timestamp, id: last.id };
     } catch (error) {
       if (!(error instanceof StorageScanBudgetExceededError)) throw error;
-      const truncationReason = appendUnique(
-        await hydrateClusterMatches(storage, error.matched_ids),
+      const truncationReason = await hydrateClusterMatches(
+        storage,
+        error.matched_ids,
+        appendUnique,
       );
       if (truncationReason !== undefined) {
         const truncated = logicalCandidates.size < requested;
@@ -275,7 +362,7 @@ async function runRecentWorkContextPass(
   windowHours: number,
   format: ResponseFormat,
   artifactHint: ArtifactHint | undefined,
-  normalisedRepoPath: string | null,
+  repoPath: ResolvedRepoPath | null,
 ): Promise<RecentWorkContextResponse> {
   const storageCap = limit * STORAGE_OVERFETCH;
   // Historical raw-fs exclusion uses one shared retrieval helper.
@@ -286,8 +373,11 @@ async function runRecentWorkContextPass(
       until,
       // Item 037 / AC4: cross-source canonical project scoping. Storage uses
       // explicit project_key first, then bounded legacy canonical/root fields.
-      ...(normalisedRepoPath !== null
-        ? { project_key: projectKeyForRepoPath(normalisedRepoPath) }
+      ...(repoPath !== null
+        ? {
+            project_key: repoPath.project_key,
+            legacy_project_roots: repoPath.legacy_project_roots,
+          }
         : {}),
     }),
     storageCap,
@@ -304,8 +394,8 @@ async function runRecentWorkContextPass(
   if (artifactHint !== undefined) {
     query.artifact_hint = artifactHint;
   }
-  if (normalisedRepoPath !== null) {
-    query.repo_path = normalisedRepoPath;
+  if (repoPath !== null) {
+    query.repo_path = repoPath.normalized_path;
   }
 
   const response = buildRecentWorkContext(events, query, normalizeEvent);
@@ -367,10 +457,10 @@ export async function getRecentWorkContext(
   const format: ResponseFormat = params.format ?? 'minimal';
 
   // Item 037 / AC4: validate + normalise repo_path before either pass.
-  let normalisedRepoPath: string | null = null;
+  let repoPath: ResolvedRepoPath | null = null;
   if (params.repo_path !== undefined) {
     assertAbsoluteRepoPath('get_recent_work_context', params.repo_path);
-    normalisedRepoPath = normaliseRepoPath(params.repo_path);
+    repoPath = await resolveRepoPath(params.repo_path);
   }
 
   const sinceMs = Date.parse(since);
@@ -385,7 +475,7 @@ export async function getRecentWorkContext(
     windowHours,
     format,
     params.artifact_hint,
-    normalisedRepoPath,
+    repoPath,
   );
 
   // V1.5.7 polish (2026-05-09) + item 032 (2026-05-10): no-args auto-expand
@@ -416,7 +506,7 @@ export async function getRecentWorkContext(
         expandedWindowHours,
         format,
         params.artifact_hint,
-        normalisedRepoPath,
+        repoPath,
       );
 
       // Apply the rank demotion ONLY when the single-source-recent trigger
@@ -433,8 +523,8 @@ export async function getRecentWorkContext(
         if (params.artifact_hint !== undefined) {
           queryEcho.artifact_hint = params.artifact_hint;
         }
-        if (normalisedRepoPath !== null) {
-          queryEcho.repo_path = normalisedRepoPath;
+        if (repoPath !== null) {
+          queryEcho.repo_path = repoPath.normalized_path;
         }
         const reranked = rankClusters(response.clusters, atomsById24h, queryEcho, {
           demoteSingleSourceRecent: true,

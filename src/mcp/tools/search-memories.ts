@@ -19,8 +19,8 @@ import { withFsExclusion } from '../util/fs-exclusion.js';
 import { hasTzMarker, isoString, TZ_NAIVE_WARNING } from '../util/iso8601.js';
 import {
   assertAbsoluteRepoPath,
-  normaliseRepoPath,
-  projectKeyForRepoPath,
+  resolveRepoPath,
+  type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
@@ -570,9 +570,11 @@ export async function searchMemories(
   // Throwing here surfaces through the MCP envelope handler as `isError`
   // (same pattern as the historical `search_memories: ` error prefix).
   let normalisedRepoPath: string | null = null;
+  let resolvedRepoPath: ResolvedRepoPath | null = null;
   if (repo_path !== undefined) {
     assertAbsoluteRepoPath('search_memories', repo_path);
-    normalisedRepoPath = normaliseRepoPath(repo_path);
+    resolvedRepoPath = await resolveRepoPath(repo_path);
+    normalisedRepoPath = resolvedRepoPath.normalized_path;
   }
 
   // Item 038 / AC0: 3-way source precedence — `source` (exact) wins over
@@ -656,8 +658,9 @@ export async function searchMemories(
   if (until !== undefined) filter.until = until;
   if (before !== undefined) filter.before = before;
   if (storageMetadataMatch !== undefined) filter.metadata_match = storageMetadataMatch;
-  if (normalisedRepoPath !== null) {
-    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
+  if (resolvedRepoPath !== null) {
+    filter.project_key = resolvedRepoPath.project_key;
+    filter.legacy_project_roots = resolvedRepoPath.legacy_project_roots;
   }
 
   const restrictToCurrentGranolaSignals = requestedGranolaSignals(

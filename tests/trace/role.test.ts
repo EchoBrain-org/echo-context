@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { roleOf } from '../../src/trace/role.js';
+import { membershipOf, roleOf } from '../../src/trace/role.js';
 
 describe('roleOf — V1.5 type→role registry', () => {
   it('classifies scope-role types', () => {
@@ -46,5 +46,10 @@ describe('roleOf — V1.5 type→role registry', () => {
     expect(roleOf('Repo')).toBe('scope');
     expect(roleOf('CONVERSATION')).toBe('session');
     expect(roleOf('Email_Thread')).toBe('work');
+  });
+
+  it('keeps broad branch names descriptive rather than thread-forming', () => {
+    expect(roleOf('branch')).toBe('work');
+    expect(membershipOf('branch')).toBe('none');
   });
 });

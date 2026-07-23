@@ -70,7 +70,7 @@ describe('buildRecentWorkContext', () => {
     });
   });
 
-  it('does not exhaust a graph budget for dense scope-only activity', () => {
+  it('uses the bounded spanning forest for dense shared-artifact activity', () => {
     const { events, normalize } = asCapture(
       Array.from({ length: 1_000 }, (_, index) => ({
         id: `dense-${String(index).padStart(4, '0')}`,
@@ -85,9 +85,8 @@ describe('buildRecentWorkContext', () => {
       normalize,
     );
     expect(response.truncation.truncated).toBe(false);
-    expect(response.warnings.some((warning) => warning.startsWith('[GRAPH_BUDGET]'))).toBe(
-      false,
-    );
+    expect(response.clusters).toHaveLength(1);
+    expect(response.clusters[0]?.edges).toHaveLength(999);
   });
 
   it('drops atoms with timestamps outside since/until window', () => {
@@ -121,6 +120,37 @@ describe('buildRecentWorkContext', () => {
     expect(r.truncation.atoms_total_in_window).toBe(2);
     expect(r.clusters).toHaveLength(1);
     expect(r.clusters[0]!.atom_ids).toEqual(['inside_a', 'inside_b']);
+  });
+
+  it('retains inherited-only turns only when canonical occurrence is in the window', () => {
+    const conversation = (logicalTurnId: string) => ({
+      provider: 'codex',
+      session_id: `fork-${logicalTurnId}`,
+      logical_turn_id: logicalTurnId,
+      observation_kind: 'inherited' as const,
+    });
+    const { events, normalize } = asCapture([
+      {
+        id: 'inside-copy',
+        app: 'codex',
+        occurred_at: '2026-05-06T08:00:00.000Z',
+        observed_at: '2026-05-06T12:00:00.000Z',
+        artifacts: [],
+        conversation: conversation('inside'),
+      },
+      {
+        id: 'old-copy',
+        app: 'codex',
+        occurred_at: '2026-05-06T04:00:00.000Z',
+        observed_at: '2026-05-06T08:00:00.000Z',
+        artifacts: [],
+        conversation: conversation('old'),
+      },
+    ]);
+
+    const response = buildRecentWorkContext(events, QUERY, normalize);
+    expect(response.truncation.atoms_total_in_window).toBe(1);
+    expect(Object.keys(response.atoms)).toEqual(['inside-copy']);
   });
 
   it('cluster_id is deterministic for same atom set', () => {

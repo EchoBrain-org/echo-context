@@ -35,6 +35,17 @@ function expectOneCluster(events: NormalizedContextEvent[]): void {
   expect(new Set(clusters[0]?.atom_ids)).toEqual(new Set(events.map((e) => e.id)));
 }
 
+function expectComponents(
+  events: NormalizedContextEvent[],
+  expectedIds: readonly (readonly string[])[],
+): void {
+  const clusters = connectedComponents(buildGraph(events));
+  expect(clusters).toHaveLength(expectedIds.length);
+  expect(clusters.map((cluster) => new Set(cluster.atom_ids))).toEqual(
+    expect.arrayContaining(expectedIds.map((ids) => new Set(ids))),
+  );
+}
+
 function claudeCodeEvent(opts: {
   id: string;
   repoRoot: string;
@@ -132,7 +143,7 @@ describe('workspace identity normalization', () => {
     expect(artifactKey(artifact)).toBe(WORKSPACE_KEY);
   });
 
-  it('joins pre-git-init and post-git-init atoms on the exact workspace key', () => {
+  it('preserves one workspace identity across git init without merging explicit sessions', () => {
     const before = normalize(
       claudeCodeEvent({
         id: 'evt_before_git_init',
@@ -150,10 +161,10 @@ describe('workspace identity normalization', () => {
     );
 
     expect([workspaceKey(before), workspaceKey(after)]).toEqual([WORKSPACE_KEY, WORKSPACE_KEY]);
-    expectOneCluster([before, after]);
+    expectComponents([before, after], [[before.id], [after.id]]);
   });
 
-  it('joins two tools in the same non-git folder on the exact workspace key', () => {
+  it('preserves one non-git workspace identity without treating scope as a thread edge', () => {
     const claude = normalize(
       claudeCodeEvent({
         id: 'evt_non_git_claude',
@@ -170,10 +181,10 @@ describe('workspace identity normalization', () => {
     );
 
     expect([workspaceKey(claude), workspaceKey(codex)]).toEqual([WORKSPACE_KEY, WORKSPACE_KEY]);
-    expectOneCluster([claude, codex]);
+    expectComponents([claude, codex], [[claude.id], [codex.id]]);
   });
 
-  it('joins a subdir-launched tool with a root commit on the exact workspace key', () => {
+  it('joins a subdir-launched tool with a root commit through the shared commit', () => {
     const codex = normalize(
       codexEvent({
         id: 'evt_subdir_codex',
@@ -195,7 +206,7 @@ describe('workspace identity normalization', () => {
     expectOneCluster([codex, git]);
   });
 
-  it('keeps remote-backed claude_code, codex, and git joined on workspace while git_alias carries the remote', () => {
+  it('keeps remote workspace identity and git_alias without collapsing explicit session roots', () => {
     const claude = normalize(
       claudeCodeEvent({
         id: 'evt_remote_claude',
@@ -229,7 +240,10 @@ describe('workspace identity normalization', () => {
     }
     expect(artifactIds(git)).toContain(`${WORKSPACE_ID}::${SHA}`);
     expect(artifactIds(git)).toContain(`${WORKSPACE_ID}::main`);
-    expectOneCluster([claude, codex, git]);
+    expectComponents(
+      [claude, codex, git],
+      [[claude.id], [codex.id, git.id]],
+    );
   });
 
   it('keys files on workspace id and falls back to abs ids for outside-root paths', () => {

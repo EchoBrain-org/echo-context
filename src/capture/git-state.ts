@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import type { GitState } from './extractors/_turn_meta.js';
-import { GIT_PROBE_TIMEOUT_MS, gitToplevel } from './workspace-root.js';
+import { GIT_PROBE_TIMEOUT_MS, gitToplevel } from '../project-identity.js';
 
 const execFileAsync = promisify(execFile);
 

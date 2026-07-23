@@ -4,7 +4,6 @@ import {
   buildGraph,
   connectedComponents,
   filterRedundantEdges,
-  GRAPH_MAX_EDGES,
 } from '../../src/trace/cluster.js';
 import type { Edge } from '../../src/trace/types.js';
 import { makeAtom, type AtomSpec } from './fixtures/atoms.js';
@@ -243,9 +242,8 @@ describe('buildGraph + connectedComponents', () => {
       }),
     );
     const graph = buildGraph(atoms);
-    expect(graph.truncated).toBeUndefined();
     expect(graph.edges).toHaveLength(999);
-    expect(graph.edges.length).toBeLessThan(GRAPH_MAX_EDGES);
+    expect(graph.edges.length).toBeLessThan(graph.nodes.length);
     expect(connectedComponents(graph)).toHaveLength(1);
   });
 });

@@ -4,14 +4,15 @@
 // For a SINGLE checkout that has a shared git remote, every repo-bearing
 // source (claude_code, codex, git) must resolve the repo to the SAME canonical
 // identity — the normalized remote URL — so that:
-//   (1) atoms from different tools about the same repo, within one cluster
-//       window, join into ONE connected component (membership, not a visible
-//       edge — the repo artifact is scope-role and filtered from visible edges);
-//   (2) derived file artifacts for the same relative path across tools share
+//   (1) derived file artifacts for the same relative path across tools share
 //       the same canonical repo-id prefix (artifact-key equality);
-//   (3) the artifact identity is MACHINE-INDEPENDENT, while local project
+//   (2) the artifact identity is MACHINE-INDEPENDENT, while local project
 //       identity still prevents two distinct checkouts from becoming one
 //       active-work thread merely because they share a remote.
+//
+// Repo identity is descriptive scope, not thread membership. Two explicit
+// coding-session roots remain separate unless lineage or a declared strong
+// work artifact connects them; the unowned git commit may attach to one.
 //
 // Boundaries (deliberately NOT asserted as failures): a repo with NO remote
 // may fall back to a local, same-machine-only identity.
@@ -165,14 +166,17 @@ describe('R1 — cross-adapter repo identity (shared remote → one identity)', 
     }
   });
 
-  it('the three atoms join into ONE connected component (cluster membership)', () => {
+  it('does not collapse two explicit coding roots merely because repo and file identity match', () => {
     const atoms = normalizeEvents([claudeCodeEvent(), codexEvent(), gitEvent()]);
     const graph = buildGraph(atoms, 4);
     const components = connectedComponents(graph);
 
-    expect(components).toHaveLength(1);
-    expect(new Set(components[0]!.atom_ids)).toEqual(
-      new Set(['evt_cc_repoid', 'evt_codex_repoid', 'evt_git_repoid']),
+    expect(components).toHaveLength(2);
+    expect(components.map((component) => new Set(component.atom_ids))).toEqual(
+      expect.arrayContaining([
+        new Set(['evt_cc_repoid']),
+        new Set(['evt_codex_repoid', 'evt_git_repoid']),
+      ]),
     );
   });
 

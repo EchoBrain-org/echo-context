@@ -13,7 +13,9 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { homedir } from 'node:os';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   echoResolveMru,
@@ -208,6 +210,29 @@ describe('echoResolveMru — git two-path OR (R3 Codex #2 port from 037 AC6 Note
     expect(desc.source).toBe(`git:${REPO_A}`);
     // Path B won — no metadata_match in filter (source path encodes repo).
     expect(desc.filter).toEqual({});
+  });
+
+  it('recovers a metadata-less legacy git source through a symlinked caller path', async () => {
+    const actualRepo = realpathSync(mkdtempSync(join(tmpdir(), 'echo-mru-actual-')));
+    const linkParent = realpathSync(mkdtempSync(join(tmpdir(), 'echo-mru-link-')));
+    const repoAlias = join(linkParent, 'repo-alias');
+    try {
+      writeFileSync(join(actualRepo, 'package.json'), '{}');
+      symlinkSync(actualRepo, repoAlias, 'dir');
+      const store = new MemoryStorage();
+      await store.append(ev(`git:${actualRepo}`, ts(20), 'legacy commit'));
+
+      const result = await echoResolveMru(store, {
+        sources: ['git'],
+        repo_path: repoAlias,
+      });
+
+      expect(result.sources['git']?.source).toBe(`git:${actualRepo}`);
+      expect(result.sources['git']?.filter).toEqual({});
+    } finally {
+      rmSync(linkParent, { recursive: true, force: true });
+      rmSync(actualRepo, { recursive: true, force: true });
+    }
   });
 
   it('no eligible git atoms for the repo → null slot', async () => {

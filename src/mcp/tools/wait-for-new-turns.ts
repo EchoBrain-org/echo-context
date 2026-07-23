@@ -28,8 +28,8 @@ import { withFsExclusion } from '../util/fs-exclusion.js';
 import { isoString } from '../util/iso8601.js';
 import {
   assertAbsoluteRepoPath,
-  normaliseRepoPath,
-  projectKeyForRepoPath,
+  resolveRepoPath,
+  type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 
@@ -204,19 +204,19 @@ async function pollOnce(
   storage: Storage,
   resolved: ResolvedSources,
   since: string,
-  normalisedRepoPath: string | null,
+  repoPath: ResolvedRepoPath | null,
 ): Promise<PollPage> {
   // Reuse the historical raw-fs exclusion applied by all retrieval paths.
-  const filterCommon: Pick<
-    QueryFilter,
-    'since' | 'limit' | 'exclude_metadata_surface' | 'metadata_match'
-  > = withFsExclusion({
+  const filterCommon: QueryFilter = withFsExclusion({
     since,
     limit: WAIT_PER_POLL_LIMIT_PER_SOURCE,
     // Item 037 / AC5: repo-scoping. AND-joined with the source/prefix
     // filter on each per-source query below.
-    ...(normalisedRepoPath !== null
-      ? { project_key: projectKeyForRepoPath(normalisedRepoPath) }
+    ...(repoPath !== null
+      ? {
+          project_key: repoPath.project_key,
+          legacy_project_roots: repoPath.legacy_project_roots,
+        }
       : {}),
   });
   // Fix ⑤: ASC oldest-first per-source fetch — the lossless chaining
@@ -379,10 +379,10 @@ export async function waitForNewTurns(
 
   // Item 037 / AC5: validate + normalise repo_path before the poll loop
   // so a bad input fails immediately rather than after the first timeout.
-  let normalisedRepoPath: string | null = null;
+  let repoPath: ResolvedRepoPath | null = null;
   if (params.repo_path !== undefined) {
     assertAbsoluteRepoPath('wait_for_new_turns', params.repo_path);
-    normalisedRepoPath = normaliseRepoPath(params.repo_path);
+    repoPath = await resolveRepoPath(params.repo_path);
   }
 
   let timeoutSec = params.timeout ?? WAIT_DEFAULT_TIMEOUT_SECONDS;
@@ -430,7 +430,7 @@ export async function waitForNewTurns(
   // there"; the long-poll's whole point is to NOT round-trip the wait
   // when there's nothing newer than `since`.
   throwIfAborted(signal);
-  let page = await pollOnce(storage, resolved, since, normalisedRepoPath);
+  let page = await pollOnce(storage, resolved, since, repoPath);
   while (
     page.rows.length === 0 &&
     page.scanTruncated !== true &&
@@ -442,7 +442,7 @@ export async function waitForNewTurns(
     if (remaining <= 0) break;
     await sleep(Math.min(pollIntervalMs, remaining), signal);
     throwIfAborted(signal);
-    page = await pollOnce(storage, resolved, since, normalisedRepoPath);
+    page = await pollOnce(storage, resolved, since, repoPath);
   }
 
   // Lossless chaining (Fix ⑤): next_since is NEVER the wall clock. Atom

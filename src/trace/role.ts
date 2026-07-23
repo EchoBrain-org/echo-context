@@ -52,7 +52,7 @@ const STRONG_MEMBERSHIP_TYPES = new Set([
   'commit',
 ]);
 
-const WEAK_MEMBERSHIP_TYPES = new Set(['file', 'doc', 'branch']);
+const WEAK_MEMBERSHIP_TYPES = new Set(['file', 'doc']);
 
 /** Whether an artifact may shape thread membership. Scope/session artifacts
  * are descriptive only. Unknown types fail closed until an adapter declares

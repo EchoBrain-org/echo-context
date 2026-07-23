@@ -102,6 +102,14 @@ export interface QueryFilter {
   /** Canonical project identity. Matches metadata.project_key, falling back to
    * canonical_root and finally legacy repo_root without rewriting raw rows. */
   project_key?: string;
+  /** Internal compatibility aliases for rows captured before project_key and
+   * canonical_root existed. At most three normalized absolute roots are
+   * allowed: canonical identity, case-preserved real root, and normalized
+   * caller path. A legacy repo_root matches when it equals one of these roots
+   * or is its path-component descendant. These aliases are ignored whenever a
+   * row has project_key or canonical_root, even when that authoritative value
+   * does not match. */
+  legacy_project_roots?: readonly string[];
   // Composite-key cursor pagination boundary: returns rows strictly older than
   // (timestamp, id) under the storage `(timestamp DESC, id DESC)` ordering.
   // Defined for descending queries only — passing `before` together with

@@ -92,7 +92,7 @@ function gitEvent(root: string, originUrl: string | undefined): CaptureEvent {
 }
 
 describe('repo identity convergence', () => {
-  it('normalizes claude_code, codex, and git to one remote-backed repo id and one cluster', () => {
+  it('normalizes one remote-backed repo id without collapsing explicit coding roots', () => {
     const claude = normalize(claudeCodeEvent(POSIX_ROOT, REMOTE));
     const codex = normalize(codexEvent(POSIX_ROOT));
     const git = normalize(gitEvent(POSIX_ROOT, REMOTE));
@@ -110,8 +110,13 @@ describe('repo identity convergence', () => {
     );
 
     const clusters = connectedComponents(buildGraph([claude, codex, git]));
-    expect(clusters).toHaveLength(1);
-    expect(new Set(clusters[0]?.atom_ids)).toEqual(new Set([claude.id, codex.id, git.id]));
+    expect(clusters).toHaveLength(2);
+    expect(clusters.map((cluster) => new Set(cluster.atom_ids))).toEqual(
+      expect.arrayContaining([
+        new Set([claude.id]),
+        new Set([codex.id, git.id]),
+      ]),
+    );
   });
 
   it('keeps remote-backed repo identity independent of local checkout path', () => {

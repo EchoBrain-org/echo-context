@@ -23,8 +23,8 @@ import { StorageScanBudgetExceededError } from '../../storage/budgets.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
 import {
   assertAbsoluteRepoPath,
-  normaliseRepoPath,
-  projectKeyForRepoPath,
+  resolveRepoPath,
+  type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 
@@ -109,25 +109,39 @@ async function newestMatching(
 async function resolveAppNameEntry(
   storage: Storage,
   app: SourceApp,
-  normalisedRepoPath: string | null,
+  repoPath: ResolvedRepoPath | null,
   scanState: ScanState,
 ): Promise<ResolvedSourceDescriptor | null> {
   const prefix = buildSourceAppMap()[app];
 
   // Git branch (037 AC6 Note 2 port): two-path OR when repo_path is set.
-  if (app === 'git' && normalisedRepoPath !== null) {
-    const exactSource = `git:${normalisedRepoPath}`;
-    const [rowA, rowB] = await Promise.all([
+  if (app === 'git' && repoPath !== null) {
+    const exactSources = [
+      ...new Set(
+        [repoPath.normalized_path, ...repoPath.legacy_project_roots].map(
+          (root) => `git:${root}`,
+        ),
+      ),
+    ];
+    const [rowA, ...exactRows] = await Promise.all([
       newestMatching(
         storage,
         withFsExclusion({
           source_prefix: prefix,
-          project_key: projectKeyForRepoPath(normalisedRepoPath),
+          project_key: repoPath.project_key,
+          legacy_project_roots: repoPath.legacy_project_roots,
         }),
         scanState,
       ),
-      newestMatching(storage, withFsExclusion({ source: exactSource }), scanState),
+      ...exactSources.map((source) =>
+        newestMatching(storage, withFsExclusion({ source }), scanState),
+      ),
     ]);
+    const rowB = exactRows.reduce<CaptureEvent | null>((newest, row) => {
+      if (row === null) return newest;
+      if (newest === null || row.timestamp > newest.timestamp) return row;
+      return newest;
+    }, null);
     if (rowA === null && rowB === null) return null;
     // Pick the newer of the two; tie-break on Query A (post-AC1 metadata is
     // the canonical encoding going forward).
@@ -142,7 +156,7 @@ async function resolveAppNameEntry(
       // scopes correctly (multiple git: sources may share the same repo).
       return {
         source: rowA!.source,
-        filter: { repo_path: normalisedRepoPath },
+        filter: { repo_path: repoPath.normalized_path },
       };
     }
     // Query B's row: exact-source `git:<repo_path>` IS the scoping
@@ -157,32 +171,34 @@ async function resolveAppNameEntry(
   // Default app-name branch (claude_code / codex / cursor-without-repo /
   // git-without-repo): single prefix query, optional canonical-project filter.
   const filter: QueryFilter = withFsExclusion({ source_prefix: prefix });
-  if (normalisedRepoPath !== null) {
-    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
+  if (repoPath !== null) {
+    filter.project_key = repoPath.project_key;
+    filter.legacy_project_roots = repoPath.legacy_project_roots;
   }
   const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;
   return {
     source: row.source,
-    filter: normalisedRepoPath !== null ? { repo_path: normalisedRepoPath } : {},
+    filter: repoPath !== null ? { repo_path: repoPath.normalized_path } : {},
   };
 }
 
 async function resolveLiteralSourceEntry(
   storage: Storage,
   literal: string,
-  normalisedRepoPath: string | null,
+  repoPath: ResolvedRepoPath | null,
   scanState: ScanState,
 ): Promise<ResolvedSourceDescriptor | null> {
   const filter: QueryFilter = withFsExclusion({ source: literal });
-  if (normalisedRepoPath !== null) {
-    filter.project_key = projectKeyForRepoPath(normalisedRepoPath);
+  if (repoPath !== null) {
+    filter.project_key = repoPath.project_key;
+    filter.legacy_project_roots = repoPath.legacy_project_roots;
   }
   const row = await newestMatching(storage, filter, scanState);
   if (row === null) return null;
   return {
     source: literal,
-    filter: normalisedRepoPath !== null ? { repo_path: normalisedRepoPath } : {},
+    filter: repoPath !== null ? { repo_path: repoPath.normalized_path } : {},
   };
 }
 
@@ -202,10 +218,10 @@ export async function echoResolveMru(
     );
   }
 
-  let normalisedRepoPath: string | null = null;
+  let repoPath: ResolvedRepoPath | null = null;
   if (params.repo_path !== undefined) {
     assertAbsoluteRepoPath('echo_resolve_mru', params.repo_path);
-    normalisedRepoPath = normaliseRepoPath(params.repo_path);
+    repoPath = await resolveRepoPath(params.repo_path);
   }
 
   const result: Record<string, ResolvedSourceDescriptor | null> = {};
@@ -218,14 +234,14 @@ export async function echoResolveMru(
         result[entry] = await resolveAppNameEntry(
           storage,
           entry,
-          normalisedRepoPath,
+          repoPath,
           scanState,
         );
       } else {
         result[entry] = await resolveLiteralSourceEntry(
           storage,
           entry,
-          normalisedRepoPath,
+          repoPath,
           scanState,
         );
       }
@@ -240,8 +256,8 @@ export async function echoResolveMru(
         ]
       : [],
   };
-  if (normalisedRepoPath !== null) {
-    out.repo_path = normalisedRepoPath;
+  if (repoPath !== null) {
+    out.repo_path = repoPath.normalized_path;
   }
   return out;
 }
@@ -275,7 +291,7 @@ export function registerEchoResolveMru(server: McpServer, storage: Storage): voi
           .max(4096)
           .optional()
           .describe(
-            'Absolute repo root. Restricts eligible activity to matching capture metadata.',
+            'Absolute project root. Restricts eligible activity by canonical project identity, with bounded legacy path fallback.',
           ),
       },
       outputSchema: echoResolveMruOutputSchema,
