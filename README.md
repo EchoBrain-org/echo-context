@@ -106,13 +106,13 @@ npm run test:ci
 npm run verify:inventory
 
 REVIEWED_COMMIT="$(git rev-parse HEAD)"
-RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.3-$REVIEWED_COMMIT"
+RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.4-$REVIEWED_COMMIT"
 INSTALL_PREFIX="$RELEASE_ROOT/prefix"
 PROMOTION_RESULT="$RELEASE_ROOT/promotion-result.json"
 mkdir -p "$RELEASE_ROOT"
 npm pack --pack-destination "$RELEASE_ROOT"
 npm run --silent smoke:package -- \
-  "$RELEASE_ROOT/echo-context-0.1.0-beta.3.tgz" \
+  "$RELEASE_ROOT/echo-context-0.1.0-beta.4.tgz" \
   --prefix "$INSTALL_PREFIX" > "$PROMOTION_RESULT"
 cat "$PROMOTION_RESULT"
 ```
