@@ -157,7 +157,7 @@
       "path": "vitest.operator.config.ts"
     }
   ],
-  "lock_sha256": "9d9e931e2aec084bca5b37eb617edafe2c6eb44a26c56ceb7a4d32f2258cdad4",
+  "lock_sha256": "295c690b438951d69f300f74d3afcc162f142e4701bf8cb9fea64de6d465b896",
   "npm_closure": [
     {
       "cpu": [
@@ -6069,7 +6069,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "26e9bf8349465464e24a55c520c6dc806ca816048bc5493a1c9948a2284d2b45",
+  "package_json_sha256": "7ff3d488f53d198255b9d610c8129e2b0eb44f76d9c40a8fa3ee5e965db181f2",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
