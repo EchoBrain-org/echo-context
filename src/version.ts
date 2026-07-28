@@ -1,2 +1,2 @@
-export const ECHO_CONTEXT_VERSION = '0.1.0-beta.4';
+export const ECHO_CONTEXT_VERSION = '0.1.0-beta.5';
 export const ECHO_CONTEXT_NODE_VERSION = '22.22.1';
