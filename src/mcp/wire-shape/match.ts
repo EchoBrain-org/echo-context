@@ -14,7 +14,7 @@
 
 import type { CaptureEvent } from '../../storage/interface.js';
 import { WIRE_SHAPE_CAPS } from './caps.js';
-import { clipMetadataValues, clipString } from './clip.js';
+import { clipJsonString, clipMetadataValues, clipString } from './clip.js';
 import { projectToolCallsTrajectory } from './tool-calls.js';
 
 export interface ProjectedMatch {
@@ -62,6 +62,8 @@ export interface ProjectedMatch {
    *  `m.truncations.length === 0` without optional-chaining.
    *
    *  Vocabulary:
+   *    - `"source"` — the stored source descriptor was clipped by serialized
+   *      JSON cost so escape expansion cannot make one atom unpageable.
    *    - `"content"` — content body was clipped to `match_content` cap.
    *    - `"metadata.<key>"` — per-key byte cap fired on `<key>`; the value
    *      is opaqued out (`{__elided:true, original_size:N}`). LOSSY.
@@ -83,17 +85,19 @@ export interface ProjectedMatch {
  *  wire shape. Caller-agnostic: every atom-shape retrieval tool calls this
  *  to enforce the same envelope discipline. */
 export function projectMatch(e: CaptureEvent): ProjectedMatch {
+  const source = clipJsonString(e.source, WIRE_SHAPE_CAPS.match_source);
   const content = clipString(e.content, WIRE_SHAPE_CAPS.match_content);
   const truncations: string[] = [];
   const m: ProjectedMatch = {
     id: e.id,
-    source: e.source,
+    source,
     timestamp: e.timestamp,
     content: content.value,
     // Filled in below; kept always-present (possibly []) so consumers can
     // do `m.truncations.length === 0` without optional-chaining.
     truncations,
   };
+  if (source !== e.source) truncations.push('source');
   if (content.bytes_elided > 0) {
     m.bytes_elided = content.bytes_elided;
     truncations.push('content');

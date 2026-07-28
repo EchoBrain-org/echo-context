@@ -12,6 +12,11 @@
 // per-key-clipped metadata + envelope/marker overhead fits in the 25k
 // consumer tool-result budget with headroom.
 export const WIRE_SHAPE_CAPS = {
+  /** Serialized JSON budget for a stored source descriptor. Escape-heavy
+   * filesystem paths can cost several times their raw UTF-8 size and must not
+   * make a single otherwise valid atom unpageable. */
+  match_source: 1_024,
+
   /** Per-match `content` clip (search_memories, get_atoms). Surfaced by
    *  Bug A1 (2026-05-08 15:54 PDT) — single Codex turn JSONL is ~100KB;
    *  without this cap, three matches blew the budget by 12.7×. 1KB head +

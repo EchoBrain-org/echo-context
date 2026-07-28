@@ -63,7 +63,34 @@ It is a deterministic synthetic regression, not a substitute for capture and
 SQLite integration tests. It verifies raw-ledger preservation, logical
 collapse, canonical project scope, seven-thread topology, complete
 `find_clusters` → `get_atoms` hydration, wire size, and bounded latency under
-a 10× inherited-copy stress case.
+a 10× inherited-copy stress case. Its report also includes the opt-in project
+and root-thread routing envelopes, representative-ID cost, and lossless member
+pagination.
+
+## Agent-facing context routing
+
+The MCP roster remains seven read-only tools. Existing `find_clusters` calls
+are unchanged. Agents may opt into a lean routing projection:
+
+- `group_by: "project"` returns canonical project keys and a `repo_path` that
+  can be passed back to scope later retrieval.
+- `group_by: "thread"` groups a root thread with its child-agent activity,
+  partitioned by canonical project and provider.
+- Each group reports unique logical turns, represented raw observations,
+  collapsed-copy count, source coverage, a time range, and a small set of
+  stored representative IDs.
+
+Grouped header pages use top-level `next_cursor`. A group whose membership is
+larger than its representative preview has `membership_cursor`; concatenate
+the representative IDs with each returned member page for complete,
+duplicate-free membership. Group cursors freeze the resolved time window and
+fail closed if delayed capture changes the bounded result set.
+
+`get_atoms` remains capped at 50 requested IDs and 25,000 response bytes. When
+that byte budget defers existing atoms, repeat the same IDs and projection
+options with `next_cursor`. `atoms_missing` is terminal absence;
+`atoms_deferred` is recoverable work, and their sum is the compatibility
+`atoms_dropped` count for that page.
 
 ## Adapter incubation boundary
 

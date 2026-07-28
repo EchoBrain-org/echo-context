@@ -29,6 +29,15 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Storage } from '../../storage/interface.js';
 import type { Cluster, ResponseFormat } from '../../trace/types.js';
+import {
+  DiscoveryCursorError,
+  FIND_CLUSTERS_CURSOR_MAX_CHARS,
+  FIND_CLUSTERS_GROUP_PAGE_MAX,
+  FIND_CLUSTERS_REPRESENTATIVE_MAX,
+  type DiscoveryGroup,
+  type DiscoveryGroupBy,
+} from '../internal/discovery-groups.js';
+import { findGroupedClusters } from '../internal/grouped-find-clusters.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactCluster, type ViewMode } from '../wire-shape/compact.js';
 // Item 038 / AC3: find_clusters calls the canonical cluster engine directly
@@ -57,10 +66,12 @@ export const PER_CLUSTER_ATOM_IDS_HARD_CAP = 200;
 
 export const FIND_CLUSTERS_DESCRIPTION =
   'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` explicitly overrides the fixed 4-hour maximum gap used to join atoms; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
-  '`view="rich"` is the default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. `format="skeleton"` is compatibility-only and can be omitted. A cluster may contain more than 50 IDs, so call `get_atoms` in chunks of at most 50. The 25,000-byte result budget preserves cluster headers first, then shrinks ID slices before dropping low-ranked clusters. Inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
+  'Omit `group_by` for the unchanged ranked-cluster response. Use `group_by="project"` for canonical project routes or `group_by="thread"` for provider-scoped root threads. Grouped mode returns unique-turn versus raw-observation counts, a few directly hydratable representative IDs, and opaque cursors. Pass a top-level `next_cursor` by itself to continue group headers. For complete membership, hydrate the representatives first, then pass that group’s `membership_cursor` by itself; member pages continue through top-level `next_cursor` without repeating IDs.\n\n' +
+  '`view="rich"` is the legacy default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. Group headers have one fixed lean shape. `format="skeleton"` is compatibility-only and can be omitted. The 25,000-byte result budget never silently drops a grouped header or member ID: shortened pages always carry a cursor. In legacy mode, inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
 
 const formatSchema = z.enum(['skeleton']);
 const viewSchema = z.enum(['compact', 'rich']);
+const groupBySchema = z.enum(['project', 'thread']);
 
 export interface FindClustersParams {
   since?: string;
@@ -72,6 +83,15 @@ export interface FindClustersParams {
    *  underlying cluster query; scopes the candidate set cross-source by
    *  canonical project identity. Echoed in `query.repo_path`. */
   repo_path?: string;
+  /** Scope 6: opt-in agent-routing projection. Absence preserves the legacy
+   * ranked-cluster response byte-for-byte. */
+  group_by?: DiscoveryGroupBy;
+  /** Group headers per page. Grouped initial calls only. */
+  page_size?: number;
+  /** Directly hydratable preview IDs per group. Grouped initial calls only. */
+  representative_limit?: number;
+  /** Opaque grouped continuation. Continuation calls are cursor-only. */
+  cursor?: string;
 }
 
 export interface FindClustersCluster {
@@ -109,8 +129,27 @@ export interface FindClustersResult {
     /** Item 037 / AC4: echoes the normalized canonical-project filter.
      * `null` when not passed. */
     repo_path: string | null;
+    /** Present only in the opt-in grouped response. */
+    group_by?: DiscoveryGroupBy;
+    /** Present only in the opt-in grouped response. */
+    page_size?: number;
+    /** Present only in the opt-in grouped response. */
+    representative_limit?: number;
   };
   clusters: FindClustersCluster[];
+  /** Present only in grouped mode; legacy mode omits it. */
+  mode?: 'groups' | 'members';
+  /** Present only in grouped mode; never overloaded into clusters[]. */
+  groups?: DiscoveryGroup[];
+  /** Present only when a membership cursor is being consumed. */
+  membership_page?: {
+    group_id: string;
+    atom_ids: string[];
+    atoms_returned: number;
+    atoms_total: number;
+  };
+  /** Group-page or member-page continuation. Present only in grouped mode. */
+  next_cursor?: string | null;
   /** RESPONSE-LEVEL budget application — distinct from per-FIELD clipping
    *  inside an atom (which lives in `truncations: string[]` on `get_atoms`
    *  results). Two different concepts; two different names. */
@@ -122,6 +161,12 @@ export interface FindClustersResult {
     /** Source counts across the scanned window before rank/response caps. */
     source_breakdown: Record<string, number>;
     truncated: boolean;
+    /** Grouped-mode coverage fields. Omitted from the legacy response. */
+    groups_returned?: number;
+    groups_total?: number;
+    unique_turns_total?: number;
+    raw_observations_total?: number;
+    counts_complete?: boolean;
   };
   warnings: string[];
 }
@@ -202,6 +247,19 @@ export async function findClusters(
   params: FindClustersParams,
   now: Date = new Date(),
 ): Promise<FindClustersResult> {
+  if (params.group_by !== undefined || params.cursor !== undefined) {
+    return findGroupedClusters(
+      storage,
+      params,
+      now,
+      FIND_CLUSTERS_RESPONSE_BYTE_CEILING,
+    );
+  }
+  if (params.page_size !== undefined || params.representative_limit !== undefined) {
+    throw new Error(
+      'find_clusters: page_size and representative_limit require group_by',
+    );
+  }
   // Re-use getRecentWorkContext for: no-args 4h→24h auto-expand,
   // TZ-naive warning, storage-cap warning, exclude_metadata_surface=['fs'].
   // Pass MAX_LIMIT to maximize the trace builder's bounded membership. A work
@@ -334,8 +392,42 @@ const findClustersOutputSchema = {
       window_hours: z.number(),
       format: z.literal('skeleton'),
       repo_path: z.string().nullable(),
+      group_by: groupBySchema.optional(),
+      page_size: z.number().int().positive().optional(),
+      representative_limit: z.number().int().positive().optional(),
     }),
   clusters: z.array(z.record(z.string(), z.unknown())),
+  mode: z.enum(['groups', 'members']).optional(),
+  groups: z
+    .array(
+      z.object({
+        group_id: z.string(),
+        identity_quality: z.enum(['canonical', 'fallback']),
+        project_key: z.string().nullable(),
+        canonical_root: z.string().nullable(),
+        repo_path: z.string().nullable(),
+        provider: z.string().optional(),
+        root_thread_id: z.string().optional(),
+        unique_turn_count: z.number().int().nonnegative(),
+        raw_observation_count: z.number().int().nonnegative(),
+        collapsed_observation_count: z.number().int().nonnegative(),
+        representative_atom_ids: z.array(z.string()),
+        source_breakdown: z.record(z.string(), z.number().int().nonnegative()),
+        time_range: z.object({ from: z.string(), to: z.string() }),
+        thread_count: z.number().int().nonnegative().optional(),
+        membership_cursor: z.string().nullable(),
+      }),
+    )
+    .optional(),
+  membership_page: z
+    .object({
+      group_id: z.string(),
+      atom_ids: z.array(z.string()),
+      atoms_returned: z.number().int().nonnegative(),
+      atoms_total: z.number().int().nonnegative(),
+    })
+    .optional(),
+  next_cursor: z.string().nullable().optional(),
   result_caps: z
     .object({
       clusters_returned: z.number(),
@@ -344,6 +436,11 @@ const findClustersOutputSchema = {
       atoms_total_in_window: z.number(),
       source_breakdown: z.record(z.string(), z.number().int().nonnegative()),
       truncated: z.boolean(),
+      groups_returned: z.number().int().nonnegative().optional(),
+      groups_total: z.number().int().nonnegative().optional(),
+      unique_turns_total: z.number().int().nonnegative().optional(),
+      raw_observations_total: z.number().int().nonnegative().optional(),
+      counts_complete: z.boolean().optional(),
     }),
   warnings: z.array(z.string()),
 };
@@ -362,13 +459,46 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
           .describe('Compatibility-only singleton; omit it. Discovery is always bodyless.'),
         view: viewSchema
           .optional()
-          .describe('rich (default) or compact; both retain ranking and result_caps.'),
+          .describe(
+            'Legacy cluster mode only: rich (default) or compact. Grouped headers have one lean shape.',
+          ),
         repo_path: z
           .string()
           .max(4096)
           .optional()
           .describe(
             'Absolute project root. Filters candidate atoms by canonical project identity across nested adapter working directories.',
+          ),
+        group_by: groupBySchema
+          .optional()
+          .describe(
+            'Opt in to canonical project headers or provider-scoped root-thread headers. Omit for the unchanged ranked-cluster response.',
+          ),
+        page_size: z
+          .number()
+          .int()
+          .min(1)
+          .max(FIND_CLUSTERS_GROUP_PAGE_MAX)
+          .optional()
+          .describe(
+            `Grouped initial calls only: 1-${FIND_CLUSTERS_GROUP_PAGE_MAX} headers per page.`,
+          ),
+        representative_limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(FIND_CLUSTERS_REPRESENTATIVE_MAX)
+          .optional()
+          .describe(
+            `Grouped initial calls only: 1-${FIND_CLUSTERS_REPRESENTATIVE_MAX} directly hydratable preview IDs per group.`,
+          ),
+        cursor: z
+          .string()
+          .min(1)
+          .max(FIND_CLUSTERS_CURSOR_MAX_CHARS)
+          .optional()
+          .describe(
+            'Opaque grouped continuation. Pass it by itself; it freezes the prior query and fails closed if the result set changed.',
           ),
       },
       outputSchema: findClustersOutputSchema,
@@ -387,7 +517,8 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
         // underlying `getRecentWorkContext` surface via `isError`.
         if (
           err instanceof Error &&
-          (err.message.startsWith('get_recent_work_context: ') ||
+          (err instanceof DiscoveryCursorError ||
+            err.message.startsWith('get_recent_work_context: ') ||
             err.message.startsWith('find_clusters: '))
         ) {
           return {

@@ -61,6 +61,16 @@ export interface TopologyBenchmarkReport {
   envelope_bytes: number;
   hydrated_ids: number;
   warnings: string[];
+  phase3_routing: {
+    project_groups: number;
+    thread_groups: number;
+    project_envelope_bytes: number;
+    thread_envelope_bytes: number;
+    project_representative_ids: number;
+    thread_representative_ids: number;
+    project_membership_pages: number;
+    project_membership_ids: number;
+  };
   latency_ms: {
     iterations: number;
     median: number;
@@ -225,6 +235,25 @@ async function hydrateAll(
   return hydrated;
 }
 
+async function collectGroupedMembership(
+  store: MemoryStorage,
+  result: FindClustersResult,
+): Promise<{ pages: number; ids: string[] }> {
+  const ids: string[] = [];
+  let pages = 0;
+  for (const group of result.groups ?? []) {
+    ids.push(...group.representative_atom_ids);
+    let cursor = group.membership_cursor;
+    while (cursor !== null) {
+      const page = await findClusters(store, { cursor });
+      pages += 1;
+      ids.push(...(page.membership_page?.atom_ids ?? []));
+      cursor = page.next_cursor ?? null;
+    }
+  }
+  return { pages, ids };
+}
+
 export async function benchmarkForkStorm(input: {
   copyMultiplier?: number;
   warmup?: number;
@@ -260,6 +289,18 @@ export async function benchmarkForkStorm(input: {
     projectCounts[project.name] = scoped.result_caps.atoms_total_in_window;
   }
   const hydratedIds = await hydrateAll(fixture.store, result);
+  const projectGroups = await findClusters(fixture.store, {
+    ...params,
+    group_by: 'project',
+  });
+  const threadGroups = await findClusters(fixture.store, {
+    ...params,
+    group_by: 'thread',
+  });
+  const projectMembership = await collectGroupedMembership(
+    fixture.store,
+    projectGroups,
+  );
   const logicalTurns = result.result_caps.atoms_total_in_window;
   const report: TopologyBenchmarkReport = {
     fixture: 'fork-storm-v1',
@@ -274,6 +315,22 @@ export async function benchmarkForkStorm(input: {
     envelope_bytes: Buffer.byteLength(JSON.stringify(result), 'utf8'),
     hydrated_ids: hydratedIds,
     warnings: result.warnings,
+    phase3_routing: {
+      project_groups: projectGroups.result_caps.groups_total ?? 0,
+      thread_groups: threadGroups.result_caps.groups_total ?? 0,
+      project_envelope_bytes: Buffer.byteLength(JSON.stringify(projectGroups), 'utf8'),
+      thread_envelope_bytes: Buffer.byteLength(JSON.stringify(threadGroups), 'utf8'),
+      project_representative_ids: (projectGroups.groups ?? []).reduce(
+        (sum, group) => sum + group.representative_atom_ids.length,
+        0,
+      ),
+      thread_representative_ids: (threadGroups.groups ?? []).reduce(
+        (sum, group) => sum + group.representative_atom_ids.length,
+        0,
+      ),
+      project_membership_pages: projectMembership.pages,
+      project_membership_ids: projectMembership.ids.length,
+    },
     latency_ms: {
       iterations,
       median: Number(percentile(samples, 0.5).toFixed(3)),
@@ -308,6 +365,32 @@ export async function benchmarkForkStorm(input: {
   if (report.envelope_bytes >= 10_000) failures.push(`envelope=${report.envelope_bytes}`);
   if (report.hydrated_ids !== fixture.expectedLogicalTurns) {
     failures.push(`hydrated=${report.hydrated_ids}`);
+  }
+  if (report.phase3_routing.project_groups !== 3) {
+    failures.push(`project_groups=${report.phase3_routing.project_groups}`);
+  }
+  if (report.phase3_routing.thread_groups !== 7) {
+    failures.push(`thread_groups=${report.phase3_routing.thread_groups}`);
+  }
+  if (report.phase3_routing.project_representative_ids !== 9) {
+    failures.push(
+      `project_representatives=${report.phase3_routing.project_representative_ids}`,
+    );
+  }
+  if (report.phase3_routing.thread_representative_ids !== 21) {
+    failures.push(
+      `thread_representatives=${report.phase3_routing.thread_representative_ids}`,
+    );
+  }
+  if (report.phase3_routing.project_membership_pages !== 4) {
+    failures.push(
+      `project_membership_pages=${report.phase3_routing.project_membership_pages}`,
+    );
+  }
+  if (report.phase3_routing.project_membership_ids !== fixture.expectedLogicalTurns) {
+    failures.push(
+      `project_membership_ids=${report.phase3_routing.project_membership_ids}`,
+    );
   }
   if (result.result_caps.truncated) failures.push('result_caps.truncated=true');
   if (report.warnings.length > 0) failures.push(`warnings=${report.warnings.join(' | ')}`);

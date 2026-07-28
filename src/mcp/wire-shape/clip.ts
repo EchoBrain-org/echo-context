@@ -91,6 +91,20 @@ export function clipString(s: string, cap: number): ClipResult {
   return { value: head + marker(bytes_elided) + tail, bytes_elided };
 }
 
+/** Bound the serialized JSON cost of a string, including escape expansion.
+ * A raw UTF-8 cap alone is insufficient for paths containing many backslashes
+ * or control characters because JSON.stringify can multiply their wire cost. */
+export function clipJsonString(value: string, jsonBudget: number): string {
+  if (jsonByteLength(value) <= jsonBudget) return value;
+  let retainedBytes = Math.max(16, Math.floor(jsonBudget / 2));
+  let clipped = clipString(value, retainedBytes).value;
+  while (jsonByteLength(clipped) > jsonBudget && retainedBytes > 16) {
+    retainedBytes = Math.max(16, Math.floor(retainedBytes / 2));
+    clipped = clipString(value, retainedBytes).value;
+  }
+  return clipped;
+}
+
 export interface ClippedMetadata {
   metadata: Record<string, unknown>;
   /** Sum of per-key bytes dropped (after subtracting the placeholder size). */

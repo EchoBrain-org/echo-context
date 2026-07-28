@@ -144,6 +144,53 @@ describe('startMcpServer', () => {
     expect(result.structuredContent?.['clusters']).toBeDefined();
   });
 
+  it('tools/call find_clusters group_by=project validates the grouped union shape', async () => {
+    const storage = new MemoryStorage();
+    await storage.append({
+      source: 'fs:/repo/.codex/sessions/2026/05/20/rollout.jsonl',
+      timestamp: '2026-05-20T10:00:00.000Z',
+      content: 'USER: q\n\nASSISTANT: a',
+      metadata: {
+        session_id: 'sess',
+        logical_turn_id: 'turn',
+        observation_kind: 'original',
+        occurred_at: '2026-05-20T10:00:00.000Z',
+        root_thread_id: 'root',
+        thread_id: 'root',
+        repo_root: '/repo',
+        canonical_root: '/repo',
+        project_key: 'local:workspace:/repo',
+      },
+    });
+    handle = await startMcpServer(storage, { port: 0 });
+
+    const result = (await withClient(handle.url, async (client) =>
+      client.callTool({
+        name: 'find_clusters',
+        arguments: {
+          since: '2026-05-20T09:00:00.000Z',
+          until: '2026-05-20T11:00:00.000Z',
+          group_by: 'project',
+        },
+      }),
+    )) as CallToolResultLike & {
+      structuredContent?: Record<string, unknown>;
+      isError?: boolean;
+    };
+
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent?.['mode']).toBe('groups');
+    expect(result.structuredContent?.['clusters']).toEqual([]);
+    expect(result.structuredContent?.['groups']).toEqual([
+      expect.objectContaining({
+        project_key: 'local:workspace:/repo',
+        unique_turn_count: 1,
+        raw_observation_count: 1,
+      }),
+    ]);
+    expect(result.structuredContent?.['next_cursor']).toBeNull();
+  });
+
   it('tools/call get_atoms view=compact passes structuredContent validation', async () => {
     const storage = new MemoryStorage();
     const id = await storage.append({
@@ -172,6 +219,9 @@ describe('startMcpServer', () => {
     expect(result.structuredContent).toBeDefined();
     expect(result.structuredContent?.['atoms']).toBeDefined();
     expect(result.structuredContent?.['atoms_dropped']).toBe(0);
+    expect(result.structuredContent?.['atoms_missing']).toBe(0);
+    expect(result.structuredContent?.['atoms_deferred']).toBe(0);
+    expect(result.structuredContent?.['next_cursor']).toBeNull();
     expect(result.structuredContent?.['warnings']).toEqual([]);
   });
 

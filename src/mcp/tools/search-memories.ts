@@ -25,7 +25,7 @@ import {
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
-import { clipString } from '../wire-shape/clip.js';
+import { clipJsonString } from '../wire-shape/clip.js';
 import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
 import { CursorDecodeError, decodeCursor, emitCursor, encodeCursor } from './_cursor.js';
 // Re-export for any pre-existing callers / tests that imported the cursor
@@ -175,17 +175,6 @@ function clampLimit(input: number | undefined): number {
   if (input === undefined) return DEFAULT_LIMIT;
   const floored = Math.floor(input);
   return Math.min(Math.max(1, floored), MAX_LIMIT);
-}
-
-function clipJsonString(value: string, jsonBudget: number): string {
-  if (jsonByteLength(value) <= jsonBudget) return value;
-  let retainedBytes = Math.max(16, Math.floor(jsonBudget / 2));
-  let clipped = clipString(value, retainedBytes).value;
-  while (jsonByteLength(clipped) > jsonBudget && retainedBytes > 16) {
-    retainedBytes = Math.max(16, Math.floor(retainedBytes / 2));
-    clipped = clipString(value, retainedBytes).value;
-  }
-  return clipped;
 }
 
 function boundQueryEcho(full: SearchQueryEcho): { echo: SearchQueryEcho; capped: boolean } {
@@ -911,9 +900,10 @@ export const searchMatchSchema = z.object({
   metadata_keys_projected: z.array(z.string()).optional(),
   // V1.6 (item 030) — additive trust signal that unifies BOTH per-field
   // caps AND projector reshapes in one place. ALWAYS present (possibly
-  // []). Vocabulary: "content" (content cap fired), "metadata.<k>" (per-
-  // key cap fired — value opaqued), "metadata.<k>:projected" (projector
-  // reshaped — value reformatted, not clipped).
+  // []). Vocabulary: "source" (serialized source cap fired), "content"
+  // (content cap fired), "metadata.<k>" (per-key cap fired — value
+  // opaqued), "metadata.<k>:projected" (projector reshaped — value
+  // reformatted, not clipped).
   truncations: z.array(z.string()),
 });
 

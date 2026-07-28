@@ -224,6 +224,172 @@ describe('get_atoms', () => {
     expect(JSON.stringify(r).length).toBeLessThanOrEqual(25_000);
   });
 
+  it('next_cursor recovers every byte-budget-deferred atom exactly once', async () => {
+    const store = new MemoryStorage();
+    const ids: string[] = [];
+    for (let i = 0; i < 50; i++) {
+      ids.push(
+        await store.append(
+          evShape(i, {
+            content: 'small body',
+            metadata: {
+              session_id: `s${i}`,
+              tool_calls: Array.from({ length: 30 }, () => ({
+                name: 'Bash',
+                args: 'x'.repeat(2_000),
+                output: 'y'.repeat(1_000),
+              })),
+            },
+          }),
+        ),
+      );
+    }
+
+    const recovered: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await getAtoms(store, {
+        atom_ids: ids,
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      expect(Buffer.byteLength(JSON.stringify(page), 'utf8')).toBeLessThanOrEqual(25_000);
+      expect(page.atoms_missing).toBe(0);
+      expect(page.atoms_dropped).toBe(page.atoms_deferred);
+      recovered.push(...page.atoms.map((atom) => atom.id));
+      cursor = page.next_cursor ?? undefined;
+    } while (cursor !== undefined);
+
+    expect(recovered).toEqual(ids);
+    expect(new Set(recovered).size).toBe(ids.length);
+  });
+
+  it('keeps later atoms reachable after an escape-heavy source descriptor', async () => {
+    const store = new MemoryStorage();
+    const hugeSourceId = await store.append({
+      source: 'fs:/' + '\\"'.repeat(7_000),
+      timestamp: '2026-05-08T22:00:00.000Z',
+      content: 'large source, small body',
+    });
+    const smallId = await store.append(
+      evShape(1, { content: 'later reachable atom' }),
+    );
+
+    const page = await getAtoms(store, {
+      atom_ids: [hugeSourceId, smallId],
+    });
+
+    expect(page.atoms.map((atom) => atom.id)).toEqual([hugeSourceId, smallId]);
+    expect(page.atoms[0]?.truncations).toContain('source');
+    expect(page.atoms_deferred).toBe(0);
+    expect(page.next_cursor).toBeNull();
+    expect(Buffer.byteLength(JSON.stringify(page), 'utf8')).toBeLessThanOrEqual(25_000);
+  });
+
+  it('continuation reports missing IDs once and rejects changed request options', async () => {
+    const store = new MemoryStorage();
+    const ids: string[] = [];
+    for (let i = 0; i < 48; i++) {
+      ids.push(
+        await store.append(
+          evShape(i, {
+            content: 'small body',
+            metadata: {
+              session_id: `s${i}`,
+              tool_calls: Array.from({ length: 30 }, () => ({
+                name: 'Bash',
+                args: 'x'.repeat(2_000),
+                output: 'y'.repeat(1_000),
+              })),
+            },
+          }),
+        ),
+      );
+    }
+    const missingA = '00000000-0000-0000-0000-000000000001';
+    const missingB = '00000000-0000-0000-0000-000000000002';
+    const requested = [missingA, ...ids.slice(0, 24), missingB, ...ids.slice(24)];
+
+    const first = await getAtoms(store, { atom_ids: requested });
+    expect(first.atoms_missing).toBe(2);
+    expect(first.atoms_dropped).toBe(first.atoms_missing + first.atoms_deferred);
+    expect(first.next_cursor).not.toBeNull();
+
+    const tamperedPayload = JSON.parse(
+      Buffer.from(first.next_cursor!, 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
+    const requestDigest = tamperedPayload['r'] as string;
+    tamperedPayload['r'] = `${requestDigest.startsWith('0') ? '1' : '0'}${requestDigest.slice(1)}`;
+    const tamperedCursor = Buffer.from(
+      JSON.stringify(tamperedPayload),
+      'utf8',
+    ).toString('base64url');
+    await expect(
+      getAtoms(store, {
+        atom_ids: requested,
+        cursor: tamperedCursor,
+      }),
+    ).rejects.toThrow(/GET_ATOMS_CURSOR_INVALID.*integrity/);
+
+    const second = await getAtoms(store, {
+      atom_ids: requested,
+      cursor: first.next_cursor!,
+    });
+    expect(second.atoms_missing).toBe(0);
+    expect(second.atoms_dropped_ids).not.toContain(missingA);
+    expect(second.atoms_dropped_ids).not.toContain(missingB);
+
+    await expect(
+      getAtoms(store, {
+        atom_ids: [...requested].reverse(),
+        cursor: first.next_cursor!,
+      }),
+    ).rejects.toThrow(/GET_ATOMS_CURSOR_MISMATCH/);
+    await expect(
+      getAtoms(store, {
+        atom_ids: requested,
+        cursor: first.next_cursor!,
+        view: 'compact',
+      }),
+    ).rejects.toThrow(/GET_ATOMS_CURSOR_MISMATCH/);
+  });
+
+  it('next_cursor preserves newest_first de-duplication and timestamp order', async () => {
+    const store = new MemoryStorage();
+    const ids: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      ids.push(
+        await store.append(
+          evShape(i, {
+            content: 'small body',
+            metadata: {
+              session_id: `s${i}`,
+              tool_calls: Array.from({ length: 30 }, () => ({
+                name: 'Bash',
+                args: 'x'.repeat(2_000),
+                output: 'y'.repeat(1_000),
+              })),
+            },
+          }),
+        ),
+      );
+    }
+    const requested = [ids[0]!, ...ids, ids[0]!, ids[29]!];
+    const recovered: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await getAtoms(store, {
+        atom_ids: requested,
+        prefer: 'newest_first',
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      recovered.push(...page.atoms.map((atom) => atom.id));
+      cursor = page.next_cursor ?? undefined;
+    } while (cursor !== undefined);
+
+    expect(recovered).toEqual([...ids].reverse());
+    expect(new Set(recovered).size).toBe(ids.length);
+  });
+
   it('view="compact" sizes prefix-drop on post-compact atom bytes', async () => {
     const store = new MemoryStorage();
     const ids: string[] = [];

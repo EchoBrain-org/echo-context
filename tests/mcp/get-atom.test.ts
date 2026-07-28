@@ -131,6 +131,30 @@ describe('get_atom', () => {
     expect(r.warnings.some((w) => w.includes('25_000-byte'))).toBe(true);
   });
 
+  it('keeps the too-large error bounded when the source is escape-heavy', async () => {
+    const store = new MemoryStorage();
+    const source = 'fs:/' + '\\"'.repeat(7_000);
+    const id = await store.append(
+      evShape(3, {
+        source,
+        content: 'X'.repeat(50_000),
+        metadata: { session_id: 'escape-heavy' },
+      }),
+    );
+
+    const result = await getAtom(store, { id });
+    expect(result.atom).toBeNull();
+    if (result.atom !== null) return;
+    expect(result.error_code).toBe('atom_too_large_for_wire');
+    expect(result.source).not.toBe(source);
+    expect(result.warnings).toContainEqual(
+      expect.stringContaining('[GET_ATOM_SOURCE_CAP]'),
+    );
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(
+      GET_ATOM_RESPONSE_BYTE_CEILING,
+    );
+  });
+
   it('AC4 unit #4 — content just-fits (22KB content + minimal metadata) → success path', async () => {
     // Validates the size check is precise enough to land 22KB content
     // under the 25k ceiling without spurious refusal.

@@ -9,7 +9,11 @@ import {
   getRecentWorkContext,
   type RecentWorkContextParams,
 } from './internal/cluster-engine.js';
-import { getAtoms, type GetAtomsParams } from './tools/get-atoms.js';
+import {
+  getAtoms,
+  type GetAtomsParams,
+  type GetAtomsResult,
+} from './tools/get-atoms.js';
 import {
   searchMemories,
   type SearchMemoriesParams,
@@ -192,6 +196,25 @@ function projectServiceV1Clusters(
   return { ...response, atoms };
 }
 
+/** The MCP result can evolve additively, but service-v1 is a frozen external
+ * contract. Keep continuation-only MCP fields out of the HTTP response until a
+ * separately versioned service contract explicitly adopts them. */
+function projectServiceV1GetAtoms(
+  response: GetAtomsResult,
+): Omit<GetAtomsResult, 'atoms_missing' | 'atoms_deferred' | 'next_cursor'> {
+  return {
+    schema_version: response.schema_version,
+    tool: response.tool,
+    atoms: response.atoms,
+    atoms_dropped: response.atoms_dropped,
+    atoms_dropped_ids: response.atoms_dropped_ids,
+    ...(response.atoms_dropped_ids_omitted !== undefined
+      ? { atoms_dropped_ids_omitted: response.atoms_dropped_ids_omitted }
+      : {}),
+    warnings: response.warnings,
+  };
+}
+
 function sendContractResponse(
   route: string,
   response: ServerResponse,
@@ -303,7 +326,9 @@ export async function handleServiceApi(
       sendContractResponse(
         route,
         response,
-        await getAtoms(storage, input as unknown as GetAtomsParams),
+        projectServiceV1GetAtoms(
+          await getAtoms(storage, input as unknown as GetAtomsParams),
+        ),
       );
       return true;
     }

@@ -14,6 +14,17 @@ function ev(overrides: Partial<CaptureEvent>): CaptureEvent {
 }
 
 describe('projectMatch — content cap', () => {
+  it('bounds escape-heavy source descriptors by serialized JSON cost', () => {
+    const source = 'fs:/' + '\\"'.repeat(7_000);
+    const m = projectMatch(ev({ source, content: 'reachable body' }));
+
+    expect(m.source).not.toBe(source);
+    expect(m.truncations).toContain('source');
+    expect(Buffer.byteLength(JSON.stringify(m.source), 'utf8')).toBeLessThanOrEqual(
+      WIRE_SHAPE_CAPS.match_source,
+    );
+  });
+
   it('content under cap passes verbatim, no bytes_elided field', () => {
     const m = projectMatch(ev({ content: 'short turn that fits' }));
     expect(m.content).toBe('short turn that fits');

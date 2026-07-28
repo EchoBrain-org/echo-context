@@ -317,6 +317,14 @@ describe('AC8 — committed service contract and fail-closed child ceremony', ()
       prefer: 'newest_first',
     });
     expect(atoms.status).toBe(200);
+    expect(Object.keys(atoms.json).sort()).toEqual([
+      'atoms',
+      'atoms_dropped',
+      'atoms_dropped_ids',
+      'schema_version',
+      'tool',
+      'warnings',
+    ]);
     expect(atoms.json).toMatchObject({
       schema_version: 1,
       tool: 'get_atoms',

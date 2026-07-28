@@ -81,6 +81,72 @@ describe('recent MCP request log', () => {
     });
   });
 
+  it('records grouped discovery and hydration-continuation shapes without cursor contents', () => {
+    const findId = beginRecentMcpCall(
+      'find_clusters',
+      {
+        group_by: 'project',
+        page_size: 4,
+        representative_limit: 3,
+        cursor: 'opaque-secret-cursor',
+      },
+      100,
+    );
+    finishRecentMcpCall(
+      findId,
+      'find_clusters',
+      okResult({
+        clusters: [],
+        groups: [{ representative_atom_ids: ['atom-a', 'atom-b'] }],
+        membership_page: { atom_ids: ['atom-c'] },
+        next_cursor: 'next-secret-cursor',
+        warnings: [],
+      }),
+      110,
+    );
+
+    const getId = beginRecentMcpCall(
+      'get_atoms',
+      { atom_ids: ['atom-a'], cursor: 'hydrate-secret-cursor' },
+      120,
+    );
+    finishRecentMcpCall(
+      getId,
+      'get_atoms',
+      okResult({
+        atoms: [],
+        atoms_dropped: 1,
+        atoms_dropped_ids: ['atom-a'],
+        atoms_missing: 0,
+        atoms_deferred: 1,
+        next_cursor: 'next-hydrate-secret-cursor',
+        warnings: [],
+      }),
+      130,
+    );
+
+    const [findCall, getCall] = readRecentMcpCalls();
+    expect(findCall?.args_shape).toMatchObject({
+      group_by: 'project',
+      page_size: 4,
+      representative_limit: 3,
+      cursor_present: true,
+    });
+    expect(findCall?.result_shape).toMatchObject({
+      group_count: 1,
+      representative_atom_id_count: 2,
+      member_atom_id_count: 1,
+      next_cursor_present: true,
+    });
+    expect(getCall?.result_shape).toMatchObject({
+      atoms_missing: 0,
+      atoms_deferred: 1,
+      next_cursor_present: true,
+    });
+    expect(JSON.stringify([findCall, getCall])).not.toContain('secret-cursor');
+    expect(JSON.stringify([findCall, getCall])).not.toContain('atom-a');
+  });
+
   it('updates a pending call to error for thrown exceptions', () => {
     const id = beginRecentMcpCall('search_memories', { query: 'secret' }, 100);
     failRecentMcpCall(id, 'search_memories', new Error('boom'), 105);

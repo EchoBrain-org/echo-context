@@ -30,7 +30,17 @@ describe('fork-storm-v1 logical topology benchmark', () => {
       max_cluster_size: 24,
       hydrated_ids: 123,
       warnings: [],
+      phase3_routing: {
+        project_groups: 3,
+        thread_groups: 7,
+        project_representative_ids: 9,
+        thread_representative_ids: 21,
+        project_membership_pages: 4,
+        project_membership_ids: 123,
+      },
     });
     expect(report.envelope_bytes).toBeLessThan(10_000);
+    expect(report.phase3_routing.project_envelope_bytes).toBeLessThan(10_000);
+    expect(report.phase3_routing.thread_envelope_bytes).toBeLessThan(10_000);
   });
 });

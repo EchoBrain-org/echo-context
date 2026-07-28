@@ -15,6 +15,14 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { StorageBudgetExceededError } from '../../storage/budgets.js';
 import type { CaptureEvent, Storage } from '../../storage/interface.js';
+import {
+  decodeGetAtomsCursor,
+  encodeGetAtomsCursor,
+  GET_ATOMS_CURSOR_MAX_CHARS,
+  GetAtomsCursorError,
+  getAtomsProcessDigest,
+  getAtomsRequestDigest,
+} from '../internal/get-atoms-continuation.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactAtom, type CompactAtom, type ViewMode } from '../wire-shape/compact.js';
 import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
@@ -34,7 +42,7 @@ export const GET_ATOMS_MAX_IDS = 50;
 
 export const GET_ATOMS_DESCRIPTION =
   'Fetch bodies for known atom IDs from `find_clusters` or `search_memories`. Send 1–50 IDs per call; chunk larger cluster lists. The default `prefer="as_requested"` preserves input order and duplicates. Use `prefer="newest_first"` for resume flows; it de-duplicates, sorts newest first, and puts missing IDs last.\n\n' +
-  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic atom prefix. `atoms_dropped` is always exact; `atoms_dropped_ids` is a bounded process-order prefix and `atoms_dropped_ids_omitted`, when present, counts ID values excluded from that list. Inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one atom’s verbatim content is required; its metadata remains projected.';
+  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic atom prefix and returns `next_cursor`. Repeat the exact same atom_ids, fields, view, and prefer with that cursor until it becomes null. `atoms_missing` is terminal absence; `atoms_deferred` is recoverable continuation work; their sum equals legacy `atoms_dropped`. `atoms_dropped_ids` remains a bounded process-order prefix. Inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one atom’s verbatim content is required; its metadata remains projected.';
 
 const formatSchema = z.enum(['minimal']);
 const preferSchema = z.enum(['as_requested', 'newest_first']);
@@ -48,6 +56,9 @@ export interface GetAtomsParams {
   format?: 'minimal';
   prefer?: GetAtomsPrefer;
   view?: ViewMode;
+  /** Request-bound continuation. The original atom_ids and projection options
+   * must be repeated exactly. */
+  cursor?: string;
 }
 
 /** Atom shape on the wire. Mirrors ProjectedMatch but keeps the spec's
@@ -60,9 +71,9 @@ export interface GetAtomsAtom {
   content?: string;
   /** Present unless caller's `fields[]` excluded. */
   metadata?: Record<string, unknown>;
-  /** Carries any per-key `metadata.<key>` or `metadata.<key>:projected`
-   *  entries even when `metadata` itself is omitted from output, plus
-   *  `content`, `fields_omitted`. ALWAYS present. */
+  /** Carries `source`, `content`, `fields_omitted`, and any per-key
+   *  `metadata.<key>` or `metadata.<key>:projected` entries even when
+   *  `metadata` itself is omitted from output. ALWAYS present. */
   truncations: string[];
   /** Set only when `content` was clipped (mirrors search/tail). */
   content_bytes_elided?: number;
@@ -86,6 +97,14 @@ export interface GetAtomsResult {
    *  to keep the complete response inside its hard byte ceiling. The exact
    *  dropped-entry count remains available in `atoms_dropped`. */
   atoms_dropped_ids_omitted?: number;
+  /** Requested ID entries absent from storage in this page's remaining
+   * process-order suffix. Missing IDs are terminal, not cursor work. */
+  atoms_missing: number;
+  /** Existing ID entries deferred solely by the response byte budget. */
+  atoms_deferred: number;
+  /** Resume at the first deferred process-order entry. Null means there is no
+   * recoverable continuation for this request page. */
+  next_cursor: string | null;
   warnings: string[];
 }
 
@@ -99,6 +118,11 @@ function buildBoundedResult(
   allDroppedIds: readonly string[],
   warnings: readonly string[],
   byteCeiling: number,
+  continuation: {
+    atoms_missing: number;
+    atoms_deferred: number;
+    next_cursor: string | null;
+  },
 ): GetAtomsResult {
   const result: GetAtomsResult = {
     schema_version: SCHEMA_VERSION,
@@ -106,6 +130,9 @@ function buildBoundedResult(
     atoms: [...atoms],
     atoms_dropped: allDroppedIds.length,
     atoms_dropped_ids: [...allDroppedIds],
+    atoms_missing: continuation.atoms_missing,
+    atoms_deferred: continuation.atoms_deferred,
+    next_cursor: continuation.next_cursor,
     warnings: [...warnings],
   };
 
@@ -330,16 +357,53 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
   }
 
   const processOrder = buildProcessOrder(atom_ids, fetchedById, prefer);
+  const requestDigest = getAtomsRequestDigest({
+    atom_ids,
+    fields,
+    prefer,
+    view,
+  });
+  const processDigest = getAtomsProcessDigest(processOrder, fetchedById);
+  let startIndex = 0;
+  const continuationCall = params.cursor !== undefined;
+  if (params.cursor !== undefined) {
+    const cursor = decodeGetAtomsCursor(params.cursor);
+    if (cursor.request_digest !== requestDigest) {
+      throw new GetAtomsCursorError(
+        'MISMATCH',
+        'atom_ids, fields, prefer, or view differ from the original request',
+      );
+    }
+    if (cursor.process_digest !== processDigest) {
+      throw new GetAtomsCursorError(
+        'STALE',
+        'requested IDs or their storage ordering changed',
+      );
+    }
+    if (cursor.next_process_index >= processOrder.length) {
+      throw new GetAtomsCursorError(
+        'STALE',
+        'continuation offset is beyond the current process order',
+      );
+    }
+    startIndex = cursor.next_process_index;
+  }
 
   const atoms: GetAtomsAtom[] = [];
   const atomsDroppedIds: string[] = [];
   const warnings: string[] = [];
   let firstAtomOversize = false;
   let responseCapFired = false;
-  const missingCount = processOrder.reduce(
-    (count, id) => count + (fetchedById.has(id) ? 0 : 1),
-    0,
-  );
+  let responseCapIndex: number | undefined;
+  // Page 1 reports every missing entry in the request exactly once, including
+  // missing values positioned after the first byte-budget boundary. Cursors
+  // resume only recoverable existing entries; otherwise the same terminal
+  // absence would be counted again on every page.
+  const missingCount = continuationCall
+    ? 0
+    : processOrder
+        .slice(startIndex)
+        .reduce((count, id) => count + (fetchedById.has(id) ? 0 : 1), 0);
 
   // Build the response in PROCESS ORDER (which equals REQUESTED ORDER under
   // `as_requested`, and equals [newest…oldest, then missing] under
@@ -348,11 +412,11 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
   // expensive. Keep tentative atoms in a list, recompute the envelope
   // size after each addition, and drop+halt if the next atom would push
   // us over the ceiling. Matches spec §2 step 3-5.
-  for (let i = 0; i < processOrder.length; i++) {
+  for (let i = startIndex; i < processOrder.length; i++) {
     const id = processOrder[i]!;
     const ev = fetchedById.get(id);
     if (ev === undefined) {
-      atomsDroppedIds.push(id);
+      if (!continuationCall) atomsDroppedIds.push(id);
       continue;
     }
 
@@ -370,12 +434,20 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
     // plus many missing or remaining UUIDs (~36 chars each + JSON
     // quoting) can exceed 25k post-check (Cursor + Codex post-build
     // review, 2026-05-10).
-    const worstCaseDroppedIds = atomsDroppedIds.concat(processOrder.slice(i + 1));
+    const remainingIds = processOrder
+      .slice(i + 1)
+      .filter((candidate) => !continuationCall || fetchedById.has(candidate));
+    const worstCaseDroppedIds = atomsDroppedIds.concat(remainingIds);
     const tentative = buildBoundedResult(
       atoms,
       worstCaseDroppedIds,
       warnings,
       GET_ATOMS_RESPONSE_BYTE_CEILING - 512,
+      {
+        atoms_missing: missingCount,
+        atoms_deferred: worstCaseDroppedIds.length - missingCount,
+        next_cursor: null,
+      },
     );
     const envBytes = jsonByteLength(tentative);
     if (envBytes > GET_ATOMS_RESPONSE_BYTE_CEILING - 512) {
@@ -384,7 +456,10 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       atoms.pop();
       atomsDroppedIds.push(id);
       for (let j = i + 1; j < processOrder.length; j++) {
-        atomsDroppedIds.push(processOrder[j]!);
+        const remainingId = processOrder[j]!;
+        if (!continuationCall || fetchedById.has(remainingId)) {
+          atomsDroppedIds.push(remainingId);
+        }
       }
       // Detect the "first projected atom alone would exceed 25k" footgun
       // (spec §2 step 6) — surface a guidance warning.
@@ -392,17 +467,34 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
         firstAtomOversize = true;
       }
       responseCapFired = true;
+      responseCapIndex = i;
       break;
     }
   }
 
+  const deferredCount = atomsDroppedIds.reduce(
+    (count, id) => count + (fetchedById.has(id) ? 1 : 0),
+    0,
+  );
+  const nextCursor =
+    responseCapFired &&
+    !firstAtomOversize &&
+    responseCapIndex !== undefined
+      ? encodeGetAtomsCursor({
+          version: 1,
+          request_digest: requestDigest,
+          process_digest: processDigest,
+          next_process_index: responseCapIndex,
+        })
+      : null;
+
   if (firstAtomOversize) {
     warnings.push(
-      '[GET_ATOMS_RESPONSE_CAP] even the first projected atom exceeded the response budget; retry with fields=["content"] or fields=["metadata"]',
+      '[GET_ATOMS_RESPONSE_CAP] even the first projected atom exceeded the response budget; no looping cursor was emitted. Retry with fields=["content"] or fields=["metadata"], or use get_atom(id)',
     );
   } else if (responseCapFired) {
     warnings.push(
-      `[GET_ATOMS_RESPONSE_CAP] returned a process-order prefix; ${atomsDroppedIds.length} IDs were omitted or missing`,
+      `[GET_ATOMS_RESPONSE_CAP] returned a process-order prefix; ${deferredCount} existing ID entries are deferred behind next_cursor`,
     );
   }
   if (missingCount > 0) {
@@ -414,6 +506,11 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
     atomsDroppedIds,
     warnings,
     GET_ATOMS_RESPONSE_BYTE_CEILING,
+    {
+      atoms_missing: missingCount,
+      atoms_deferred: deferredCount,
+      next_cursor: nextCursor,
+    },
   );
 }
 
@@ -436,6 +533,9 @@ const getAtomsOutputSchema = {
   atoms_dropped: z.number().int().nonnegative(),
   atoms_dropped_ids: z.array(z.string()),
   atoms_dropped_ids_omitted: z.number().int().nonnegative().optional(),
+  atoms_missing: z.number().int().nonnegative(),
+  atoms_deferred: z.number().int().nonnegative(),
+  next_cursor: z.string().nullable(),
   warnings: z.array(z.string()),
 };
 
@@ -456,6 +556,14 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
         view: viewSchema
           .optional()
           .describe('rich (default) or compact to retain only high-signal metadata.'),
+        cursor: z
+          .string()
+          .min(1)
+          .max(GET_ATOMS_CURSOR_MAX_CHARS)
+          .optional()
+          .describe(
+            'Opaque byte-budget continuation. Repeat the exact original atom_ids, fields, prefer, and view.',
+          ),
       },
       outputSchema: getAtomsOutputSchema,
       annotations: { readOnlyHint: true },

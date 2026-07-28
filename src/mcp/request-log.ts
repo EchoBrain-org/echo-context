@@ -207,6 +207,10 @@ function projectArgs(tool: string, args: unknown): Record<string, unknown> {
         window_hours: numberValue(obj['window_hours']),
         format: stringValue(obj['format']),
         repo_path_present: isPresent(obj['repo_path']),
+        group_by: stringValue(obj['group_by']),
+        page_size: numberValue(obj['page_size']),
+        representative_limit: numberValue(obj['representative_limit']),
+        cursor_present: isPresent(obj['cursor']),
       };
     case 'get_atoms':
       return {
@@ -215,6 +219,7 @@ function projectArgs(tool: string, args: unknown): Record<string, unknown> {
         fields_count: arrayLength(obj['fields']),
         format: stringValue(obj['format']),
         prefer: stringValue(obj['prefer']),
+        cursor_present: isPresent(obj['cursor']),
       };
     case 'get_atom':
       return { ...base, id_present: isPresent(obj['id']) };
@@ -295,7 +300,16 @@ function projectResult(tool: string, result: unknown): Record<string, unknown> {
       return {
         result_type: 'find_clusters',
         cluster_count: arrayLength(structured['clusters']),
+        group_count: arrayLength(structured['groups']),
         atom_id_count: nestedArrayTotal(structured['clusters'], 'atom_ids'),
+        representative_atom_id_count: nestedArrayTotal(
+          structured['groups'],
+          'representative_atom_ids',
+        ),
+        member_atom_id_count: arrayLength(
+          objectOrEmpty(structured['membership_page'])['atom_ids'],
+        ),
+        next_cursor_present: isPresent(structured['next_cursor']),
         warnings_count: arrayLength(structured['warnings']),
         content_text_length: contentTextLength,
       };
@@ -304,7 +318,10 @@ function projectResult(tool: string, result: unknown): Record<string, unknown> {
         result_type: 'get_atoms',
         atom_count: arrayLength(structured['atoms']),
         atoms_dropped: numberValue(structured['atoms_dropped']),
+        atoms_missing: numberValue(structured['atoms_missing']),
+        atoms_deferred: numberValue(structured['atoms_deferred']),
         atom_ids_count: arrayLength(structured['atoms_dropped_ids']),
+        next_cursor_present: isPresent(structured['next_cursor']),
         warnings_count: arrayLength(structured['warnings']),
         content_text_length: contentTextLength,
       };

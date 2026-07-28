@@ -468,7 +468,7 @@ describe('searchMemories — whole-response UTF-8 budget', () => {
     expect(new Set(observed).size).toBe(50);
   });
 
-  it('returns a bounded identity stub and advances past an escape-heavy source', async () => {
+  it('returns a bounded projected match for an escape-heavy source', async () => {
     const store = new MemoryStorage();
     const hugeSource = 'fs:/' + '\\"'.repeat(7_000);
     const id = await store.append({
@@ -480,21 +480,14 @@ describe('searchMemories — whole-response UTF-8 budget', () => {
     const first = await searchMemories(store, { source: hugeSource, limit: 1 });
     expect(first.matches[0]?.id).toBe(id);
     expect(first.matches[0]?.truncations).toContain('source');
+    expect(first.matches[0]?.content).toBe('identity fallback');
     expect(first.warnings.some((warning) => warning.startsWith('[SEARCH_QUERY_ECHO_CAP]'))).toBe(
       true,
     );
     expect(Buffer.byteLength(JSON.stringify(first), 'utf8')).toBeLessThanOrEqual(
       SEARCH_RESPONSE_BYTE_CEILING,
     );
-
-    const second = await searchMemories(store, {
-      source: hugeSource,
-      cursor: first.next_cursor ?? undefined,
-      limit: 1,
-    });
-    expect(first.next_cursor).not.toBeNull();
-    expect(second.matches).toEqual([]);
-    expect(second.next_cursor).toBeNull();
+    expect(first.next_cursor).toBeNull();
   });
 });
 

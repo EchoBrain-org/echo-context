@@ -18,10 +18,10 @@
 //                 supposed to fix.
 //   - embedding:  EXCLUDED (projectMatch already drops it from the wire
 //                 shape; we reuse that exclusion).
-//   - truncations: returned ARRAY reflects the metadata projections that
-//                 DID fire on this atom; `"content"` is filtered out of
-//                 the carry-over from projectMatch because content is no
-//                 longer clipped after the verbatim override.
+//   - truncations: returned ARRAY reflects source clipping and metadata
+//                 projections that DID fire on this atom; `"content"` is
+//                 filtered out of the carry-over from projectMatch because
+//                 content is no longer clipped after the verbatim override.
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -38,16 +38,16 @@ const SCHEMA_VERSION = 1;
 export const GET_ATOM_RESPONSE_BYTE_CEILING = 25_000;
 
 export const GET_ATOM_DESCRIPTION =
-  'Fetch one known atom with verbatim content. Use this only after `search_memories` or `get_atoms` reports truncation; routine hydration belongs in `get_atoms`. Metadata remains bounded/projected and embeddings are omitted. If the full result cannot fit the 25,000-byte budget, `error_code="atom_too_large_for_wire"` returns the source pointer. `atom_not_found` means the ID is stale or invalid.';
+  'Fetch one known atom with verbatim content. Use this only after `search_memories` or `get_atoms` reports truncation; routine hydration belongs in `get_atoms`. Source descriptors and metadata remain bounded/projected, and embeddings are omitted. If the full result cannot fit the 25,000-byte budget, `error_code="atom_too_large_for_wire"` returns a bounded source pointer. `atom_not_found` means the ID is stale or invalid.';
 
 export interface GetAtomParams {
   id: string;
 }
 
-/** Atom shape on the wire — content verbatim, metadata projected,
- *  embedding excluded. `truncations` reflects only the metadata-side
- *  projections that fired on this atom (any `"content"` carry-over from
- *  `projectMatch` is filtered, since content is unclipped here). */
+/** Atom shape on the wire — content verbatim, source and metadata projected,
+ *  embedding excluded. `truncations` reflects source/metadata shaping that
+ *  fired on this atom (any `"content"` carry-over from `projectMatch` is
+ *  filtered, since content is unclipped here). */
 export interface GetAtomAtom {
   id: string;
   source: string;
@@ -86,6 +86,8 @@ const TOO_LARGE_WARNING =
   'Atom JSON exceeds 25_000-byte MCP envelope ceiling ' +
   'even with metadata projection; cannot transmit over MCP. ' +
   'Read source path directly to recover full content.';
+const SOURCE_CAP_WARNING =
+  '[GET_ATOM_SOURCE_CAP] source pointer was clipped by serialized JSON cost; use the atom ID or local storage for exact recovery';
 
 export async function getAtom(storage: Storage, params: GetAtomParams): Promise<GetAtomResult> {
   const { id } = params;
@@ -150,8 +152,11 @@ export async function getAtom(storage: Storage, params: GetAtomParams): Promise<
       atom: null,
       atom_size_bytes: atomBytes,
       error_code: 'atom_too_large_for_wire',
-      source: ev.source,
-      warnings: [TOO_LARGE_WARNING],
+      source: projected.source,
+      warnings: [
+        TOO_LARGE_WARNING,
+        ...(projected.truncations.includes('source') ? [SOURCE_CAP_WARNING] : []),
+      ],
     };
     return err;
   }
