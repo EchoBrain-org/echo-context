@@ -338,11 +338,10 @@ export async function resolveJournal({
   const loaded = loadRegistry(registryPath);
   if (loaded.status === "disabled") return { status: "disabled" };
   const identity = await readLiveIdentity(loaded.registry, fetchImpl);
-  const resolved = validateMapping(loaded.registry, identity, actor);
-  if (resolved.status === "ready" && updateCurrent) {
+  if (updateCurrent) {
     return revalidateAndUpdateCurrent(registryPath, identity, actor);
   }
-  return resolved;
+  return validateMapping(loaded.registry, identity, actor);
 }
 
 function journalIndex(identity) {

@@ -352,6 +352,45 @@ describe("version-bound dogfooding journal client", () => {
     });
   });
 
+  it("observes a mapping created while its health preflight was in flight", async () => {
+    writeRegistry({});
+    let releaseResolveFetch!: () => void;
+    let announceResolveFetch!: () => void;
+    const resolveFetchStarted = new Promise<void>((resolve) => {
+      announceResolveFetch = resolve;
+    });
+    const resolveFetchRelease = new Promise<void>((resolve) => {
+      releaseResolveFetch = resolve;
+    });
+    const delayedFetch = (async () => {
+      announceResolveFetch();
+      await resolveFetchRelease;
+      return healthyFetch("http://127.0.0.1:39478/healthz");
+    }) as typeof fetch;
+    const pendingResolve = client.resolveJournal({
+      actor: "claude",
+      registryPath,
+      fetchImpl: delayedFetch,
+    });
+    await resolveFetchStarted;
+
+    const releaseDir = join(journalRoot, "releases", `${VERSION}-accepted`);
+    mkdirSync(releaseDir, { recursive: true, mode: 0o700 });
+    await client.createJournal({
+      registryPath,
+      journalDir: join(releaseDir, "dogfooding"),
+      fetchImpl: healthyFetch,
+    });
+    releaseResolveFetch();
+
+    await expect(pendingResolve).resolves.toMatchObject({
+      status: "ready",
+      version: VERSION,
+      actor: "claude",
+      shard: join(releaseDir, "dogfooding", "claude.md"),
+    });
+  });
+
   it("recovers an exact helper-created directory when registry publication was interrupted", async () => {
     writeRegistry({});
     const releaseDir = join(journalRoot, "releases", `${VERSION}-accepted`);
