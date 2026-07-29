@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "35923d70c44f42238fa62242430cf04c449a80fb",
-      "content_sha256": "3c530b5fb5a36595b6c174cfba819969c37aaf6791908ba0b9be337a07aa438c",
+      "blob_oid": "872972b24b1c0de39809c41183dec2f2e112a35c",
+      "content_sha256": "c01f822ea6c91be2a87d99a4e29066aae2076bd7e50437f4c008713540c4d8b2",
       "mode": "100644",
       "path": "tools/build-package.mjs"
     },
@@ -47,6 +47,12 @@
       "content_sha256": "90b09162018f7948098c8abf4ce323802022731d6c41cd1d395f71746a2358b5",
       "mode": "100644",
       "path": "tools/check-runtime-inventory.mjs"
+    },
+    {
+      "blob_oid": "36c6d10d07f78900dcc426e11b1067a9d9cb67d7",
+      "content_sha256": "2a0d1b18799904a340fd0ee4e952d0c02fdbf3812ba862a7a612e7a120a15c85",
+      "mode": "100644",
+      "path": "tools/dogfooding/journal-client.mjs"
     },
     {
       "blob_oid": "a4b68161d5a447b52c3e66cff4b325ed1bc459d2",
@@ -115,10 +121,16 @@
       "path": "tools/secret-scan.sh"
     },
     {
-      "blob_oid": "3f27215d7d12b783c570261fe1f539e26bac25b6",
-      "content_sha256": "0d5de518338db8f6ec4d0f203957e1eaa7a80a1f536fa972e24148a40f5da404",
+      "blob_oid": "4b74a61d137cd7fe2c01875348b8a62a13894c1f",
+      "content_sha256": "627b2d117bb0d5ae9d550f345881b85d3f1a2dd741e21eb35fb1f45ac54b0305",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
+    },
+    {
+      "blob_oid": "2c4e7f4580c466eb5e35d574059f16937e8466cc",
+      "content_sha256": "c363d07f5267edce6dc9f5b3ff417f67002a674afc37c7d2cf20d42e1993fc53",
+      "mode": "100644",
+      "path": "tools/sync-agent-instructions.mjs"
     },
     {
       "blob_oid": "fc02e1441158fd9fbb64f4ca04eca160f0a25fe8",
@@ -6069,7 +6081,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "8c74f5b5443b9550189876b4342cc2f5bf444b9f7d7fb4900bb1488ba2ef4e40",
+  "package_json_sha256": "fe64b8fc57c23cc1cb0eb057051ab6027f0fb127e1fd136ecd91f7ee530c410d",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
@@ -6087,6 +6099,15 @@
       "command": "node tools/build-source-artifact.mjs",
       "executable": "node",
       "name": "build:artifact"
+    },
+    {
+      "argv": [
+        "tools/sync-agent-instructions.mjs",
+        "--check"
+      ],
+      "command": "node tools/sync-agent-instructions.mjs --check",
+      "executable": "node",
+      "name": "check:agents"
     },
     {
       "argv": [
@@ -6120,6 +6141,14 @@
       "command": "node tools/smoke-package.mjs",
       "executable": "node",
       "name": "smoke:package"
+    },
+    {
+      "argv": [
+        "tools/sync-agent-instructions.mjs"
+      ],
+      "command": "node tools/sync-agent-instructions.mjs",
+      "executable": "node",
+      "name": "sync:agents"
     },
     {
       "argv": [
