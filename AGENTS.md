@@ -25,6 +25,6 @@ ECHO is wired to the `echo` MCP server (tools prefixed `mcp__echo__`) at `http:/
 
 Use the ECHO tools `find_clusters`, `get_atoms`, `get_atom`, `search_memories`, `echo_resolve_mru`, `wait_for_new_turns`, `echo_ping` to retrieve your prior cross-tool context. See `~/.echo/state/onboarding.json` for the install record.
 
-<!-- echo-version: 0.1.0-beta.1 · runtime-version: 0.1.0-beta.5 · rendered-at: 2026-07-29T00:50:14.000Z -->
+<!-- echo-version: 0.1.0-beta.1 · runtime-version: 0.1.0-beta.6 · rendered-at: 2026-07-29T05:04:56.690Z -->
 
 <!-- END ECHO -->
