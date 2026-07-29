@@ -21,10 +21,10 @@ not add product coordination, Slack, backlog, or enrichment-loop ownership.
 <!-- BEGIN ECHO -->
 # ECHO
 
-ECHO is wired to the daemon at `http://127.0.0.1:38478/mcp`. Default project: `none chosen`.
+ECHO is wired to the `echo` MCP server (tools prefixed `mcp__echo__`) at `http://127.0.0.1:39478/mcp`. Default project: `none chosen`.
 
-Use ECHO MCP tools (`find_clusters`, `search_memories`, `get_atom`, ...) to retrieve your prior cross-tool context. See `~/.echo/state/onboarding.json` for the install record.
+Use the ECHO tools `find_clusters`, `get_atoms`, `get_atom`, `search_memories`, `echo_resolve_mru`, `wait_for_new_turns`, `echo_ping` to retrieve your prior cross-tool context. See `~/.echo/state/onboarding.json` for the install record.
 
-<!-- echo-version: 0.1.0-beta.1 · rendered-at: 2026-06-06T07:51:40.808Z -->
+<!-- echo-version: 0.1.0-beta.1 · runtime-version: 0.1.0-beta.5 · rendered-at: 2026-07-29T00:50:14.000Z -->
 
 <!-- END ECHO -->
