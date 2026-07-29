@@ -62,6 +62,10 @@ const packageFiles = [
   join(root, 'npm-shrinkwrap.json'),
   join(root, 'context-tools.v2.json'),
   join(root, 'schemas', 'service-api.v1.json'),
+  join(root, 'skills', 'using-echo-mcp', 'SKILL.md'),
+  join(root, 'skills', 'using-echo-mcp', 'agents', 'openai.yaml'),
+  join(root, 'tools', 'dogfooding', 'journal-client.mjs'),
+  join(root, 'tools', 'sync-agent-instructions.mjs'),
   join(root, 'README.md'),
   join(root, 'LICENSE'),
 ];

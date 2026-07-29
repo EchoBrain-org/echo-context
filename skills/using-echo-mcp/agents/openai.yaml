@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use ECHO Context"
+  short_description: "Retrieve and journal version-bound ECHO context"
+  default_prompt: "Use $using-echo-mcp to recover relevant cross-tool context and report its trust signals."

@@ -17,6 +17,9 @@
   },
   "files": [
     "dist/",
+    "skills/using-echo-mcp/",
+    "tools/dogfooding/journal-client.mjs",
+    "tools/sync-agent-instructions.mjs",
     "npm-shrinkwrap.json",
     "context-tools.v2.json",
     "schemas/service-api.v1.json",
@@ -39,6 +42,8 @@
     "verify:authority": "node tools/check-repository-authority.mjs --git-dir .git --commit HEAD",
     "verify:artifact": "node tools/verify-source-artifact.mjs",
     "build:artifact": "node tools/build-source-artifact.mjs",
+    "sync:agents": "node tools/sync-agent-instructions.mjs",
+    "check:agents": "node tools/sync-agent-instructions.mjs --check",
     "scan:secrets": "tools/secret-scan.sh",
     "smoke:package": "node tools/smoke-package.mjs"
   },

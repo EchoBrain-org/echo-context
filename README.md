@@ -92,6 +92,32 @@ options with `next_cursor`. `atoms_missing` is terminal absence;
 `atoms_deferred` is recoverable work, and their sum is the compatibility
 `atoms_dropped` count for that page.
 
+## Agent instruction ownership
+
+This repository is the canonical source for the `using-echo-mcp` skill. The
+source sync operator installs the same reviewed skill bytes directly for Codex
+and Claude Code and refreshes only their managed ECHO banner blocks:
+
+```sh
+npm run sync:agents
+npm run check:agents
+```
+
+The operator does not configure Cursor, import product workflows, or use
+`Project_echo` as an intermediate source. Agent-global synchronization is an
+explicit operator action rather than a side effect of candidate daemon
+installation.
+
+Founder-live version journals remain mutable release evidence outside Git.
+Their selector registry lives at
+`~/.local/share/echo-context/state/dogfooding-journals.json`; journal payloads
+live beside the exact accepted release under
+`~/.local/share/echo-context/releases/`. The installed helper validates the
+live runtime version and artifact digest before resolving or appending to the
+Codex or Claude shard. Missing mappings require founder confirmation and an
+explicit accepted-release journal path. Customer installs with no enabled
+registry are unaffected.
+
 ## Adapter incubation boundary
 
 The context-adapter registry is the single composition point for observational

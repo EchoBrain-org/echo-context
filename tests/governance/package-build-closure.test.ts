@@ -122,6 +122,12 @@ describe('lean package TypeScript closure', () => {
       '.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))',
     );
     expect(builder).not.toContain('a.path.localeCompare(b.path)');
+    expect(builder).toContain(
+      "join(root, 'skills', 'using-echo-mcp', 'SKILL.md')",
+    );
+    expect(builder).toContain(
+      "join(root, 'tools', 'dogfooding', 'journal-client.mjs')",
+    );
 
     const mixedCasePaths = [
       'context-tools.v2.json',

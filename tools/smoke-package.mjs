@@ -125,6 +125,10 @@ try {
     'package/npm-shrinkwrap.json',
     'package/context-tools.v2.json',
     'package/schemas/service-api.v1.json',
+    'package/skills/using-echo-mcp/SKILL.md',
+    'package/skills/using-echo-mcp/agents/openai.yaml',
+    'package/tools/dogfooding/journal-client.mjs',
+    'package/tools/sync-agent-instructions.mjs',
     'package/dist/artifact-manifest.json',
     'package/dist/storage/migrations/0005_source_match_key.sql',
   ]) {
