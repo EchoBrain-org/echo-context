@@ -49,8 +49,8 @@
       "path": "tools/check-runtime-inventory.mjs"
     },
     {
-      "blob_oid": "702fca99a25617ef203872df7ffa8849bc1163f2",
-      "content_sha256": "61c6304098e1da943da8dba52a030d37d6cf8d80e17002bc06cbec022584cf70",
+      "blob_oid": "e2c50cd6d2b92e2ca049453c3c3a91166cbc38ed",
+      "content_sha256": "0a38a1116d27f61a2a1a78d12a81d182b5d5aae7e35c3e974afb79cc77e71da2",
       "mode": "100644",
       "path": "tools/dogfooding/journal-client.mjs"
     },
@@ -127,8 +127,8 @@
       "path": "tools/smoke-package.mjs"
     },
     {
-      "blob_oid": "1bce0fdb971157c3860dcdf2397db8912b7bffdb",
-      "content_sha256": "1ec2b6397ee521b108463393b963d1aaf18bff82c1eeee1c6f58fbb244771184",
+      "blob_oid": "7fe201c2c183cb8a67455b121cf1447a79f34863",
+      "content_sha256": "b3c22f0022a6c5ee02da934ccf31d1b038075337d94a3095953e81d5bffea6f8",
       "mode": "100644",
       "path": "tools/sync-agent-instructions.mjs"
     },
