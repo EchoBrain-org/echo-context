@@ -209,7 +209,11 @@ describe("echo-context agent instruction sync", () => {
     mkdirSync(join(registry, ".."), { recursive: true });
     writeFileSync(
       registry,
-      `${JSON.stringify({ mcp_url: "http://127.0.0.1:39478/mcp" })}\n`,
+      `${JSON.stringify({
+        enabled: true,
+        mcp_url: "http://127.0.0.1:39478/mcp",
+        health_url: "http://127.0.0.1:39478/healthz",
+      })}\n`,
     );
     expect(tool.resolveAgentMcpUrl(userHome)).toBe(
       "http://127.0.0.1:39478/mcp",
@@ -218,6 +222,34 @@ describe("echo-context agent instruction sync", () => {
       tool.resolveAgentMcpUrl(userHome, "https://example.com/mcp"),
     ).toThrow("loopback");
     expect(existsSync(path(".echo", "state"))).toBe(false);
+  });
+
+  it("refuses split MCP and health identities in an enabled registry", () => {
+    const registry = path(
+      ".local",
+      "share",
+      "echo-context",
+      "state",
+      "dogfooding-journals.json",
+    );
+    mkdirSync(join(registry, ".."), { recursive: true });
+    writeFileSync(
+      registry,
+      `${JSON.stringify({
+        enabled: true,
+        mcp_url: "http://127.0.0.1:39478/mcp",
+        health_url: "http://127.0.0.1:39479/healthz",
+      })}\n`,
+    );
+    expect(() => tool.resolveAgentMcpUrl(userHome)).toThrow(
+      "MCP and health URLs do not share an origin",
+    );
+  });
+
+  it("fails closed instead of guessing a port when canonical state is absent", () => {
+    expect(() => tool.resolveAgentMcpUrl(userHome)).toThrow(
+      "pass --mcp-url during first sync",
+    );
   });
 });
 
@@ -250,7 +282,17 @@ describe("canonical using-echo-mcp contract", () => {
       "`ECHO runtime <version> has no dogfooding journal. Create it now and make it current?`",
     );
     expect(skill).toContain("If the founder answers yes");
+    expect(skill).toContain("Then run `resolve --actor <actor>`");
+    expect(skill).toContain("again and proceed only when it returns `ready`");
     expect(skill).toContain("directory mode `0700`");
     expect(skill).toContain("file mode `0600`");
+  });
+
+  it("defines a usable and truthful append contract", () => {
+    expect(skill).toContain("Every supplied value must be a non-empty string");
+    expect(skill).toContain("`verdict` must begin with `right`, `partial`, or");
+    expect(skill).toContain("`wrong`, followed by the reason");
+    expect(skill).toContain('append returns `status: "appended"`');
+    expect(skill).toContain("the ECHO call was not recorded");
   });
 });

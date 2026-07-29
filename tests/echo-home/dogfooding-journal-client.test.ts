@@ -62,6 +62,24 @@ const healthyFetch = (async () =>
     { status: 200, headers: { "content-type": "application/json" } },
   )) as typeof fetch;
 
+function identityFetch(version: string, digest: string): typeof fetch {
+  return (async () =>
+    new Response(
+      JSON.stringify({
+        status: "healthy",
+        components: {
+          runtime: {
+            details: {
+              version,
+              artifact_digest: digest,
+            },
+          },
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+}
+
 function writeRegistry(
   journals: Record<string, unknown>,
   currentVersion?: string,
@@ -157,7 +175,7 @@ describe("version-bound dogfooding journal client", () => {
     );
   });
 
-  it("treats a same-version artifact mismatch as unbound", async () => {
+  it("fails closed on a same-version artifact conflict", async () => {
     seedJournal();
     const registry = JSON.parse(readFileSync(registryPath, "utf8"));
     registry.journals[VERSION].artifact_digest = "b".repeat(64);
@@ -170,11 +188,46 @@ describe("version-bound dogfooding journal client", () => {
         registryPath,
         fetchImpl: healthyFetch,
       }),
-    ).resolves.toMatchObject({
-      status: "needs_confirmation",
-      version: VERSION,
-      artifact_digest: DIGEST,
+    ).rejects.toThrow(
+      "runtime 0.1.0-beta.6 artifact digest conflicts with its existing journal mapping",
+    );
+  });
+
+  it("requires the nested runtime version instead of a top-level fallback", async () => {
+    seedJournal();
+    const incompleteFetch = (async () =>
+      new Response(
+        JSON.stringify({
+          version: VERSION,
+          components: {
+            runtime: { details: { artifact_digest: DIGEST } },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    await expect(
+      client.resolveJournal({
+        actor: "codex",
+        registryPath,
+        fetchImpl: incompleteFetch,
+      }),
+    ).rejects.toThrow("live ECHO health has no valid runtime version");
+  });
+
+  it("requires MCP and health identity to use the same loopback origin", async () => {
+    seedJournal();
+    const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+    registry.health_url = "http://127.0.0.1:39479/healthz";
+    writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, {
+      mode: 0o600,
     });
+    await expect(
+      client.resolveJournal({
+        actor: "codex",
+        registryPath,
+        fetchImpl: healthyFetch,
+      }),
+    ).rejects.toThrow("MCP and health URLs do not share an origin");
   });
 
   it("serializes a compact revalidated append into the correct actor shard", async () => {
@@ -236,6 +289,53 @@ describe("version-bound dogfooding journal client", () => {
     });
   });
 
+  it("preserves a concurrently created version when an older resolve updates current_version", async () => {
+    seedJournal();
+    let releaseFirstFetch!: () => void;
+    let announceFirstFetch!: () => void;
+    const firstFetchStarted = new Promise<void>((resolve) => {
+      announceFirstFetch = resolve;
+    });
+    const firstFetchRelease = new Promise<void>((resolve) => {
+      releaseFirstFetch = resolve;
+    });
+    const delayedBeta6Fetch = (async () => {
+      announceFirstFetch();
+      await firstFetchRelease;
+      return identityFetch(VERSION, DIGEST)("http://127.0.0.1:39478/healthz");
+    }) as typeof fetch;
+
+    const beta6Resolve = client.resolveJournal({
+      actor: "codex",
+      registryPath,
+      fetchImpl: delayedBeta6Fetch,
+    });
+    await firstFetchStarted;
+
+    const beta7 = "0.1.0-beta.7";
+    const beta7Digest = "b".repeat(64);
+    const beta7Release = join(journalRoot, "releases", `${beta7}-accepted`);
+    mkdirSync(beta7Release, { recursive: true, mode: 0o700 });
+    await client.createJournal({
+      registryPath,
+      journalDir: join(beta7Release, "dogfooding"),
+      fetchImpl: identityFetch(beta7, beta7Digest),
+    });
+
+    releaseFirstFetch();
+    await expect(beta6Resolve).resolves.toMatchObject({
+      status: "ready",
+      version: VERSION,
+    });
+    const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+    expect(Object.keys(registry.journals).sort()).toEqual(
+      [VERSION, beta7].sort(),
+    );
+    expect(registry.journals[beta7]).toMatchObject({
+      artifact_digest: beta7Digest,
+    });
+  });
+
   it("recovers an exact helper-created directory when registry publication was interrupted", async () => {
     writeRegistry({});
     const releaseDir = join(journalRoot, "releases", `${VERSION}-accepted`);
@@ -282,5 +382,20 @@ describe("version-bound dogfooding journal client", () => {
         fetchImpl: healthyFetch,
       }),
     ).rejects.toThrow("escapes journal_root");
+  });
+
+  it("refuses creation outside exact accepted release evidence", async () => {
+    writeRegistry({});
+    const looseParent = join(journalRoot, "misc");
+    mkdirSync(looseParent, { recursive: true, mode: 0o700 });
+    await expect(
+      client.createJournal({
+        registryPath,
+        journalDir: join(looseParent, "dogfooding"),
+        fetchImpl: healthyFetch,
+      }),
+    ).rejects.toThrow(
+      "must be releases/<accepted-release>/dogfooding beneath journal_root",
+    );
   });
 });

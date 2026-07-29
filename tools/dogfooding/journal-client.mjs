@@ -27,6 +27,7 @@ import {
   join,
   relative,
   resolve,
+  sep,
 } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -98,6 +99,24 @@ function localHealthUrl(value) {
   return parsed.toString().replace(/\/$/, "");
 }
 
+function localMcpUrl(value) {
+  if (typeof value !== "string") return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  const loopback =
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "[::1]";
+  if (!loopback || parsed.protocol !== "http:" || parsed.pathname !== "/mcp") {
+    return null;
+  }
+  return parsed.toString().replace(/\/$/, "");
+}
+
 function atomicWrite(path, content, mode = 0o600) {
   if (existsSync(path)) assertRegular(path, "atomic-write target");
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -134,11 +153,17 @@ export function loadRegistry(registryPath) {
     registry?.enabled !== true ||
     typeof registry?.journals !== "object" ||
     registry.journals === null ||
+    localMcpUrl(registry.mcp_url) === null ||
     localHealthUrl(registry.health_url) === null ||
     typeof registry.journal_root !== "string" ||
     !isAbsolute(registry.journal_root)
   ) {
     fail(`dogfooding registry has an invalid schema: ${registryPath}`);
+  }
+  if (
+    new URL(registry.mcp_url).origin !== new URL(registry.health_url).origin
+  ) {
+    fail(`dogfooding registry MCP and health URLs do not share an origin`);
   }
   return { status: "enabled", registry };
 }
@@ -158,7 +183,7 @@ export async function readLiveIdentity(registry, fetchImpl = fetch) {
   }
   if (!response.ok) fail(`live ECHO health returned HTTP ${response.status}`);
   const body = await response.json();
-  const version = body?.components?.runtime?.details?.version ?? body?.version;
+  const version = body?.components?.runtime?.details?.version;
   const artifactDigest = body?.components?.runtime?.details?.artifact_digest;
   if (typeof version !== "string" || !VERSION.test(version)) {
     fail("live ECHO health has no valid runtime version");
@@ -175,16 +200,20 @@ function prompt(version) {
 
 function validateMapping(registry, identity, actor) {
   const mapping = registry.journals[identity.version];
-  if (
-    typeof mapping !== "object" ||
-    mapping === null ||
-    mapping.artifact_digest !== identity.artifact_digest
-  ) {
+  if (mapping === undefined) {
     return {
       status: "needs_confirmation",
       ...identity,
       prompt: prompt(identity.version),
     };
+  }
+  if (typeof mapping !== "object" || mapping === null) {
+    fail(`journal mapping is malformed: ${identity.version}`);
+  }
+  if (mapping.artifact_digest !== identity.artifact_digest) {
+    fail(
+      `runtime ${identity.version} artifact digest conflicts with its existing journal mapping`,
+    );
   }
 
   const root = realDirectory(registry.journal_root, "journal root");
@@ -211,10 +240,80 @@ function validateMapping(registry, identity, actor) {
   };
 }
 
-function updateCurrentVersion(registryPath, registry, version) {
-  if (registry.current_version === version) return;
-  const updated = { ...registry, current_version: version };
-  atomicWrite(registryPath, `${JSON.stringify(updated, null, 2)}\n`);
+function acquireLock(lockPath, label) {
+  const waitArray = new Int32Array(new SharedArrayBuffer(4));
+  const deadline = Date.now() + 2_000;
+  while (true) {
+    try {
+      return openSync(lockPath, "wx", 0o600);
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      let age;
+      try {
+        age = Date.now() - statSync(lockPath).mtimeMs;
+      } catch (statError) {
+        if (statError?.code === "ENOENT") continue;
+        throw statError;
+      }
+      if (age > 30_000)
+        fail(`stale ${label} lock requires inspection: ${lockPath}`);
+      if (Date.now() >= deadline)
+        fail(`timed out waiting for ${label} lock: ${lockPath}`);
+      Atomics.wait(waitArray, 0, 0, 20);
+    }
+  }
+}
+
+async function acquireLockAsync(lockPath, label) {
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    try {
+      return openSync(lockPath, "wx", 0o600);
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      let age;
+      try {
+        age = Date.now() - statSync(lockPath).mtimeMs;
+      } catch (statError) {
+        if (statError?.code === "ENOENT") continue;
+        throw statError;
+      }
+      if (age > 30_000)
+        fail(`stale ${label} lock requires inspection: ${lockPath}`);
+      if (Date.now() >= deadline)
+        fail(`timed out waiting for ${label} lock: ${lockPath}`);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+    }
+  }
+}
+
+async function withLock(lockPath, label, operation) {
+  const fd = await acquireLockAsync(lockPath, label);
+  try {
+    return await operation();
+  } finally {
+    closeSync(fd);
+    unlinkSync(lockPath);
+  }
+}
+
+async function revalidateAndUpdateCurrent(registryPath, identity, actor) {
+  return withLock(`${registryPath}.lock`, "dogfooding registry", async () => {
+    const loaded = loadRegistry(registryPath);
+    if (loaded.status !== "enabled") return { status: "disabled" };
+    const resolved = validateMapping(loaded.registry, identity, actor);
+    if (
+      resolved.status === "ready" &&
+      loaded.registry.current_version !== identity.version
+    ) {
+      const updated = {
+        ...loaded.registry,
+        current_version: identity.version,
+      };
+      atomicWrite(registryPath, `${JSON.stringify(updated, null, 2)}\n`);
+    }
+    return resolved;
+  });
 }
 
 export async function resolveJournal({
@@ -229,7 +328,7 @@ export async function resolveJournal({
   const identity = await readLiveIdentity(loaded.registry, fetchImpl);
   const resolved = validateMapping(loaded.registry, identity, actor);
   if (resolved.status === "ready" && updateCurrent) {
-    updateCurrentVersion(registryPath, loaded.registry, identity.version);
+    return revalidateAndUpdateCurrent(registryPath, identity, actor);
   }
   return resolved;
 }
@@ -264,7 +363,7 @@ function actorShard(identity, actor) {
   ].join("\n");
 }
 
-export async function createJournal({
+async function createJournalLocked({
   registryPath,
   journalDir,
   fetchImpl = fetch,
@@ -287,6 +386,23 @@ export async function createJournal({
   const requested = join(parent, basename(requestedInput));
   if (!isContained(root, parent) || !isContained(root, requested)) {
     fail("requested journal directory escapes journal_root");
+  }
+  const releaseParts = relative(root, requested).split(sep);
+  if (
+    releaseParts.length !== 3 ||
+    releaseParts[0] !== "releases" ||
+    releaseParts[2] !== "dogfooding"
+  ) {
+    fail(
+      "journal directory must be releases/<accepted-release>/dogfooding beneath journal_root",
+    );
+  }
+  const releases = realDirectory(
+    join(root, "releases"),
+    "accepted release evidence root",
+  );
+  if (dirname(parent) !== releases) {
+    fail("accepted release directory does not resolve beneath journal_root");
   }
   const expectedFiles = ["JOURNAL.md", "claude.md", "codex.md"];
   if (existsSync(requested)) {
@@ -366,6 +482,14 @@ export async function createJournal({
   );
 }
 
+export async function createJournal(options) {
+  return withLock(
+    `${options.registryPath}.lock`,
+    "dogfooding registry",
+    async () => createJournalLocked(options),
+  );
+}
+
 function compact(value, label, maximum) {
   if (typeof value !== "string") fail(`${label} must be a string`);
   const result = value.replace(/\0/gu, "").replace(/\s+/gu, " ").trim();
@@ -412,30 +536,6 @@ export function renderEntry(entry, identity) {
   return rendered;
 }
 
-function lock(lockPath) {
-  const waitArray = new Int32Array(new SharedArrayBuffer(4));
-  const deadline = Date.now() + 2_000;
-  while (true) {
-    try {
-      return openSync(lockPath, "wx", 0o600);
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-      let age;
-      try {
-        age = Date.now() - statSync(lockPath).mtimeMs;
-      } catch (statError) {
-        if (statError?.code === "ENOENT") continue;
-        throw statError;
-      }
-      if (age > 30_000)
-        fail(`stale dogfooding append lock requires inspection: ${lockPath}`);
-      if (Date.now() >= deadline)
-        fail(`timed out waiting for dogfooding append lock: ${lockPath}`);
-      Atomics.wait(waitArray, 0, 0, 20);
-    }
-  }
-}
-
 export async function appendJournalEntry({
   actor,
   registryPath,
@@ -451,7 +551,7 @@ export async function appendJournalEntry({
   if (resolved.status !== "ready") return resolved;
   const rendered = renderEntry(entry, resolved);
   const lockPath = join(resolved.journal_dir, ".append.lock");
-  const fd = lock(lockPath);
+  const fd = acquireLock(lockPath, "dogfooding append");
   let shardFd;
   try {
     shardFd = openSync(resolved.shard, "a", 0o600);

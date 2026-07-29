@@ -99,7 +99,7 @@ source sync operator installs the same reviewed skill bytes directly for Codex
 and Claude Code and refreshes only their managed ECHO banner blocks:
 
 ```sh
-npm run sync:agents
+npm run sync:agents -- --mcp-url http://127.0.0.1:<live-port>/mcp
 npm run check:agents
 ```
 
@@ -107,6 +107,8 @@ The operator does not configure Cursor, import product workflows, or use
 `Project_echo` as an intermediate source. Agent-global synchronization is an
 explicit operator action rather than a side effect of candidate daemon
 installation.
+The first sync fails closed unless an explicit loopback MCP URL is supplied or
+the canonical registry already contains one; it never guesses a live port.
 
 Founder-live version journals remain mutable release evidence outside Git.
 Their selector registry lives at

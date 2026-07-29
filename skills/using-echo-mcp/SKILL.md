@@ -19,8 +19,10 @@ write-capable product.
 Apply this gate only when
 `~/.local/share/echo-context/state/dogfooding-journals.json` exists and contains
 `"enabled": true`. If the file is absent or explicitly disabled, skip the gate;
-customer installs do not require dogfooding state. If it exists but is
-unreadable or malformed, report the failure and make no ECHO call.
+customer installs do not require dogfooding state. If the user explicitly
+requires the call to be recorded, however, report that founder-live journaling
+is not enabled and make no ECHO call. If the registry exists but is unreadable
+or malformed, report the failure and make no ECHO call.
 
 Codex uses actor `codex`; Claude Code uses actor `claude`. Before the first ECHO
 call in each user turn, run:
@@ -47,15 +49,28 @@ operation with an explicit dogfooding directory inside the exact accepted
 release evidence. Never invent a generic version directory. If that exact
 release path is not known, ask for it. Creation writes only `JOURNAL.md`,
 `codex.md`, and `claude.md`, records the live artifact digest, and uses
-directory mode `0700` and file mode `0600`.
+directory mode `0700` and file mode `0600`. Then run `resolve --actor <actor>`
+again and proceed only when it returns `ready`.
 
 After the last ECHO call in the turn, send one JSON object on standard input to
 the helper's `append --actor <actor>` operation. Include `timestamp`, `trigger`,
 `query_inputs`, `returned`, `sources`, `verdict`, `note`, and optional
-`conjecture`. The helper revalidates live identity and serializes the append.
-One entry may cover several calls. Include the health preflight in
-`query_inputs`; log errors and zero-result calls. Never paste large raw
-payloads, secrets, credentials, or sensitive returned prose.
+`conjecture`. Every supplied value must be a non-empty string. `timestamp` must
+carry an explicit offset. `verdict` must begin with `right`, `partial`, or
+`wrong`, followed by the reason; use `partial` for useful but incomplete,
+zero-result, or error outcomes. The helper revalidates live identity and
+serializes the append. One entry may cover several calls. Include the health
+preflight in `query_inputs`; log errors and zero-result calls. Never paste large
+raw payloads, secrets, credentials, or sensitive returned prose.
+
+The turn is recorded only when append returns `status: "appended"`. If it
+returns another status, resolve again and retry after satisfying that status.
+If append itself errors, inspect the actor shard tail before retrying so an
+uncertain successful write is not duplicated. If it still cannot be appended,
+tell the user that the ECHO call was not recorded; never claim success merely
+because the ECHO call completed. A stale-lock error requires operator
+inspection; do not delete the lock until confirming that no writer is active
+and checking the shard tail for a completed append.
 
 ## Preserve timestamps
 

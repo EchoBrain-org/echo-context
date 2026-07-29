@@ -17,7 +17,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BEGIN = "<!-- BEGIN ECHO -->";
 const END = "<!-- END ECHO -->";
-const DEFAULT_MCP_URL = "http://127.0.0.1:38478/mcp";
 const TOOL_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(TOOL_PATH), "..");
 
@@ -69,6 +68,28 @@ function loopbackMcpUrl(value) {
   return parsed.toString().replace(/\/$/, "");
 }
 
+function loopbackHealthUrl(value) {
+  if (typeof value !== "string") return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  const loopback =
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "[::1]";
+  if (
+    !loopback ||
+    parsed.protocol !== "http:" ||
+    parsed.pathname !== "/healthz"
+  ) {
+    return null;
+  }
+  return parsed.toString().replace(/\/$/, "");
+}
+
 export function resolveAgentMcpUrl(userHome, explicit) {
   if (explicit !== undefined) {
     const accepted = loopbackMcpUrl(explicit);
@@ -85,7 +106,11 @@ export function resolveAgentMcpUrl(userHome, explicit) {
     "state",
     "dogfooding-journals.json",
   );
-  if (!existsSync(registry)) return DEFAULT_MCP_URL;
+  if (!existsSync(registry)) {
+    fail(
+      `no canonical ECHO MCP URL is configured; pass --mcp-url during first sync or create ${registry}`,
+    );
+  }
   regularFileOrMissing(registry);
   let parsed;
   try {
@@ -96,6 +121,14 @@ export function resolveAgentMcpUrl(userHome, explicit) {
   const accepted = loopbackMcpUrl(parsed?.mcp_url);
   if (accepted === null)
     fail(`dogfooding registry has no valid loopback mcp_url: ${registry}`);
+  if (parsed?.enabled === true) {
+    const health = loopbackHealthUrl(parsed?.health_url);
+    if (health === null)
+      fail(`enabled dogfooding registry has no valid health_url: ${registry}`);
+    if (new URL(accepted).origin !== new URL(health).origin) {
+      fail(`dogfooding registry MCP and health URLs do not share an origin`);
+    }
+  }
   return accepted;
 }
 
