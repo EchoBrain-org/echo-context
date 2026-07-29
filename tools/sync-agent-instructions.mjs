@@ -91,11 +91,11 @@ function loopbackHealthUrl(value) {
 }
 
 export function resolveAgentMcpUrl(userHome, explicit) {
+  let explicitUrl;
   if (explicit !== undefined) {
-    const accepted = loopbackMcpUrl(explicit);
-    if (accepted === null)
+    explicitUrl = loopbackMcpUrl(explicit);
+    if (explicitUrl === null)
       fail(`--mcp-url must be a loopback http /mcp URL: ${explicit}`);
-    return accepted;
   }
 
   const registry = join(
@@ -107,6 +107,7 @@ export function resolveAgentMcpUrl(userHome, explicit) {
     "dogfooding-journals.json",
   );
   if (!existsSync(registry)) {
+    if (explicitUrl !== undefined) return explicitUrl;
     fail(
       `no canonical ECHO MCP URL is configured; pass --mcp-url during first sync or create ${registry}`,
     );
@@ -119,14 +120,21 @@ export function resolveAgentMcpUrl(userHome, explicit) {
     fail(`could not parse dogfooding registry: ${registry}`);
   }
   const accepted = loopbackMcpUrl(parsed?.mcp_url);
-  if (accepted === null)
+  if (parsed?.enabled !== true && explicitUrl !== undefined) {
+    return explicitUrl;
+  }
+  if (accepted === null) {
     fail(`dogfooding registry has no valid loopback mcp_url: ${registry}`);
+  }
   if (parsed?.enabled === true) {
     const health = loopbackHealthUrl(parsed?.health_url);
     if (health === null)
       fail(`enabled dogfooding registry has no valid health_url: ${registry}`);
     if (new URL(accepted).origin !== new URL(health).origin) {
       fail(`dogfooding registry MCP and health URLs do not share an origin`);
+    }
+    if (explicitUrl !== undefined && explicitUrl !== accepted) {
+      fail(`--mcp-url conflicts with the enabled dogfooding registry`);
     }
   }
   return accepted;

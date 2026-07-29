@@ -246,6 +246,31 @@ describe("echo-context agent instruction sync", () => {
     );
   });
 
+  it("refuses an explicit MCP URL that conflicts with enabled canonical state", () => {
+    const registry = path(
+      ".local",
+      "share",
+      "echo-context",
+      "state",
+      "dogfooding-journals.json",
+    );
+    mkdirSync(join(registry, ".."), { recursive: true });
+    writeFileSync(
+      registry,
+      `${JSON.stringify({
+        enabled: true,
+        mcp_url: "http://127.0.0.1:39478/mcp",
+        health_url: "http://127.0.0.1:39478/healthz",
+      })}\n`,
+    );
+    expect(() =>
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39479/mcp"),
+    ).toThrow("--mcp-url conflicts with the enabled dogfooding registry");
+    expect(
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39478/mcp"),
+    ).toBe("http://127.0.0.1:39478/mcp");
+  });
+
   it("fails closed instead of guessing a port when canonical state is absent", () => {
     expect(() => tool.resolveAgentMcpUrl(userHome)).toThrow(
       "pass --mcp-url during first sync",
