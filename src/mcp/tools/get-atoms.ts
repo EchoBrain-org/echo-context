@@ -23,6 +23,7 @@ import {
   getAtomsProcessDigest,
   getAtomsRequestDigest,
 } from '../internal/get-atoms-continuation.js';
+import { strictInputSchema } from '../util/strict-input.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactAtom, type CompactAtom, type ViewMode } from '../wire-shape/compact.js';
 import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
@@ -544,7 +545,7 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
     'get_atoms',
     {
       description: GET_ATOMS_DESCRIPTION,
-      inputSchema: {
+      inputSchema: strictInputSchema('get_atoms', {
         atom_ids: z.array(z.string().min(1).max(128)).min(1).max(GET_ATOMS_MAX_IDS),
         fields: z.array(z.enum(['content', 'metadata'])).max(2).optional(),
         format: formatSchema
@@ -564,7 +565,7 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
           .describe(
             'Opaque byte-budget continuation. Repeat the exact original atom_ids, fields, prefer, and view.',
           ),
-      },
+      }),
       outputSchema: getAtomsOutputSchema,
       annotations: { readOnlyHint: true },
     },

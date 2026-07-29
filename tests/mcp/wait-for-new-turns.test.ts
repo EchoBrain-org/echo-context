@@ -5,6 +5,7 @@ import {
   WAIT_MAX_SOURCES,
   WAIT_PER_POLL_LIMIT_PER_SOURCE,
 } from '../../src/mcp/tools/wait-for-new-turns.js';
+import { TZ_NAIVE_WARNING } from '../../src/mcp/util/iso8601.js';
 import { MemoryStorage } from '../../src/storage/memory.js';
 import { SqliteStorage } from '../../src/storage/sqlite.js';
 import type { CaptureEvent } from '../../src/storage/interface.js';
@@ -759,5 +760,94 @@ describe('wait_for_new_turns — Fix ⑤ lossless chaining (next_since + overflo
       true,
     );
     expect(r1.next_since).toBe(tieTs);
+  });
+});
+
+// B3 (audit) — the timezone trap. Offset-less `since` parses as LOCAL time
+// with no warning, and on a machine behind UTC a stripped-Z UTC wall clock
+// lands in the future. The documented feed-back loop (`since = next_since`)
+// then perpetuates the future watermark: silent permanent blindness. Runtime
+// defense: the shared [TZ] warning the sibling tools already emit, plus a
+// clamp of any future next_since back to server now. (The MCP schema also
+// rejects offset-less `since` outright — covered by the boundary tests in
+// strict-input-boundary.test.ts; these exercise the in-process path.)
+describe('wait_for_new_turns — timezone trap (B3): [TZ] warning + next_since clamp', () => {
+  it('offset-less `since` emits the shared [TZ] warning', async () => {
+    const store = new MemoryStorage();
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: '2026-05-09T10:00:00', timeout: 0 },
+      { pollIntervalMs: 10 },
+    );
+    expect(r.warnings).toContain(TZ_NAIVE_WARNING);
+  });
+
+  it('offset-carrying `since` does not emit the [TZ] warning', async () => {
+    const store = new MemoryStorage();
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: '2026-05-09T10:00:00.000Z', timeout: 0 },
+      { pollIntervalMs: 10 },
+    );
+    expect(r.warnings).not.toContain(TZ_NAIVE_WARNING);
+  });
+
+  it('timed-out echo of a future `since` is clamped to server now with a warning', async () => {
+    const store = new MemoryStorage();
+    const fixedNow = new Date('2026-07-28T12:00:00.000Z');
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: '2026-07-28T14:00:00.000Z', timeout: 0 },
+      { pollIntervalMs: 10, now: () => fixedNow },
+    );
+    expect(r.timed_out).toBe(true);
+    expect(r.next_since).toBe('2026-07-28T12:00:00.000Z');
+    expect(r.warnings.some((w) => w.includes('[NEXT_SINCE_CLAMP]'))).toBe(true);
+  });
+
+  it('a returned turn timestamped beyond server now clamps next_since too', async () => {
+    const store = new MemoryStorage();
+    await store.append(ev('fs:/A', '2026-07-28T14:00:00.000Z', 'clock-skewed turn'));
+    const fixedNow = new Date('2026-07-28T12:00:00.000Z');
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: '2026-07-28T10:00:00.000Z', timeout: 0 },
+      { pollIntervalMs: 10, now: () => fixedNow },
+    );
+    expect(r.turn_ids).toHaveLength(1);
+    expect(r.next_since).toBe('2026-07-28T12:00:00.000Z');
+    expect(r.warnings.some((w) => w.includes('[NEXT_SINCE_CLAMP]'))).toBe(true);
+  });
+
+  it('stripped-Z UTC wall clock (parsed as local) can no longer produce a future next_since', async () => {
+    const store = new MemoryStorage();
+    // Reproduce the audited trap: take an instant 2h in the future, format
+    // its LOCAL components without an offset — exactly what a caller gets
+    // by stripping the Z from a UTC wall clock on a machine behind UTC.
+    const future = new Date(Date.now() + 2 * 3_600_000);
+    const pad = (n: number, w = 2): string => String(n).padStart(w, '0');
+    const naive =
+      `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}` +
+      `T${pad(future.getHours())}:${pad(future.getMinutes())}:${pad(future.getSeconds())}`;
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: naive, timeout: 0 },
+      { pollIntervalMs: 10 },
+    );
+    expect(r.warnings).toContain(TZ_NAIVE_WARNING);
+    expect(r.warnings.some((w) => w.includes('[NEXT_SINCE_CLAMP]'))).toBe(true);
+    // The chained call can never be blinded by a future watermark again.
+    expect(Date.parse(r.next_since)).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('past-since behavior is unchanged: no clamp warning, next_since still echoes since', async () => {
+    const store = new MemoryStorage();
+    const r = await waitForNewTurns(
+      store,
+      { sources: ['fs:/A'], since: '2026-05-09T10:00:00.000Z', timeout: 0 },
+      { pollIntervalMs: 10 },
+    );
+    expect(r.next_since).toBe('2026-05-09T10:00:00.000Z');
+    expect(r.warnings).toEqual([]);
   });
 });

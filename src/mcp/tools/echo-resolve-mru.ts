@@ -30,6 +30,7 @@ import {
   type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
+import { strictInputSchema } from '../util/strict-input.js';
 
 export const ECHO_RESOLVE_MRU_MAX_SOURCES = 8;
 export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
@@ -345,7 +346,7 @@ export function registerEchoResolveMru(server: McpServer, storage: Storage): voi
     'echo_resolve_mru',
     {
       description: ECHO_RESOLVE_MRU_DESCRIPTION,
-      inputSchema: {
+      inputSchema: strictInputSchema('echo_resolve_mru', {
         sources: z
           .array(z.string().min(1).max(4096))
           .min(1)
@@ -357,7 +358,7 @@ export function registerEchoResolveMru(server: McpServer, storage: Storage): voi
           .describe(
             'Absolute project root. Restricts eligible activity by canonical project identity, with bounded legacy path fallback.',
           ),
-      },
+      }),
       outputSchema: echoResolveMruOutputSchema,
       annotations: { readOnlyHint: true },
     },

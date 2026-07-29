@@ -45,6 +45,7 @@ import { compactCluster, type ViewMode } from '../wire-shape/compact.js';
 // — they describe the MCP-tool surface, not the engine).
 import { getRecentWorkContext, MAX_LIMIT } from '../internal/cluster-engine.js';
 import { isoString } from '../util/iso8601.js';
+import { strictInputSchema } from '../util/strict-input.js';
 import { SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP } from './recent-work-context.js';
 
 const SCHEMA_VERSION = 1;
@@ -66,7 +67,7 @@ export const PER_CLUSTER_ATOM_IDS_HARD_CAP = 200;
 
 export const FIND_CLUSTERS_DESCRIPTION =
   'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` explicitly overrides the fixed 4-hour maximum gap used to join atoms; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
-  'Omit `group_by` for the unchanged ranked-cluster response. Use `group_by="project"` for canonical project routes or `group_by="thread"` for provider-scoped root threads. Grouped mode returns unique-turn versus raw-observation counts, a few directly hydratable representative IDs, and opaque cursors. Pass a top-level `next_cursor` by itself to continue group headers. For complete membership, hydrate the representatives first, then pass that group’s `membership_cursor` by itself; member pages continue through top-level `next_cursor` without repeating IDs.\n\n' +
+  'Omit `group_by` for the unchanged ranked-cluster response. Use `group_by="project"` for canonical project routes or `group_by="thread"` for provider-scoped root threads. Grouped mode returns unique-turn versus raw-observation counts, a few directly hydratable representative IDs, and opaque cursors. `cursor` is the only continuation input: to continue group headers, pass the top-level `next_cursor` value in the `cursor` parameter, by itself. For complete membership, hydrate the representatives first, then pass that group’s `membership_cursor` value in the `cursor` parameter, by itself; member pages continue by passing each new top-level `next_cursor` value in `cursor`, without repeating IDs.\n\n' +
   '`view="rich"` is the legacy default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. Group headers have one fixed lean shape. `format="skeleton"` is compatibility-only and can be omitted. The 25,000-byte result budget never silently drops a grouped header or member ID: shortened pages always carry a cursor. In legacy mode, inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
 
 const formatSchema = z.enum(['skeleton']);
@@ -450,7 +451,10 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
     'find_clusters',
     {
       description: FIND_CLUSTERS_DESCRIPTION,
-      inputSchema: {
+      // B2: response-field names used as input keys were the audited trap —
+      // unknown keys are rejected, and the two known offenders get guidance
+      // pointing at the real continuation parameter.
+      inputSchema: strictInputSchema('find_clusters', {
         since: isoString.optional(),
         until: isoString.optional(),
         window_hours: z.number().min(0.1).max(168).optional(),
@@ -498,9 +502,16 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
           .max(FIND_CLUSTERS_CURSOR_MAX_CHARS)
           .optional()
           .describe(
-            'Opaque grouped continuation. Pass it by itself; it freezes the prior query and fails closed if the result set changed.',
+            'The only continuation input: a returned top-level `next_cursor` or per-group `membership_cursor` value, passed by itself. It freezes the prior query and fails closed if the result set changed.',
           ),
-      },
+      }, {
+        keyGuidance: {
+          membership_cursor:
+            'find_clusters: `membership_cursor` is a response field, not an input parameter — pass that group’s `membership_cursor` value in the `cursor` parameter, by itself',
+          next_cursor:
+            'find_clusters: `next_cursor` is a response field, not an input parameter — pass the returned `next_cursor` value in the `cursor` parameter, by itself',
+        },
+      }),
       outputSchema: findClustersOutputSchema,
       annotations: { readOnlyHint: true },
     },

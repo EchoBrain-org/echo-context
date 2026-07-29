@@ -26,9 +26,10 @@ import {
   StorageScanBudgetExceededError,
 } from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
-import { canonicalizeTimestamp } from '../../util/timestamp.js';
+import { canonicalizeTimestamp, compareTimestampInstants } from '../../util/timestamp.js';
 import { withFsExclusion } from '../util/fs-exclusion.js';
-import { isoString } from '../util/iso8601.js';
+import { hasTzMarker, isoStringWithOffset, TZ_NAIVE_WARNING } from '../util/iso8601.js';
+import { strictInputSchema } from '../util/strict-input.js';
 import {
   assertAbsoluteRepoPath,
   resolveRepoPath,
@@ -64,7 +65,7 @@ const SOURCE_APP_SET = new Set<string>(SOURCE_APP_VALUES);
 
 export const WAIT_FOR_NEW_TURNS_DESCRIPTION =
   'Long-poll for newly completed context atoms. Provide non-empty `sources`, non-empty `source_prefix`, or both. In `sources`, app names (`cursor`, `claude_code`, `codex`, `git`, `granola`) match every captured source for that app; other strings are exact sources. `source_prefix` is additive, so combining it with `sources` returns their union. Duplicate selectors are de-duplicated.\n\n' +
-  '`since` is exclusive. The response contains oldest-first `turn_ids`; fetch bodies with `get_atoms`. Always pass the returned `next_since` into the next call, including after an empty timeout. At most 20 IDs normally return per wake, with coded warnings for backlog, timestamp-tie, or storage-scan limits. `timeout` defaults to 30 seconds and is capped at 60. Client cancellation stops polling promptly.';
+  '`since` is exclusive and must carry an explicit UTC offset (`Z` or `±HH:MM`) — offset-less timestamps are rejected, because a local-time misparse feeds a future watermark into the `next_since` loop and silently hides every new turn. The response contains oldest-first `turn_ids`; fetch bodies with `get_atoms`. Always pass the returned `next_since` into the next call, including after an empty timeout. At most 20 IDs normally return per wake, with coded warnings for backlog, timestamp-tie, or storage-scan limits. `timeout` defaults to 30 seconds and is capped at 60. Client cancellation stops polling promptly.';
 
 export interface WaitForNewTurnsParams {
   /** Optional under AC4 (057a). At least one of `sources` (non-empty) or
@@ -455,8 +456,9 @@ export interface WaitForNewTurnsOptions {
    *  tunable from in-process callers only. */
   pollIntervalMs?: number;
   /** Inject a clock so tests can drive deterministic poll deadlines. NOT
-   *  used for next_since — that is derived from returned-turn timestamps
-   *  (or echoes the caller's `since`), never from the wall clock. */
+   *  a next_since source — that is derived from returned-turn timestamps
+   *  (or echoes the caller's `since`); this clock only bounds it via the
+   *  B3 future-watermark clamp. */
   now?: () => Date;
   /** MCP request cancellation. Stops the poll/sleep loop promptly. */
   signal?: AbortSignal;
@@ -488,6 +490,11 @@ export async function waitForNewTurns(
     throw new Error('wait_for_new_turns: since must be a valid ISO 8601 timestamp');
   }
   const since = canonicalizeTimestamp(params.since);
+  // B3: the MCP schema requires an explicit offset, but in-process callers
+  // reach here unchecked — surface the same [TZ] warning the sibling
+  // retrieval tools emit for a local-time parse.
+  const warnings: string[] = [];
+  if (!hasTzMarker(params.since)) warnings.push(TZ_NAIVE_WARNING);
 
   // Item 037 / AC5: validate + normalise repo_path before the poll loop
   // so a bad input fails immediately rather than after the first timeout.
@@ -504,6 +511,22 @@ export async function waitForNewTurns(
   const pollIntervalMs = options.pollIntervalMs ?? WAIT_DEFAULT_POLL_INTERVAL_MS;
   const now = options.now ?? (() => new Date());
   const signal = options.signal;
+
+  // B3 clamp: a computed next_since ahead of server time — a future caller
+  // `since` echoed back, or a clock-skewed captured timestamp — would make
+  // the documented `since = next_since` loop permanently blind (strict
+  // `> since` can never match anything until the wall clock catches up,
+  // and each echo renews the future watermark). Clamp to server now and
+  // say so; the worst remaining cost is a re-delivered turn, which the
+  // chained strict-after call tolerates, instead of silent loss.
+  const clampNextSince = (candidate: string): string => {
+    const nowIso = now().toISOString();
+    if (compareTimestampInstants(candidate, nowIso) <= 0) return candidate;
+    warnings.push(
+      `[NEXT_SINCE_CLAMP] computed next_since ${candidate} is ahead of server time; clamped to ${nowIso} — a future watermark (usually a stripped or missing UTC offset in since) would hide every new turn from the chained call`,
+    );
+    return nowIso;
+  };
 
   // AC4 (057a): build the resolved query set from `sources[]` (when
   // present) and append a caller-supplied `source_prefix` (when present)
@@ -523,15 +546,16 @@ export async function waitForNewTurns(
     // sources[] was non-empty but nothing resolved — caller passed strings
     // that aren't source_apps but also pass schema (any string). Return
     // empty + a guidance warning rather than blocking forever.
+    warnings.push('wait_for_new_turns: no sources resolved to a query');
     return {
       schema_version: SCHEMA_VERSION,
       tool: 'wait_for_new_turns',
       turn_ids: [],
       // Lossless-chaining contract: nothing delivered → echo the
-      // canonicalized `since` back. Never a wall-clock read.
-      next_since: since,
+      // canonicalized `since` back (B3-clamped like every next_since).
+      next_since: clampNextSince(since),
       timed_out: true,
-      warnings: ['wait_for_new_turns: no sources resolved to a query'],
+      warnings,
     };
   }
 
@@ -557,9 +581,9 @@ export async function waitForNewTurns(
     page = await pollOnce(storage, resolved, since, repoPath);
   }
 
-  // Lossless chaining (Fix ⑤): next_since is NEVER the wall clock. Atom
-  // timestamps are EVENT times that can land in storage after ingest lag — a
-  // wall-clock next_since
+  // Lossless chaining (Fix ⑤): next_since is NEVER a fresh wall-clock read.
+  // Atom timestamps are EVENT times that can land in storage after ingest
+  // lag — a wall-clock next_since
   // ran AHEAD of delivered data, so a turn that occurred before our return
   // moment but ingested after the final poll was permanently invisible to
   // every chained call (strict `> since`). Instead:
@@ -568,10 +592,13 @@ export async function waitForNewTurns(
   //   • timed out empty → next_since = the canonicalized caller `since`,
   //     echoed back — nothing was delivered, so re-delivery is impossible
   //     and nothing can be skipped.
+  // The only wall-clock involvement is the B3 upper bound: a computed value
+  // AHEAD of server now is itself a blindness trap and is clamped back.
   const { rows, overflow, tieGroupMayBeIncomplete, scanTruncated } = page;
-  const next_since = rows.length > 0 ? rows[rows.length - 1]!.timestamp : since;
+  const next_since = clampNextSince(
+    rows.length > 0 ? rows[rows.length - 1]!.timestamp : since,
+  );
   const timed_out = rows.length === 0;
-  const warnings: string[] = [];
   if (overflow) {
     warnings.push(
       `wait_for_new_turns: more than ${WAIT_MAX_RETURNED_TURNS} new turns matched; returning the oldest ${rows.length} — chain immediately with next_since to page through the backlog`,
@@ -615,33 +642,49 @@ export function registerWaitForNewTurns(server: McpServer, storage: Storage): vo
     'wait_for_new_turns',
     {
       description: WAIT_FOR_NEW_TURNS_DESCRIPTION,
-      inputSchema: {
-        // AC4 (057a): `sources` is now optional at the schema level — the
-        // one-of-required disjunction with `source_prefix` is enforced in
-        // `waitForNewTurns()` so the structured validation error
-        // surfaces both empty-array and both-absent cases under one
-        // contract. Pre-AC4 callers passing `sources=[...]` are
-        // schema-byte-identical (max-length cap preserved; the only
-        // change is removal of the .min(1) lower bound).
-        sources: z.array(z.string().min(1).max(4096)).max(WAIT_MAX_SOURCES).optional(),
-        source_prefix: z
-          .string()
-          .min(1)
-          .max(4096)
-          .optional()
-          .describe(
-            'Prefix filter. When combined with sources, results are the union. At least one non-empty selector is required.',
+      inputSchema: strictInputSchema(
+        'wait_for_new_turns',
+        {
+          // AC4 (057a): `sources` is now optional at the schema level — the
+          // one-of-required disjunction with `source_prefix` is enforced in
+          // `waitForNewTurns()` so the structured validation error
+          // surfaces both empty-array and both-absent cases under one
+          // contract, and mirrored into the published schema as a
+          // top-level anyOf (B3) so schema-validating clients cannot emit
+          // a guaranteed-fail call. Pre-AC4 callers passing
+          // `sources=[...]` are schema-byte-identical (max-length cap
+          // preserved; the only change is removal of the .min(1) lower
+          // bound).
+          sources: z.array(z.string().min(1).max(4096)).max(WAIT_MAX_SOURCES).optional(),
+          source_prefix: z
+            .string()
+            .min(1)
+            .max(4096)
+            .optional()
+            .describe(
+              'Prefix filter. When combined with sources, results are the union. At least one non-empty selector is required.',
+            ),
+          since: isoStringWithOffset.describe(
+            'Exclusive watermark. Must carry an explicit offset (Z or ±HH:MM); offset-less timestamps are rejected.',
           ),
-        since: isoString,
-        timeout: z.number().int().min(0).max(WAIT_MAX_TIMEOUT_SECONDS).optional(),
-        repo_path: z
-          .string()
-          .max(4096)
-          .optional()
-          .describe(
-            'Absolute project root. AND-filters each source query by canonical project identity.',
-          ),
-      },
+          timeout: z.number().int().min(0).max(WAIT_MAX_TIMEOUT_SECONDS).optional(),
+          repo_path: z
+            .string()
+            .max(4096)
+            .optional()
+            .describe(
+              'Absolute project root. AND-filters each source query by canonical project identity.',
+            ),
+        },
+        {
+          jsonSchemaExtras: {
+            anyOf: [
+              { required: ['sources'], properties: { sources: { minItems: 1 } } },
+              { required: ['source_prefix'] },
+            ],
+          },
+        },
+      ),
       outputSchema: waitOutputSchema,
       annotations: { readOnlyHint: true },
     },

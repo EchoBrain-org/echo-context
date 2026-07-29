@@ -26,6 +26,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Storage } from '../../storage/interface.js';
+import { strictInputSchema } from '../util/strict-input.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { projectMatch } from '../wire-shape/match.js';
 
@@ -188,9 +189,9 @@ export function registerGetAtom(server: McpServer, storage: Storage): void {
     'get_atom',
     {
       description: GET_ATOM_DESCRIPTION,
-      inputSchema: {
+      inputSchema: strictInputSchema('get_atom', {
         id: z.string().min(1).max(128),
-      },
+      }),
       outputSchema: getAtomOutputSchema,
       annotations: { readOnlyHint: true },
     },

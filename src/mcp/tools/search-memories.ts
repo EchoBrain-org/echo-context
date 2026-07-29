@@ -24,6 +24,7 @@ import {
   type ResolvedRepoPath,
 } from '../util/repo-path.js';
 import { buildSourceAppMap, SOURCE_APP_VALUES, type SourceApp } from '../util/source-app.js';
+import { strictInputSchema } from '../util/strict-input.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { clipJsonString } from '../wire-shape/clip.js';
 import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
@@ -938,7 +939,7 @@ export function registerSearchMemories(server: McpServer, storage: Storage): voi
     'search_memories',
     {
       description: SEARCH_MEMORIES_DESCRIPTION,
-      inputSchema: {
+      inputSchema: strictInputSchema('search_memories', {
         query: z.string().max(4096).optional(),
         source_app: z.enum(SOURCE_APP_VALUES).optional(),
         source_prefix: z.string().max(4096).optional(),
@@ -972,7 +973,7 @@ export function registerSearchMemories(server: McpServer, storage: Storage): voi
           .describe(
             'AND-joined allow-listed metadata filters. A string means equality; an array means membership.',
           ),
-      },
+      }),
       outputSchema: searchMemoriesOutputSchema,
       annotations: { readOnlyHint: true },
     },

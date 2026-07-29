@@ -41,3 +41,19 @@ export const ISO8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 export const isoString = z
   .string()
   .regex(ISO8601_RE, 'expected ISO 8601 timestamp like 2026-04-30T12:00:00.000Z');
+
+// B3 (0.1.0-beta.5 audit): `wait_for_new_turns` requires the offset instead
+// of warning. Its documented `since = next_since` feed-back loop turns a
+// single local-time misparse into a future watermark that hides every new
+// turn on all subsequent calls, so that one tool fails closed at the schema
+// boundary; the sibling tools keep the permissive pattern + [TZ] warning.
+// Same four TZ forms as `hasTzMarker`: Z, ±HH:MM, ±HHMM, ±HH.
+export const ISO8601_TZ_REQUIRED_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)$/;
+
+export const isoStringWithOffset = z
+  .string()
+  .regex(
+    ISO8601_TZ_REQUIRED_RE,
+    'expected ISO 8601 timestamp with an explicit offset like 2026-04-30T12:00:00.000Z or 2026-04-30T05:00:00-07:00',
+  );

@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { strictInputSchema } from '../util/strict-input.js';
 
 // Output schema mirrors the handler's return shape exactly. Small enough that
 // full mirroring (vs. the permissive z.record(z.unknown()) used for the deeply
@@ -16,7 +17,7 @@ export function registerEchoPing(server: McpServer): void {
     {
       description:
         'Connectivity check: returns pong with the received message and a timestamp.',
-      inputSchema: { message: z.string().max(1024).optional() },
+      inputSchema: strictInputSchema('echo_ping', { message: z.string().max(1024).optional() }),
       outputSchema: echoPingOutputSchema,
       annotations: { readOnlyHint: true },
     },
