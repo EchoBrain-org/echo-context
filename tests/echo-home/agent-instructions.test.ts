@@ -271,6 +271,67 @@ describe("echo-context agent instruction sync", () => {
     ).toBe("http://127.0.0.1:39478/mcp");
   });
 
+  it("does not let an explicit URL bypass malformed canonical state", () => {
+    const registry = path(
+      ".local",
+      "share",
+      "echo-context",
+      "state",
+      "dogfooding-journals.json",
+    );
+    mkdirSync(join(registry, ".."), { recursive: true });
+    writeFileSync(
+      registry,
+      `${JSON.stringify({
+        enabled: "true",
+        mcp_url: "http://127.0.0.1:39478/mcp",
+        health_url: "http://127.0.0.1:39478/healthz",
+      })}\n`,
+    );
+    expect(() =>
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39479/mcp"),
+    ).toThrow("registry enabled must be boolean");
+  });
+
+  it("permits explicit bootstrap only for absent or explicitly disabled state", () => {
+    expect(
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39478/mcp"),
+    ).toBe("http://127.0.0.1:39478/mcp");
+    const registry = path(
+      ".local",
+      "share",
+      "echo-context",
+      "state",
+      "dogfooding-journals.json",
+    );
+    mkdirSync(join(registry, ".."), { recursive: true });
+    writeFileSync(
+      registry,
+      `${JSON.stringify({
+        enabled: false,
+        mcp_url: "http://127.0.0.1:39478/mcp",
+      })}\n`,
+    );
+    expect(
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39479/mcp"),
+    ).toBe("http://127.0.0.1:39479/mcp");
+  });
+
+  it("rejects credentials, queries, and fragments in MCP endpoints", () => {
+    expect(() =>
+      tool.resolveAgentMcpUrl(userHome, "http://token@127.0.0.1:39478/mcp"),
+    ).toThrow("must be a loopback");
+    expect(() =>
+      tool.resolveAgentMcpUrl(
+        userHome,
+        "http://127.0.0.1:39478/mcp?daemon=other",
+      ),
+    ).toThrow("must be a loopback");
+    expect(() =>
+      tool.resolveAgentMcpUrl(userHome, "http://127.0.0.1:39478/mcp#other"),
+    ).toThrow("must be a loopback");
+  });
+
   it("fails closed instead of guessing a port when canonical state is absent", () => {
     expect(() => tool.resolveAgentMcpUrl(userHome)).toThrow(
       "pass --mcp-url during first sync",

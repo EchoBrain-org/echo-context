@@ -63,8 +63,17 @@ function loopbackMcpUrl(value) {
     parsed.hostname === "127.0.0.1" ||
     parsed.hostname === "localhost" ||
     parsed.hostname === "[::1]";
-  if (!loopback || parsed.protocol !== "http:" || parsed.pathname !== "/mcp")
+  if (
+    !loopback ||
+    parsed.protocol !== "http:" ||
+    parsed.pathname !== "/mcp" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
     return null;
+  }
   return parsed.toString().replace(/\/$/, "");
 }
 
@@ -83,7 +92,11 @@ function loopbackHealthUrl(value) {
   if (
     !loopback ||
     parsed.protocol !== "http:" ||
-    parsed.pathname !== "/healthz"
+    parsed.pathname !== "/healthz" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
   ) {
     return null;
   }
@@ -120,22 +133,27 @@ export function resolveAgentMcpUrl(userHome, explicit) {
     fail(`could not parse dogfooding registry: ${registry}`);
   }
   const accepted = loopbackMcpUrl(parsed?.mcp_url);
-  if (parsed?.enabled !== true && explicitUrl !== undefined) {
-    return explicitUrl;
+  if (parsed?.enabled !== true && parsed?.enabled !== false) {
+    fail(`dogfooding registry enabled must be boolean: ${registry}`);
+  }
+  if (parsed.enabled === false) {
+    if (explicitUrl !== undefined) return explicitUrl;
+    if (accepted === null) {
+      fail(`disabled dogfooding registry has no valid mcp_url: ${registry}`);
+    }
+    return accepted;
   }
   if (accepted === null) {
     fail(`dogfooding registry has no valid loopback mcp_url: ${registry}`);
   }
-  if (parsed?.enabled === true) {
-    const health = loopbackHealthUrl(parsed?.health_url);
-    if (health === null)
-      fail(`enabled dogfooding registry has no valid health_url: ${registry}`);
-    if (new URL(accepted).origin !== new URL(health).origin) {
-      fail(`dogfooding registry MCP and health URLs do not share an origin`);
-    }
-    if (explicitUrl !== undefined && explicitUrl !== accepted) {
-      fail(`--mcp-url conflicts with the enabled dogfooding registry`);
-    }
+  const health = loopbackHealthUrl(parsed?.health_url);
+  if (health === null)
+    fail(`enabled dogfooding registry has no valid health_url: ${registry}`);
+  if (new URL(accepted).origin !== new URL(health).origin) {
+    fail(`dogfooding registry MCP and health URLs do not share an origin`);
+  }
+  if (explicitUrl !== undefined && explicitUrl !== accepted) {
+    fail(`--mcp-url conflicts with the enabled dogfooding registry`);
   }
   return accepted;
 }

@@ -230,6 +230,22 @@ describe("version-bound dogfooding journal client", () => {
     ).rejects.toThrow("MCP and health URLs do not share an origin");
   });
 
+  it("rejects hidden endpoint state in an enabled registry", async () => {
+    seedJournal();
+    const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+    registry.health_url = "http://127.0.0.1:39478/healthz?runtime=other";
+    writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await expect(
+      client.resolveJournal({
+        actor: "codex",
+        registryPath,
+        fetchImpl: healthyFetch,
+      }),
+    ).rejects.toThrow("dogfooding registry has an invalid schema");
+  });
+
   it("serializes a compact revalidated append into the correct actor shard", async () => {
     seedJournal();
     const result = await client.appendJournalEntry({

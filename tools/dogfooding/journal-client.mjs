@@ -92,7 +92,11 @@ function localHealthUrl(value) {
   if (
     !loopback ||
     parsed.protocol !== "http:" ||
-    parsed.pathname !== "/healthz"
+    parsed.pathname !== "/healthz" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
   ) {
     return null;
   }
@@ -111,7 +115,15 @@ function localMcpUrl(value) {
     parsed.hostname === "127.0.0.1" ||
     parsed.hostname === "localhost" ||
     parsed.hostname === "[::1]";
-  if (!loopback || parsed.protocol !== "http:" || parsed.pathname !== "/mcp") {
+  if (
+    !loopback ||
+    parsed.protocol !== "http:" ||
+    parsed.pathname !== "/mcp" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
     return null;
   }
   return parsed.toString().replace(/\/$/, "");
