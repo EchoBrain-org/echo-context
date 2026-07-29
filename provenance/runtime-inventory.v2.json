@@ -49,8 +49,8 @@
       "path": "tools/check-runtime-inventory.mjs"
     },
     {
-      "blob_oid": "e2c50cd6d2b92e2ca049453c3c3a91166cbc38ed",
-      "content_sha256": "0a38a1116d27f61a2a1a78d12a81d182b5d5aae7e35c3e974afb79cc77e71da2",
+      "blob_oid": "b673b38190dea580675575a16354c2fd8cac2a29",
+      "content_sha256": "a3a622c1f81759e657ce70ffcd3bc1fabeb138eca2f122b3dd73c73e88c0ad0a",
       "mode": "100644",
       "path": "tools/dogfooding/journal-client.mjs"
     },
