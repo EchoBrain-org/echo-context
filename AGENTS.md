@@ -9,6 +9,8 @@ not add product coordination, Slack, backlog, or enrichment-loop ownership.
   `Project_echo`.
 - Changes to `main` require an independently reviewed feature branch. A builder
   must never review its own implementation.
+- Hosted CI is source verification only. It must remain read-only and must not
+  publish, promote, migrate, cut over, roll back, or acquire runtime authority.
 - Build, install, and promote only one exact reviewed Git object. Never rebuild
   between founder-live and client-live acceptance.
 - Treat live migration and cutover as explicit operator workflows. Copy legacy
