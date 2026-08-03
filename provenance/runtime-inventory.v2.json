@@ -109,6 +109,12 @@
       "path": "tools/repository-bootstrap-gate.mjs"
     },
     {
+      "blob_oid": "19250f748ad3483d3ff3990a6ee65afc4c3ce9e6",
+      "content_sha256": "4e11a07fec43617b4b140f65c421323de1a6d2d7e56b53d58f796578e1ea3248",
+      "mode": "100644",
+      "path": "tools/run-ci.mjs"
+    },
+    {
       "blob_oid": "458a1afeb3ee92e1803e2cec5ca3aab1d4030dfd",
       "content_sha256": "4492c46e57079c675b941d7fe5f420726d0482248c407e6bc887279b6e1ffc76",
       "mode": "100644",
@@ -6081,7 +6087,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "fe64b8fc57c23cc1cb0eb057051ab6027f0fb127e1fd136ecd91f7ee530c410d",
+  "package_json_sha256": "37564b34eb77771a92000e659f3a078c058dfd783c36342357915020941f0e1b",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
@@ -6108,6 +6114,14 @@
       "command": "node tools/sync-agent-instructions.mjs --check",
       "executable": "node",
       "name": "check:agents"
+    },
+    {
+      "argv": [
+        "tools/run-ci.mjs"
+      ],
+      "command": "node tools/run-ci.mjs",
+      "executable": "node",
+      "name": "ci"
     },
     {
       "argv": [

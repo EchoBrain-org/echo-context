@@ -31,6 +31,7 @@
     "npm": "10.9.4"
   },
   "scripts": {
+    "ci": "node tools/run-ci.mjs",
     "build": "node tools/build-package.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",

@@ -146,19 +146,37 @@ extraction baseline; their operator replay materializes that exact Git commit.
 They are not a requirement to retain every historical file in the current
 package.
 
-## Build and package
+## Continuous integration
 
-Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. Run the source gates,
-commit the result, and obtain independent review before packaging. From that
-clean reviewed commit, create exactly one tarball and install it exactly once
-into a durable, previously nonexistent prefix:
+Pull requests into `main` and pushes to `main` run one read-only GitHub Actions
+job on the reviewed Node `22.22.1` and npm `10.9.4` toolchain. The canonical
+gate is also available locally from a clean, committed worktree:
 
 ```sh
-npm ci
-npm run typecheck
-npm run lint
-npm run test:ci
-npm run verify:inventory
+npm run ci
+```
+
+That command verifies the exact toolchain and lockfile/shrinkwrap parity,
+installs and verifies the pinned secret scanner, snapshots and scans complete
+remote Git history plus the candidate commit, runs a clean dependency install,
+type-checks, lints, runs the ordinary test suite, verifies inventory and source
+authority, checks Git object integrity, and builds and verifies a temporary
+deterministic source artifact. Temporary scanner and artifact files are removed
+before it returns.
+
+CI has no release or runtime authority. Package smoke, operator replay,
+Founder Live, migration, cutover, rollback, and publication remain explicit
+reviewed operator workflows.
+
+## Build and package
+
+Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. Run the canonical CI
+gate, obtain independent review, and package only the clean reviewed commit.
+From that commit, create exactly one tarball and install it exactly once into a
+durable, previously nonexistent prefix:
+
+```sh
+npm run ci
 
 REVIEWED_COMMIT="$(git rev-parse HEAD)"
 RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.6-$REVIEWED_COMMIT"
