@@ -164,62 +164,90 @@ authority, checks Git object integrity, and builds and verifies a temporary
 deterministic source artifact. Temporary scanner and artifact files are removed
 before it returns.
 
-CI has no release or runtime authority. Package smoke, operator replay,
-Founder Live, migration, cutover, rollback, and publication remain explicit
-reviewed operator workflows.
+CI has no runtime authority. The manual beta workflow adds one read-only hosted
+tag-and-source evidence validator, but artifact construction, package smoke,
+tagging, draft creation, and publication remain explicit local operator actions.
 
-## Build and package
+## Beta release gate
 
-Node `22.22.1` and npm `10.9.4` are the reviewed toolchain. Run the canonical CI
-gate, obtain independent review, and package only the clean reviewed commit.
-From that commit, create exactly one tarball and install it exactly once into a
-durable, previously nonexistent prefix:
+The minimum beta gate publishes one GitHub prerelease from one reviewed,
+smoke-tested tarball. It does not publish to npm and it does not promote or cut
+over a live daemon. `0.1.0-beta.6` predates this gate, so the first eligible
+candidate is `0.1.0-beta.7` or newer.
 
-```sh
-npm run ci
+The one-time repository policy is part of the gate: create a `beta-release`
+environment with at least one named user reviewer, prevent self-review, disable
+administrator bypass, add exactly one selected tag rule named
+`v*-beta.*`, and keep the environment free of secrets. Enable immutable
+releases for the repository. `beta:draft` and `beta:publish` fail closed when
+the machine-readable parts of that policy drift, and publication also requires
+GitHub's approval history to name a configured reviewer other than the run's
+triggering actor. On GitHub Free, Pro, and Team, required environment reviewers
+are available only while this repository is public; re-check the account plan
+before making it private.
 
-REVIEWED_COMMIT="$(git rev-parse HEAD)"
-RELEASE_ROOT="$HOME/.local/share/echo-context/releases/0.1.0-beta.6-$REVIEWED_COMMIT"
-INSTALL_PREFIX="$RELEASE_ROOT/prefix"
-PROMOTION_RESULT="$RELEASE_ROOT/promotion-result.json"
-mkdir -p "$RELEASE_ROOT"
-npm pack --pack-destination "$RELEASE_ROOT"
-npm run --silent smoke:package -- \
-  "$RELEASE_ROOT/echo-context-0.1.0-beta.6.tgz" \
-  --prefix "$INSTALL_PREFIX" > "$PROMOTION_RESULT"
-cat "$PROMOTION_RESULT"
-```
-
-`npm pack` invokes the clean-tree package build; do not run a second build. The
-smoke command installs the existing tarball as a prefix-scoped global package,
-then verifies package import, migrations, manifest integrity, daemon health,
-the bounded service API, the sealed seven-tool MCP roster, one tool call, and
-clean shutdown. It creates the receipt directory before hashing the installed
-tree, excludes only the receipt file from that tree, writes canonical receipt
-bytes, and restarts the daemon under that exact receipt-bound identity. Only
-after the restart is healthy does it emit the receipt SHA-256 in
-`promotion-result.json`. Bind every later command to those externally recorded
-smoke results and the exact executable:
+First update the package, lockfile, shrinkwrap, and `src/version.ts` to one new
+beta version. Merge its feature branch only after GitHub's `verify` check and an
+independent approval pass on the exact branch-head commit. Once that commit is
+reachable from `origin/main`, check out that reviewed commit and stage it:
 
 ```sh
-PROMOTION_RECEIPT="$INSTALL_PREFIX/share/echo-context/promotion-receipt.json"
-EXACT_CLI="$INSTALL_PREFIX/bin/echo-context"
-REVIEWED_ARTIFACT_DIGEST="$(
-  node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(r.artifactDigest)' \
-    "$PROMOTION_RESULT"
-)"
-REVIEWED_PROMOTION_RECEIPT_DIGEST="$(
-  node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(r.promotionReceiptDigest)' \
-    "$PROMOTION_RESULT"
-)"
+npm run beta:stage
 ```
 
-Founder-live and client-live reuse `EXACT_CLI`, `INSTALL_PREFIX`, and
-both reviewed digests; never rebuild or reinstall between stages. Every exact
-command re-hashes the receipt bytes, package tarball, and installed tree and
-requires the same real CLI, package root, prefix, Node executable, and Node
-version. The shrinkwrap pins dependency tarballs, while the runtime manifest
-verifies package-owned files at startup.
+`beta:stage` refuses a dirty tree, an unmerged or unreviewed source commit, a
+stale approval, a failed or foreign `verify` check, a reused version, or an
+existing release directory. It runs canonical CI, invokes `npm pack` exactly
+once, and installs and smokes that tarball exactly once in a new durable prefix.
+The command prints a canonical result containing the release root, source SHA,
+artifact SHA-256, and promotion-receipt SHA-256. A failed root is preserved as
+evidence and cannot silently be rebuilt under the same identity.
+
+Create a GitHub draft from those exact local bytes, substituting the absolute
+`release_root` emitted above:
+
+```sh
+npm run beta:draft -- --release-root /absolute/path/from/beta-stage
+```
+
+This re-verifies the local tarball, installed tree, receipt, review, and CI
+evidence; creates and pushes the exact annotated beta tag; creates a draft
+prerelease containing only the tarball, checksum, and sanitized
+`beta-release-manifest.v1.json`; downloads those assets again to verify the
+remote draft; then dispatches the hosted gate and records the exact returned run
+ID. The `beta-release` environment requires a second person to approve that
+run. The hosted job creates no deployment record and performs no dependency
+install, build, package smoke, artifact transfer, release access, or mutation.
+It validates the checked-out tag, package version, `main` ancestry, latest
+`verify` result, and current independent pull-request approval.
+
+After the `beta-release-gate` run succeeds, publish the same draft by copying
+the two confirmations from `beta-stage-result.json`:
+
+```sh
+npm run beta:publish -- \
+  --release-root /absolute/path/from/beta-stage \
+  --confirm-source-sha REVIEWED_40_HEX_COMMIT \
+  --confirm-artifact-sha REVIEWED_64_HEX_TARBALL_SHA256
+```
+
+Publication refuses to proceed unless GitHub immutable releases are enabled,
+the independently approved environment is still configured for beta tags, the
+exact recorded hosted run succeeded on the same source, GitHub records an
+approval from a configured reviewer other than the triggering actor, and the
+local and re-downloaded remote manifests are byte-identical. It changes only
+the existing GitHub draft to a prerelease, then proves the published release is
+immutable and revalidates its assets. It never rebuilds, reinstalls, or
+reuploads the artifact. Immediately before making the draft public, it writes a
+local intent bound to the release ID, gate run, source, manifest, and tarball.
+If the process stops after GitHub publishes but before the local result is
+written, rerun the same command to verify and finish that exact publication;
+an already-published release without the prior intent is rejected.
+
+Founder-live and later stages reuse the exact CLI, prefix, artifact digest, and
+promotion receipt already recorded inside the durable release root. For the
+operator examples below, set `EXACT_CLI` to that root's
+`prefix/bin/echo-context`; do not resolve it from another installation.
 
 ## Additive migration
 

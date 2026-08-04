@@ -13,6 +13,12 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
+      "blob_oid": "d7b2952ef954c9c6696c031a4756da544189650e",
+      "content_sha256": "74f285d48aa6deb1dfe2bb270ce138f5e52839e90f125603bd46da3229b76f5b",
+      "mode": "100644",
+      "path": "tools/beta-release-gate.mjs"
+    },
+    {
       "blob_oid": "872972b24b1c0de39809c41183dec2f2e112a35c",
       "content_sha256": "c01f822ea6c91be2a87d99a4e29066aae2076bd7e50437f4c008713540c4d8b2",
       "mode": "100644",
@@ -43,8 +49,8 @@
       "path": "tools/check-repository-authority.mjs"
     },
     {
-      "blob_oid": "fbd2f3142ad29e6926648b25a6dc6c2352f13e77",
-      "content_sha256": "90b09162018f7948098c8abf4ce323802022731d6c41cd1d395f71746a2358b5",
+      "blob_oid": "213dfc0668a3c50f5263509f6776f1f3968e86ba",
+      "content_sha256": "a41b0cc706302c2f7ab587dc93ab6fe57f06ae28badfcb1e3677c6339b7bc111",
       "mode": "100644",
       "path": "tools/check-runtime-inventory.mjs"
     },
@@ -6087,9 +6093,45 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "37564b34eb77771a92000e659f3a078c058dfd783c36342357915020941f0e1b",
+  "package_json_sha256": "5f0f8549777c523313cc11ed1696b912d58d5b02e5aaf1118532320d8ccd90ac",
   "schema": "runtime-inventory.v2",
   "scripts": [
+    {
+      "argv": [
+        "tools/beta-release-gate.mjs",
+        "draft"
+      ],
+      "command": "node tools/beta-release-gate.mjs draft",
+      "executable": "node",
+      "name": "beta:draft"
+    },
+    {
+      "argv": [
+        "tools/beta-release-gate.mjs",
+        "publish"
+      ],
+      "command": "node tools/beta-release-gate.mjs publish",
+      "executable": "node",
+      "name": "beta:publish"
+    },
+    {
+      "argv": [
+        "tools/beta-release-gate.mjs",
+        "stage"
+      ],
+      "command": "node tools/beta-release-gate.mjs stage",
+      "executable": "node",
+      "name": "beta:stage"
+    },
+    {
+      "argv": [
+        "tools/beta-release-gate.mjs",
+        "validate-hosted"
+      ],
+      "command": "node tools/beta-release-gate.mjs validate-hosted",
+      "executable": "node",
+      "name": "beta:validate"
+    },
     {
       "argv": [
         "tools/build-package.mjs"
@@ -6237,9 +6279,11 @@
     }
   ],
   "system_helpers": [
+    "gh",
     "git",
     "gitleaks",
     "node",
-    "npm"
+    "npm",
+    "tar"
   ]
 }

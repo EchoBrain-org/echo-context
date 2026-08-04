@@ -67,7 +67,7 @@ describe('AC2 — successor runtime dependency set', () => {
       'tools/fresh-clone-cleanup.mjs', 'tsconfig.json', 'vitest.ci.config.ts',
     ]) expect(manifest.executable_sources.some((row) => row.path === path), path).toBe(true);
     expect(manifest.executable_sources.some((row) => row.path === 'tools/release-publication-controller.mjs')).toBe(false);
-    expect(manifest.system_helpers).toEqual(['git', 'gitleaks', 'node', 'npm']);
+    expect(manifest.system_helpers).toEqual(['gh', 'git', 'gitleaks', 'node', 'npm', 'tar']);
     const closure = new Map(manifest.npm_closure.map((row) => [row.lock_path, row]));
     for (const path of ['node_modules/better-sqlite3', 'node_modules/typescript', 'node_modules/vitest', 'node_modules/tsx', 'node_modules/esbuild']) {
       expect(closure.has(path), path).toBe(true);

@@ -9,8 +9,12 @@ not add product coordination, Slack, backlog, or enrichment-loop ownership.
   `Project_echo`.
 - Changes to `main` require an independently reviewed feature branch. A builder
   must never review its own implementation.
-- Hosted CI is source verification only. It must remain read-only and must not
+- Hosted automation is limited to source verification and manual beta-draft
+  validation. It must remain read-only and must not build, install, upload,
   publish, promote, migrate, cut over, roll back, or acquire runtime authority.
+- Beta artifacts are staged and smoke-tested once in a durable local release
+  root. GitHub receives those exact bytes as a draft; publication requires the
+  independently approved `beta-release` environment and immutable releases.
 - Build, install, and promote only one exact reviewed Git object. Never rebuild
   between founder-live and client-live acceptance.
 - Treat live migration and cutover as explicit operator workflows. Copy legacy
