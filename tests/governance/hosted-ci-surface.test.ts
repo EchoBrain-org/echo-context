@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WORKFLOW_PATH = '.github/workflows/ci.yml';
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
+const BETA_WORKFLOW_PATH = '.github/workflows/beta-release-gate.yml';
 
 function filesBelow(root: string): string[] {
   if (!existsSync(root)) return [];
@@ -15,10 +16,14 @@ function filesBelow(root: string): string[] {
 }
 
 describe('lean hosted CI boundary', () => {
-  it('permits exactly one read-only source-verification workflow', () => {
-    expect(filesBelow(join(ROOT, '.github', 'workflows'))).toEqual([WORKFLOW_PATH]);
+  it('permits exactly the read-only source and beta verification workflows', () => {
+    expect(filesBelow(join(ROOT, '.github', 'workflows')).sort()).toEqual(
+      [BETA_WORKFLOW_PATH, CI_WORKFLOW_PATH].sort(),
+    );
+  });
 
-    const workflow = readFileSync(join(ROOT, WORKFLOW_PATH), 'utf8');
+  it('locks the existing source-verification workflow', () => {
+    const workflow = readFileSync(join(ROOT, CI_WORKFLOW_PATH), 'utf8');
     expect(workflow).toContain('pull_request:\n    branches: [main]');
     expect(workflow).toContain('push:\n    branches: [main]');
     expect(workflow).toContain('permissions:\n  contents: read');
@@ -30,7 +35,55 @@ describe('lean hosted CI boundary', () => {
     expect(workflow).not.toMatch(/pull_request_target|workflow_run|workflow_dispatch|\bsecrets\.|\bwrite\b|npm publish|gh release/u);
   });
 
-  it('keeps publication, release authority, and hosted controllers absent', () => {
+  it('locks the manual beta gate to validation without release authority', () => {
+    const workflow = readFileSync(join(ROOT, BETA_WORKFLOW_PATH), 'utf8');
+    const triggerBlock = workflow.slice(workflow.indexOf('on:\n') + 'on:\n'.length, workflow.indexOf('\npermissions:\n'));
+    const jobsBlock = workflow.slice(workflow.indexOf('jobs:\n') + 'jobs:\n'.length);
+
+    expect(workflow).toContain('on:\n  workflow_dispatch:');
+    expect(Array.from(triggerBlock.matchAll(/^  ([a-z0-9_-]+):$/gmu), (match) => match[1])).toEqual([
+      'workflow_dispatch',
+    ]);
+    expect(workflow).toContain(
+      'tag:\n        description: Existing beta Git tag to validate\n        required: true\n        type: string',
+    );
+    expect(workflow).toContain(
+      'permissions:\n  actions: read\n  checks: read\n  contents: read\n  pull-requests: read',
+    );
+    expect(workflow).toContain(
+      'concurrency:\n  group: beta-release-gate-${{ inputs.tag }}\n  cancel-in-progress: false',
+    );
+    expect(workflow).toContain('jobs:\n  beta-release-gate:');
+    expect(workflow).toContain('runs-on: ubuntu-24.04');
+    expect(workflow).toContain(
+      '    environment:\n      name: beta-release\n      deployment: false',
+    );
+    expect(workflow).toContain(
+      'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    );
+    expect(workflow).toContain('ref: ${{ inputs.tag }}\n          fetch-depth: 0');
+    expect(workflow).toContain(
+      'uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+    );
+    expect(workflow).toContain('node-version: 22.22.1');
+    expect(workflow).toContain('ACTUAL_REF_TYPE: ${{ github.ref_type }}');
+    expect(workflow).toContain('ACTUAL_REF_NAME: ${{ github.ref_name }}');
+    expect(workflow).toContain('test "$ACTUAL_REF_TYPE" = "tag"');
+    expect(workflow).toContain('test "$ACTUAL_REF_NAME" = "$BETA_TAG"');
+    expect(workflow).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(workflow).toContain('run: npm run beta:validate -- --tag "$BETA_TAG"');
+    expect(workflow.match(/^\s*permissions:/gmu)).toHaveLength(1);
+    expect(Array.from(jobsBlock.matchAll(/^  ([a-z0-9_-]+):$/gmu), (match) => match[1])).toEqual([
+      'beta-release-gate',
+    ]);
+    expect(workflow.match(/^\s*environment:/gmu)).toHaveLength(1);
+    expect(workflow.match(/^\s*deployment: false$/gmu)).toHaveLength(1);
+    expect(workflow).not.toMatch(
+      /pull_request_target|\bsecrets\.|\bwrite\b|npm (?:ci|install|pack|publish)|npm run (?:build|smoke:package)|node\s+\S*build\S*|actions\/(?:upload|download)-artifact|git (?:add|commit|push|tag)|gh release|gh api[^\n]*(?:--method|-X)\s+(?:POST|PUT|PATCH|DELETE)/u,
+    );
+  });
+
+  it('keeps hosted publication and runtime controllers absent', () => {
     const paths = [...filesBelow(join(ROOT, 'tools')), ...filesBelow(join(ROOT, 'schemas'))];
     const forbidden = paths.filter((path) =>
       /(?:release-publication|operation-host|hosting-controls|workflow-artifact|release-bundle|release-tuple)/u.test(path) ||
@@ -39,11 +92,22 @@ describe('lean hosted CI boundary', () => {
 
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
     expect(pkg.scripts['ci']).toBe('node tools/run-ci.mjs');
-    expect(Object.keys(pkg.scripts).filter((name) => /publish|release|hosted|workflow/u.test(name))).toEqual([]);
+    expect(pkg.scripts).toMatchObject({
+      'beta:draft': 'node tools/beta-release-gate.mjs draft',
+      'beta:publish': 'node tools/beta-release-gate.mjs publish',
+      'beta:stage': 'node tools/beta-release-gate.mjs stage',
+      'beta:validate': 'node tools/beta-release-gate.mjs validate-hosted',
+    });
+    expect(
+      Object.keys(pkg.scripts).filter(
+        (name) => /release|hosted|workflow/u.test(name) || (/publish/u.test(name) && name !== 'beta:publish'),
+      ),
+    ).toEqual([]);
 
     const guidance = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
     expect(guidance).toContain('one exact reviewed Git object');
-    expect(guidance).toContain('source verification only');
+    expect(guidance).toContain('source verification and manual beta-draft');
+    expect(guidance).toContain('must remain read-only');
     expect(guidance).not.toContain('workflow artifact ID');
   });
 });

@@ -1,0 +1,52 @@
+name: Beta release gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing beta Git tag to validate
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: beta-release-gate-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  beta-release-gate:
+    runs-on: ubuntu-24.04
+    environment:
+      name: beta-release
+      deployment: false
+    env:
+      BETA_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out the requested tag with complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the dispatched ref matches the requested tag
+        env:
+          ACTUAL_REF_TYPE: ${{ github.ref_type }}
+          ACTUAL_REF_NAME: ${{ github.ref_name }}
+        run: |
+          test "$ACTUAL_REF_TYPE" = "tag"
+          test "$ACTUAL_REF_NAME" = "$BETA_TAG"
+
+      - name: Use the reviewed Node toolchain
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.1
+
+      - name: Validate the reviewed beta tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run beta:validate -- --tag "$BETA_TAG"

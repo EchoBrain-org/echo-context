@@ -135,7 +135,7 @@ function main() {
     scripts,
     executable_sources: executableSources,
     npm_closure: closure,
-    system_helpers: ['git', 'gitleaks', 'node', 'npm'],
+    system_helpers: ['gh', 'git', 'gitleaks', 'node', 'npm', 'tar'],
   };
   if (args.emit) {
     writeFileSync(args.manifest, canonical(computed));
