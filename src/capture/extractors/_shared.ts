@@ -15,6 +15,7 @@ import type {
 } from "../contracts.js";
 import type { Logger } from "../../logging/index.js";
 import { BoundedLruMap } from "../../util/bounded-lru-map.js";
+import { _isAllowedPathIn } from "../sources.js";
 
 export type {
   ExtractorHandle,
@@ -1128,6 +1129,7 @@ export async function wireJsonlExtractor(opts: {
   ) => FSWatcher;
 }): Promise<ExtractorHandle> {
   const { prefix, offsetMap, handle, log } = opts;
+  const watchRoots = [prefix] as const;
   const maxPendingPaths = positiveInteger(opts.maxPendingPaths, 1024);
   const reconciliationBatchSize = positiveInteger(
     opts.reconciliationBatchSize,
@@ -1156,7 +1158,7 @@ export async function wireJsonlExtractor(opts: {
   const idleWaiters = new Set<() => void>();
 
   function isJsonl(p: string): boolean {
-    return p.startsWith(prefix) && p.endsWith(".jsonl");
+    return p.endsWith(".jsonl") && _isAllowedPathIn(p, watchRoots);
   }
 
   function pendingDrained(): boolean {

@@ -25,7 +25,7 @@ import {
 
 export const CLAUDE_CODE_VERSION = 'claude-code@2';
 
-export const CLAUDE_CODE_SOURCE_RE = /^fs:.*\/\.claude\/projects\/.*\.jsonl$/;
+export const CLAUDE_CODE_SOURCE_RE = /^fs:.*[\\/]\.claude[\\/]projects[\\/].*\.jsonl$/;
 
 export function matchesClaudeCode(source: string): boolean {
   return CLAUDE_CODE_SOURCE_RE.test(source);

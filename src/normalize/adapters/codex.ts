@@ -25,7 +25,7 @@ import {
 
 export const CODEX_VERSION = 'codex@2';
 
-export const CODEX_SOURCE_RE = /^fs:.*\/\.codex\/sessions\/.*\.jsonl$/;
+export const CODEX_SOURCE_RE = /^fs:.*[\\/]\.codex[\\/]sessions[\\/].*\.jsonl$/;
 
 export function matchesCodex(source: string): boolean {
   return CODEX_SOURCE_RE.test(source);

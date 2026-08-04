@@ -1,0 +1,62 @@
+name: Onboarding compatibility
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-onboarding-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-onboarding:
+    name: portable onboarding (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            os: ubuntu-24.04
+          - platform: windows-x64
+            os: windows-2025
+          - platform: macos-arm64
+            os: macos-15
+    env:
+      CI: "1"
+      TZ: UTC
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use the exact Node toolchain
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.1
+
+      - name: Install source dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Exercise portable package onboarding
+        run: npm run smoke:onboarding
+
+  onboarding-compatibility:
+    name: onboarding-compatibility
+    if: ${{ always() }}
+    needs: portable-onboarding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every portable onboarding lane
+        env:
+          MATRIX_RESULT: ${{ needs.portable-onboarding.result }}
+        run: test "$MATRIX_RESULT" = "success"

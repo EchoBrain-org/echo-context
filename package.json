@@ -50,6 +50,7 @@
     "sync:agents": "node tools/sync-agent-instructions.mjs",
     "check:agents": "node tools/sync-agent-instructions.mjs --check",
     "scan:secrets": "tools/secret-scan.sh",
+    "smoke:onboarding": "node tools/smoke-portable-onboarding.mjs",
     "smoke:package": "node tools/smoke-package.mjs"
   },
   "dependencies": {

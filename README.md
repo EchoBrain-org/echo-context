@@ -148,9 +148,9 @@ package.
 
 ## Continuous integration
 
-Pull requests into `main` and pushes to `main` run one read-only GitHub Actions
-job on the reviewed Node `22.22.1` and npm `10.9.4` toolchain. The canonical
-gate is also available locally from a clean, committed worktree:
+Pull requests into `main` and pushes to `main` run the canonical read-only
+source gate on the reviewed Node `22.22.1` and npm `10.9.4` toolchain. The gate
+is also available locally from a clean, committed worktree:
 
 ```sh
 npm run ci
@@ -164,9 +164,29 @@ authority, checks Git object integrity, and builds and verifies a temporary
 deterministic source artifact. Temporary scanner and artifact files are removed
 before it returns.
 
-CI has no runtime authority. The manual beta workflow adds one read-only hosted
-tag-and-source evidence validator, but artifact construction, package smoke,
-tagging, draft creation, and publication remain explicit local operator actions.
+The separate onboarding workflow proves the portable, manual-daemon path on
+fresh hosted runners:
+
+| Runner       | Architecture | Portable proof                                                                            |
+| ------------ | ------------ | ----------------------------------------------------------------------------------------- |
+| Ubuntu 24.04 | x64          | tarball install, loopback daemon, Codex + Claude live capture, service API, MCP retrieval |
+| Windows 2025 | x64          | tarball install, loopback daemon, Codex + Claude live capture, service API, MCP retrieval |
+| macOS 15     | arm64        | tarball install, loopback daemon, Codex + Claude live capture, service API, MCP retrieval |
+
+Each lane packs once, installs that disposable tarball into an isolated local
+consumer, starts the installed `dist/cli.js` against scratch state, writes new
+Codex and Claude Code turns only after health is green, and retrieves both
+through raw search and normalized `find_clusters`. The tarball never leaves the
+runner and is not a release or promotion artifact. Windows process termination
+is forceful, so that lane proves bounded teardown and scratch cleanup rather
+than graceful signal handling.
+
+This matrix does not install a background service. Native `launchd`
+installation remains macOS-only and stays in the explicit local promotion
+workflow; this package has no systemd or Windows Service installer. The manual
+beta workflow remains a read-only hosted tag-and-source validator, while beta
+artifact construction, promotion smoke, tagging, draft creation, and
+publication remain explicit local operator actions.
 
 ## Beta release gate
 

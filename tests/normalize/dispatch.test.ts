@@ -60,6 +60,22 @@ describe('normalize dispatch', () => {
     expect(findAdapter('api:granola')?.name).toBe('granola');
   });
 
+  it('matches and normalizes live Windows coding-session sources', () => {
+    const claude = {
+      ...claudeCodeFixture,
+      source: 'fs:C:\\Users\\runner\\.claude\\projects\\portable-project\\session.jsonl',
+    };
+    const codex = {
+      ...codexFixture,
+      source: 'fs:C:\\Users\\runner\\.codex\\sessions\\2026\\08\\03\\rollout.jsonl',
+    };
+
+    expect(findAdapter(claude.source)?.name).toBe('claude-code');
+    expect(findAdapter(codex.source)?.name).toBe('codex');
+    expect(normalizeEvent(claude)?.source.app).toBe('claude_code');
+    expect(normalizeEvent(codex)?.source.app).toBe('codex');
+  });
+
   it('returns null when no adapter matches a historical raw fs notification', () => {
     const evt: CaptureEvent = {
       id: 'evt_unknown',

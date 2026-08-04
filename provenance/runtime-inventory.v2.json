@@ -19,8 +19,8 @@
       "path": "tools/beta-release-gate.mjs"
     },
     {
-      "blob_oid": "872972b24b1c0de39809c41183dec2f2e112a35c",
-      "content_sha256": "c01f822ea6c91be2a87d99a4e29066aae2076bd7e50437f4c008713540c4d8b2",
+      "blob_oid": "f09a6defd3f4fecd2b6139f497619713f272ca90",
+      "content_sha256": "b5790a22d50ff15f573684a15f5b99581534b56c1241270fb197540e797c8d0d",
       "mode": "100644",
       "path": "tools/build-package.mjs"
     },
@@ -137,6 +137,12 @@
       "content_sha256": "627b2d117bb0d5ae9d550f345881b85d3f1a2dd741e21eb35fb1f45ac54b0305",
       "mode": "100644",
       "path": "tools/smoke-package.mjs"
+    },
+    {
+      "blob_oid": "6f708a52df1faf682526843d9b801a1c21047264",
+      "content_sha256": "4550a099abf172344b94d5807dc90e37c41e45aaa1a9a47693d9101aba6bdaa3",
+      "mode": "100644",
+      "path": "tools/smoke-portable-onboarding.mjs"
     },
     {
       "blob_oid": "7fe201c2c183cb8a67455b121cf1447a79f34863",
@@ -6093,7 +6099,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "5f0f8549777c523313cc11ed1696b912d58d5b02e5aaf1118532320d8ccd90ac",
+  "package_json_sha256": "b733f4626f3429493a2023ae7ffc02c258b8ed2cdc89074175aaeb3ae37faa47",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
@@ -6189,6 +6195,14 @@
       "command": "tools/secret-scan.sh",
       "executable": "tools/secret-scan.sh",
       "name": "scan:secrets"
+    },
+    {
+      "argv": [
+        "tools/smoke-portable-onboarding.mjs"
+      ],
+      "command": "node tools/smoke-portable-onboarding.mjs",
+      "executable": "node",
+      "name": "smoke:onboarding"
     },
     {
       "argv": [

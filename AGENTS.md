@@ -9,9 +9,12 @@ not add product coordination, Slack, backlog, or enrichment-loop ownership.
   `Project_echo`.
 - Changes to `main` require an independently reviewed feature branch. A builder
   must never review its own implementation.
-- Hosted automation is limited to source verification and manual beta-draft
-  validation. It must remain read-only and must not build, install, upload,
-  publish, promote, migrate, cut over, roll back, or acquire runtime authority.
+- Hosted automation is limited to source verification, manual beta-draft
+  validation, and runner-local portable onboarding checks. The onboarding
+  lanes may build, package, install, and run `daemon run` only inside ephemeral
+  scratch state. Those compatibility packages must never be uploaded, reused,
+  published, promoted, migrated, cut over, or granted durable runtime
+  authority; all external state remains read-only.
 - Beta artifacts are staged and smoke-tested once in a durable local release
   root. GitHub receives those exact bytes as a draft; publication requires the
   independently approved `beta-release` environment and immutable releases.

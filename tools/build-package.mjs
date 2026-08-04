@@ -16,12 +16,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, 'dist');
+const gitExecutable = process.platform === 'win32' ? 'git.exe' : '/usr/bin/git';
 
 function git(args) {
-  const result = spawnSync('/usr/bin/git', args, {
+  const result = spawnSync(gitExecutable, args, {
     cwd: root,
     encoding: 'utf8',
   });
+  if (result.error !== undefined) throw result.error;
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || `git ${args.join(' ')} failed`);
   }
@@ -53,7 +55,7 @@ const targetMigrations = join(dist, 'storage', 'migrations');
 if (!existsSync(sourceMigrations)) throw new Error('storage migrations directory is missing');
 mkdirSync(targetMigrations, { recursive: true });
 cpSync(sourceMigrations, targetMigrations, { recursive: true });
-chmodSync(join(dist, 'cli.js'), 0o755);
+if (process.platform !== 'win32') chmodSync(join(dist, 'cli.js'), 0o755);
 
 const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const manifestPath = join(dist, 'artifact-manifest.json');

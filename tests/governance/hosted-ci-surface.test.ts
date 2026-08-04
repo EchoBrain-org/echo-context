@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
 const BETA_WORKFLOW_PATH = '.github/workflows/beta-release-gate.yml';
+const ONBOARDING_WORKFLOW_PATH = '.github/workflows/onboarding-compatibility.yml';
 
 function filesBelow(root: string): string[] {
   if (!existsSync(root)) return [];
@@ -16,9 +17,9 @@ function filesBelow(root: string): string[] {
 }
 
 describe('lean hosted CI boundary', () => {
-  it('permits exactly the read-only source and beta verification workflows', () => {
+  it('permits exactly the source, onboarding, and beta verification workflows', () => {
     expect(filesBelow(join(ROOT, '.github', 'workflows')).sort()).toEqual(
-      [BETA_WORKFLOW_PATH, CI_WORKFLOW_PATH].sort(),
+      [BETA_WORKFLOW_PATH, CI_WORKFLOW_PATH, ONBOARDING_WORKFLOW_PATH].sort(),
     );
   });
 
@@ -97,6 +98,7 @@ describe('lean hosted CI boundary', () => {
       'beta:publish': 'node tools/beta-release-gate.mjs publish',
       'beta:stage': 'node tools/beta-release-gate.mjs stage',
       'beta:validate': 'node tools/beta-release-gate.mjs validate-hosted',
+      'smoke:onboarding': 'node tools/smoke-portable-onboarding.mjs',
     });
     expect(
       Object.keys(pkg.scripts).filter(
@@ -106,8 +108,10 @@ describe('lean hosted CI boundary', () => {
 
     const guidance = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
     expect(guidance).toContain('one exact reviewed Git object');
-    expect(guidance).toContain('source verification and manual beta-draft');
-    expect(guidance).toContain('must remain read-only');
+    expect(guidance).toContain('runner-local portable onboarding checks');
+    expect(guidance).toMatch(/only inside ephemeral\s+scratch state/u);
+    expect(guidance).toContain('must never be uploaded, reused');
+    expect(guidance).toContain('all external state remains read-only');
     expect(guidance).not.toContain('workflow artifact ID');
   });
 });
