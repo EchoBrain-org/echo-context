@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error the committed beta release operator is intentionally plain .mjs.
 import * as betaGate from '../../tools/beta-release-gate.mjs';
 
 const {
+  betaReleaseNotes,
   buildPublishIntent,
   buildStageCommandPlan,
   compareBetaVersions,
@@ -19,7 +23,10 @@ const {
   validateHostedGateEvidence,
   validateHostedGateRunRecord,
   validateReleaseAssetRoster,
+  validateReleaseRecord,
 } = betaGate;
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const SOURCE_SHA = '1'.repeat(40);
 const SOURCE_TREE = '2'.repeat(40);
@@ -488,6 +495,7 @@ describe('beta release manifest and assets', () => {
             state: 'uploaded',
           },
         ],
+        body: 'reviewed beta notes',
         createdAt: '2026-08-03T21:00:00Z',
         databaseId: 99,
         isDraft: true,
@@ -500,6 +508,7 @@ describe('beta release manifest and assets', () => {
       }),
     ).toMatchObject({
       id: 99,
+      body: 'reviewed beta notes',
       draft: true,
       immutable: false,
       tag_name: 'v0.1.0-beta.7',
@@ -511,6 +520,58 @@ describe('beta release manifest and assets', () => {
         assets: [{ name: 'missing-api-url' }],
       }),
     ).toThrow(/lacks a REST ID/u);
+  });
+
+  it('requires reviewed, version-specific technical-preview notes', () => {
+    const notes = betaReleaseNotes(manifestFixture());
+    expect(notes).toContain('## ECHO Context 0.1.0-beta.7 — technical preview');
+    expect(notes).toContain('keeps the beta.6 seven-tool read-only MCP contract');
+    expect(notes).toContain('GitHub prerelease tarball, not an npm registry package');
+    expect(notes).toContain(`Reviewed source: \`${SOURCE_SHA}\`.`);
+    expect(() =>
+      betaReleaseNotes({
+        ...manifestFixture(),
+        version: '0.1.0-beta.8',
+      }),
+    ).toThrow(/reviewed release notes are missing/u);
+  });
+
+  it('treats the reviewed release body as immutable release identity', () => {
+    const manifest = manifestFixture();
+    const release = {
+      assets: [
+        { id: 1, state: 'uploaded', name: manifest.artifact.filename },
+        { id: 2, state: 'uploaded', name: `${manifest.artifact.filename}.sha256` },
+        { id: 3, state: 'uploaded', name: 'beta-release-manifest.v1.json' },
+      ],
+      body: betaReleaseNotes(manifest),
+      draft: true,
+      name: 'ECHO Context 0.1.0-beta.7',
+      prerelease: true,
+      tag_name: 'v0.1.0-beta.7',
+    };
+    expect(validateReleaseRecord(release, manifest, true)).toBe(release.assets);
+    expect(() =>
+      validateReleaseRecord({ ...release, body: `${release.body}\nchanged` }, manifest, true),
+    ).toThrow(/release metadata differs/u);
+  });
+
+  it('revalidates the final draft bytes before the irreversible publish edit', () => {
+    const source = readFileSync(join(ROOT, 'tools', 'beta-release-gate.mjs'), 'utf8');
+    const publishStart = source.indexOf('function publishBeta(');
+    const draftStart = source.indexOf('if (release.draft) {', publishStart);
+    const publishEnd = source.indexOf('const published = releaseForTag', draftStart);
+    const block = source.slice(draftStart, publishEnd);
+    const refetch = block.indexOf('const finalDraft = releaseForTag');
+    const revalidate = block.indexOf('validateRemoteAssets(finalDraft');
+    const intent = block.indexOf('assertPublishIntent(local, binding, true)');
+    const edit = block.indexOf("gh(['release', 'edit'");
+    expect([publishStart, draftStart, publishEnd, refetch, revalidate, intent, edit]).not.toContain(
+      -1,
+    );
+    expect(refetch).toBeLessThan(revalidate);
+    expect(revalidate).toBeLessThan(intent);
+    expect(intent).toBeLessThan(edit);
   });
 
   it('binds a draft handoff to one exact returned workflow run', () => {
