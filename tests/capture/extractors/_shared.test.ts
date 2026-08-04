@@ -218,6 +218,35 @@ describe("wireJsonlExtractor bounded startup", () => {
     expect(handle.getHealth().queueDepth).toBeLessThanOrEqual(2);
   });
 
+  it("accepts mixed Windows separators without widening the watched root", async () => {
+    const prefix = "C:\\Users\\runner\\.codex\\sessions/";
+    const accepted =
+      "C:\\Users\\runner\\.codex\\sessions\\2026\\08\\03\\session.jsonl";
+    const sibling =
+      "C:\\Users\\runner\\.codex\\sessions-other\\session.jsonl";
+    const watcher = new FakeWatcher();
+    const calls: string[] = [];
+
+    handle = await wireJsonlExtractor({
+      prefix,
+      offsetMap: new Map(),
+      log: silentLog,
+      watcherFactory: () => watcher.asFsWatcher(),
+      handle: async (path) => {
+        calls.push(path);
+      },
+    });
+    watcher.emit("ready");
+    await handle.initialCatchUp;
+
+    watcher.emit("change", sibling);
+    watcher.emit("change", accepted);
+    await waitFor(() => calls.includes(accepted));
+
+    expect(calls).toEqual([accepted]);
+    expect(handle.getHealth().sourceStatus).toBe("active");
+  });
+
   it("never materializes more than one JSONL byte page", async () => {
     const prefix = mkdtempSync(join(tmpdir(), "echo-shared-read-budget-"));
     dirs.push(prefix);
