@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "d7b2952ef954c9c6696c031a4756da544189650e",
-      "content_sha256": "74f285d48aa6deb1dfe2bb270ce138f5e52839e90f125603bd46da3229b76f5b",
+      "blob_oid": "f41e8c628d492b5368a88350d82fc836ef1d1200",
+      "content_sha256": "fab31ef1866365f7da9ad162c13eddbf6b702a822ddd07e66146195df31f4410",
       "mode": "100644",
       "path": "tools/beta-release-gate.mjs"
     },
@@ -187,7 +187,7 @@
       "path": "vitest.operator.config.ts"
     }
   ],
-  "lock_sha256": "b95061f7a7ee5a2b4dbc0945207d3025c188709bd0fa4c2f982c04a7cb29ca2f",
+  "lock_sha256": "cda11f868bd9b75bc1405b67bab9aee185e1180c7504ecad4cc8339c8fe4330a",
   "npm_closure": [
     {
       "cpu": [
@@ -6099,7 +6099,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "b733f4626f3429493a2023ae7ffc02c258b8ed2cdc89074175aaeb3ae37faa47",
+  "package_json_sha256": "4ea7fe56c5c41d4ac3ddece040704a26a334c954160ca6931189be79bc630fa8",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {

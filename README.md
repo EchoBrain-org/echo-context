@@ -146,6 +146,88 @@ extraction baseline; their operator replay materializes that exact Git commit.
 They are not a requirement to retain every historical file in the current
 package.
 
+## Install the technical preview
+
+The beta is distributed from the
+[GitHub prereleases](https://github.com/EchoBrain-org/echo-context/releases),
+not from the npm registry. For `0.1.0-beta.7`, download all three assets from
+the same release:
+
+- `echo-context-0.1.0-beta.7.tgz`
+- `echo-context-0.1.0-beta.7.tgz.sha256`
+- `beta-release-manifest.v1.json`
+
+The manifest binds the version and tag to the reviewed source commit, tarball
+SHA-256, runtime manifest, local CI, independent review, and package smoke.
+Verify the downloaded tarball before installing it. On Linux use
+`sha256sum -c`; on macOS use `shasum -a 256 -c`:
+
+```sh
+sha256sum -c echo-context-0.1.0-beta.7.tgz.sha256
+# macOS: shasum -a 256 -c echo-context-0.1.0-beta.7.tgz.sha256
+```
+
+On Windows PowerShell:
+
+```powershell
+$expected = (Get-Content .\echo-context-0.1.0-beta.7.tgz.sha256).Split()[0].ToLower()
+$actual = (Get-FileHash .\echo-context-0.1.0-beta.7.tgz -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $expected) { throw "ECHO Context tarball checksum mismatch" }
+```
+
+Use the reviewed Node `22.22.1` and npm `10.9.4`. Install the tarball into a
+new local consumer directory; do not run `npm pack` or rebuild it:
+
+```sh
+node --version
+npm --version
+mkdir echo-context-preview
+cd echo-context-preview
+npm init -y
+npm install --save-exact /absolute/path/to/echo-context-0.1.0-beta.7.tgz
+./node_modules/.bin/echo-context version
+./node_modules/.bin/echo-context daemon run
+```
+
+On Windows PowerShell, use the `.cmd` launcher for every ECHO Context CLI
+command:
+
+```powershell
+.\node_modules\.bin\echo-context.cmd version
+.\node_modules\.bin\echo-context.cmd daemon run
+```
+
+Keep the foreground daemon terminal open. In another terminal, verify it and
+register the loopback MCP endpoint:
+
+```sh
+./node_modules/.bin/echo-context status
+codex mcp add echo --url http://127.0.0.1:38478/mcp
+claude mcp add --scope user --transport http echo http://127.0.0.1:38478/mcp
+```
+
+The Windows status command is:
+
+```powershell
+.\node_modules\.bin\echo-context.cmd status
+```
+
+If the MCP client already has an `echo` entry, update or remove that entry with
+the client's own MCP command before adding it again. Start a fresh client
+session, or reconnect its MCP servers, after changing the endpoint.
+
+Installing the repository-owned usage skill and managed ECHO banners is a
+separate, explicit action:
+
+```sh
+node ./node_modules/echo-context/tools/sync-agent-instructions.mjs --mcp-url http://127.0.0.1:38478/mcp
+```
+
+This preview supports foreground `daemon run` on Linux, Windows, and macOS.
+There is no systemd or Windows Service installer. Managed background
+installation remains macOS launchd-only, and Cursor live capture remains
+retired. The supported live capture adapters are Codex and Claude Code.
+
 ## Continuous integration
 
 Pull requests into `main` and pushes to `main` run the canonical read-only
@@ -192,8 +274,8 @@ publication remain explicit local operator actions.
 
 The minimum beta gate publishes one GitHub prerelease from one reviewed,
 smoke-tested tarball. It does not publish to npm and it does not promote or cut
-over a live daemon. `0.1.0-beta.6` predates this gate, so the first eligible
-candidate is `0.1.0-beta.7` or newer.
+over a live daemon. `0.1.0-beta.6` predates this gate;
+`0.1.0-beta.7` is the first candidate governed by it.
 
 The one-time repository policy is part of the gate: create a `beta-release`
 environment with at least one named user reviewer, prevent self-review, disable

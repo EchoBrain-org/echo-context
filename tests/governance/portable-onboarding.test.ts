@@ -7,6 +7,11 @@ import { describe, expect, it } from 'vitest';
 import * as portable from '../../tools/smoke-portable-onboarding.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PACKAGE = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
+  engines: { node: string; npm: string };
+  name: string;
+  version: string;
+};
 const {
   PORTABLE_ONBOARDING_PLAN,
   PORTABLE_ONBOARDING_REQUIRED_FILES,
@@ -14,6 +19,31 @@ const {
 } = portable;
 
 describe('portable onboarding boundary', () => {
+  it('documents checksum-first installation of the current prerelease', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+    const artifact = `${PACKAGE.name}-${PACKAGE.version}.tgz`;
+    expect(readme).toContain('## Install the technical preview');
+    expect(readme).toContain(`- \`${artifact}\``);
+    expect(readme).toContain(`- \`${artifact}.sha256\``);
+    expect(readme).toContain('- `beta-release-manifest.v1.json`');
+    expect(readme).toContain(`Node \`${PACKAGE.engines.node}\``);
+    expect(readme).toContain(`npm \`${PACKAGE.engines.npm}\``);
+    expect(readme).toContain(`npm install --save-exact /absolute/path/to/${artifact}`);
+    expect(readme).toContain('.\\node_modules\\.bin\\echo-context.cmd version');
+    expect(readme).toContain('.\\node_modules\\.bin\\echo-context.cmd daemon run');
+    expect(readme).toContain('.\\node_modules\\.bin\\echo-context.cmd status');
+    expect(readme).toContain('codex mcp add echo --url http://127.0.0.1:38478/mcp');
+    expect(readme).toContain(
+      'claude mcp add --scope user --transport http echo http://127.0.0.1:38478/mcp',
+    );
+    expect(readme).toContain(
+      'node ./node_modules/echo-context/tools/sync-agent-instructions.mjs --mcp-url http://127.0.0.1:38478/mcp',
+    );
+    expect(readme).not.toContain('sync-agent-instructions.mjs \\\n');
+    expect(readme).toContain('There is no systemd or Windows Service installer.');
+    expect(readme).toContain('The supported live capture adapters are Codex and Claude Code.');
+  });
+
   it('declares one disposable pack/install and a manual live-capture runtime', () => {
     expect(PORTABLE_ONBOARDING_PLAN).toEqual({
       pack_invocations: 1,

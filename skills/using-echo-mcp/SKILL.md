@@ -75,8 +75,9 @@ and checking the shard tail for a completed append.
 ## Preserve timestamps
 
 Send explicit offsets (`Z`, `±HH:MM`, or `±HHMM`) and copy response timestamps
-verbatim. In beta.6, `wait_for_new_turns` rejects offset-less `since`;
-`search_memories` and `find_clusters` accept them with a `[TZ]` warning.
+verbatim. The strict runtime rejects an offset-less `since` for
+`wait_for_new_turns`; `search_memories` and `find_clusters` accept one with a
+`[TZ]` warning.
 
 Never send a future `since` to `wait_for_new_turns`. If an accidental future
 input produces `[NEXT_SINCE_CLAMP]`, retry from the intended non-future bound
@@ -92,7 +93,7 @@ before continuing from the returned watermark.
   `cursor`.
 
 Never send `membership_cursor` or `next_cursor` as input keys. They are response
-field names. All seven beta.6 tools reject unknown top-level keys.
+field names. All seven tools reject unknown top-level keys.
 
 ## Resume a repository
 

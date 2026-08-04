@@ -481,6 +481,7 @@ export function normalizeReleaseView(view) {
         state: asset.state,
       };
     }),
+    body: view.body,
     created_at: view.createdAt,
     draft: view.isDraft,
     html_url: view.url,
@@ -591,6 +592,7 @@ function assertVersionIsNew(beta) {
 function releaseForTag(tag) {
   const fields = [
     'assets',
+    'body',
     'createdAt',
     'databaseId',
     'isDraft',
@@ -1107,11 +1109,44 @@ function releaseTitle(version) {
   return `ECHO Context ${version}`;
 }
 
-function validateReleaseRecord(release, manifest, draftRequired) {
+const BETA_RELEASE_CHANGES = Object.freeze({
+  '0.1.0-beta.7': Object.freeze([
+    'This prerelease keeps the beta.6 seven-tool read-only MCP contract.',
+    '',
+    'What changed:',
+    '',
+    '- Repository-owned ECHO usage instructions and an explicit sync/check operator for Codex and Claude Code.',
+    '- Founder-live dogfooding journals bound to the live runtime version and artifact digest, with fail-closed endpoint and mapping checks.',
+    '- Lean source CI plus an exact-artifact, independently approved beta prerelease gate.',
+    '- Portable manual-daemon verification on Ubuntu 24.04 x64, Windows 2025 x64, and macOS 15 arm64, including post-start Codex and Claude capture, health, service API, MCP retrieval, and normalized discovery.',
+    '- Windows path-separator fixes for Codex and Claude session capture and normalization.',
+    '',
+    'Technical-preview limits: distribution is a GitHub prerelease tarball, not an npm registry package. Cross-platform operation uses the foreground `daemon run` path. Managed installation remains macOS launchd-only; there is no systemd or Windows Service installer. Agent sync installs instructions and banners but does not configure MCP clients.',
+  ]),
+});
+
+export function betaReleaseNotes(manifest) {
+  const changes = BETA_RELEASE_CHANGES[manifest?.version];
+  if (changes === undefined) {
+    fail(`reviewed release notes are missing for ${manifest?.version ?? '(unknown version)'}`);
+  }
+  assertString(manifest?.source?.commit, SHA_40, 'release-notes source commit');
+  return [
+    `## ECHO Context ${manifest.version} — technical preview`,
+    '',
+    ...changes,
+    '',
+    `Reviewed source: \`${manifest.source.commit}\`.`,
+    'The attached tarball is the exact locally smoke-tested artifact described by `beta-release-manifest.v1.json`. Publication requires the independent beta environment approval and the hosted validation gate.',
+  ].join('\n');
+}
+
+export function validateReleaseRecord(release, manifest, draftRequired) {
   if (!release) fail(`GitHub release does not exist for ${manifest.tag}`);
   if (
     release.tag_name !== manifest.tag ||
     release.name !== releaseTitle(manifest.version) ||
+    release.body !== betaReleaseNotes(manifest) ||
     release.prerelease !== true ||
     release.draft !== draftRequired
   ) {
@@ -1123,12 +1158,7 @@ function validateReleaseRecord(release, manifest, draftRequired) {
 function createOrValidateDraft(local) {
   let release = releaseForTag(local.manifest.tag);
   if (!release) {
-    const notes = [
-      `Beta candidate for reviewed source ${local.manifest.source.commit}.`,
-      '',
-      'The attached tarball is the exact locally smoke-tested artifact.',
-      'Publication remains blocked until the beta-release environment approves and the hosted read-only gate passes.',
-    ].join('\n');
+    const notes = betaReleaseNotes(local.manifest);
     gh(
       [
         'release',
@@ -1547,6 +1577,16 @@ function publishBeta(releaseRoot, confirmSourceSha, confirmArtifactSha) {
     const finalDraft = releaseForTag(manifest.tag);
     if (finalDraft?.id !== release.id || finalDraft?.draft !== true) {
       fail('beta draft changed before publication');
+    }
+    const { manifest: finalManifest } = validateRemoteAssets(finalDraft, {
+      draftRequired: true,
+      sourceCommit: sourceSha,
+      sourceTree: local.manifest.source.tree,
+      tag: local.manifest.tag,
+      version: local.manifest.version,
+    });
+    if (!canonicalJsonBytes(finalManifest).equals(canonicalJsonBytes(local.manifest))) {
+      fail('beta draft manifest changed before publication');
     }
     assertPublishIntent(local, binding, true);
     gh(['release', 'edit', manifest.tag, '--draft=false', '--prerelease', '--latest=false'], {
