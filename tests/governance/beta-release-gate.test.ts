@@ -531,7 +531,7 @@ describe('beta release manifest and assets', () => {
     expect(() =>
       betaReleaseNotes({
         ...manifestFixture(),
-        version: '0.1.0-beta.8',
+        version: '0.1.0-beta.9',
       }),
     ).toThrow(/reviewed release notes are missing/u);
   });
