@@ -1110,6 +1110,16 @@ function releaseTitle(version) {
 }
 
 const BETA_RELEASE_CHANGES = Object.freeze({
+  '0.1.0-beta.8': Object.freeze([
+    'This prerelease keeps the beta.6 seven-tool read-only MCP contract.',
+    '',
+    'What changed:',
+    '',
+    '- arm64 restage of beta.7. The beta.7 tarball is architecture-independent, but its staged prefix and promotion receipt were produced under the staging machine’s since-removed Intel Homebrew node: the installed better-sqlite3 binding was x86_64 and the receipt pinned the deleted node executable, so that stage could never pass installation verification on the now arm64-only founder machine.',
+    '- No functional changes: version bump, regenerated runtime inventory, README technical-preview install references, and these reviewed release notes.',
+    '',
+    'Technical-preview limits: distribution is a GitHub prerelease tarball, not an npm registry package. Cross-platform operation uses the foreground `daemon run` path. Managed installation remains macOS launchd-only; there is no systemd or Windows Service installer. Agent sync installs instructions and banners but does not configure MCP clients.',
+  ]),
   '0.1.0-beta.7': Object.freeze([
     'This prerelease keeps the beta.6 seven-tool read-only MCP contract.',
     '',
