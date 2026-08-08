@@ -25,6 +25,7 @@ describe('lean hosted CI boundary', () => {
 
   it('locks the existing source-verification workflow', () => {
     const workflow = readFileSync(join(ROOT, CI_WORKFLOW_PATH), 'utf8');
+    expect(workflow).toContain('name: Source verification');
     expect(workflow).toContain('pull_request:\n    branches: [main]');
     expect(workflow).toContain('push:\n    branches: [main]');
     expect(workflow).toContain('permissions:\n  contents: read');
@@ -41,6 +42,7 @@ describe('lean hosted CI boundary', () => {
     const triggerBlock = workflow.slice(workflow.indexOf('on:\n') + 'on:\n'.length, workflow.indexOf('\npermissions:\n'));
     const jobsBlock = workflow.slice(workflow.indexOf('jobs:\n') + 'jobs:\n'.length);
 
+    expect(workflow).toContain('name: Beta release gate');
     expect(workflow).toContain('on:\n  workflow_dispatch:');
     expect(Array.from(triggerBlock.matchAll(/^  ([a-z0-9_-]+):$/gmu), (match) => match[1])).toEqual([
       'workflow_dispatch',
@@ -84,6 +86,13 @@ describe('lean hosted CI boundary', () => {
     );
   });
 
+  it('labels the portability workflow with the same onboarding vocabulary as its required check', () => {
+    const workflow = readFileSync(join(ROOT, ONBOARDING_WORKFLOW_PATH), 'utf8');
+    expect(workflow).toContain('name: Onboarding compatibility');
+    expect(workflow).toContain('jobs:\n  portable-onboarding:');
+    expect(workflow).toContain('  onboarding-compatibility:');
+  });
+
   it('keeps hosted publication and runtime controllers absent', () => {
     const paths = [...filesBelow(join(ROOT, 'tools')), ...filesBelow(join(ROOT, 'schemas'))];
     const forbidden = paths.filter((path) =>
@@ -97,6 +106,7 @@ describe('lean hosted CI boundary', () => {
       'beta:draft': 'node tools/beta-release-gate.mjs draft',
       'beta:publish': 'node tools/beta-release-gate.mjs publish',
       'beta:stage': 'node tools/beta-release-gate.mjs stage',
+      'beta:status': 'node tools/beta-release-status.mjs',
       'beta:validate': 'node tools/beta-release-gate.mjs validate-hosted',
       'smoke:onboarding': 'node tools/smoke-portable-onboarding.mjs',
     });

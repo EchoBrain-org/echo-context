@@ -85,6 +85,13 @@ describe('AC1/AC4 — secret scan contract', () => {
     expect(contract.invocation.argv).toEqual(['detect', '--source', '.', '--log-opts=--all', '--redact=100', '--no-banner', '--no-color', '--report-format', 'json', '--report-path', '<temporary-report>']);
   });
 
+  it('installs the scanner for the Node runtime architecture, including translated shells', () => {
+    const installer = readFileSync(join(ROOT, 'tools', 'install-gitleaks.sh'), 'utf8');
+    expect(installer).toContain("os=$(node -p 'process.platform')");
+    expect(installer).toContain("machine=$(node -p 'process.arch')");
+    expect(installer).not.toContain('uname -m');
+  });
+
   it('parses a strict sorted unique advertised-ref manifest without peeled pseudo-refs', () => {
     const main = '1'.repeat(40);
     const tag = '2'.repeat(40);

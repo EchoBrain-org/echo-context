@@ -1,4 +1,4 @@
-name: CI
+name: Source verification
 
 on:
   pull_request:

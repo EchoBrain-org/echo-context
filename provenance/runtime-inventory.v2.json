@@ -13,10 +13,34 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "f41e8c628d492b5368a88350d82fc836ef1d1200",
-      "content_sha256": "fab31ef1866365f7da9ad162c13eddbf6b702a822ddd07e66146195df31f4410",
+      "blob_oid": "f39c0ec3400dbfb3ff26196497a4aff2f5769757",
+      "content_sha256": "37974ed9f1f2fc095618a3fcbff853644fe9096d8292f26e8891147186fc9b2d",
+      "mode": "100644",
+      "path": "tools/beta-promotion-evidence.mjs"
+    },
+    {
+      "blob_oid": "0d1f346d8aefcbca014f889e8a67752ef408158a",
+      "content_sha256": "b3e78f1c11c15672d795e852b5ef3a1d44ad59dddc466701e133aeb5cdc87098",
+      "mode": "100644",
+      "path": "tools/beta-release-domain.mjs"
+    },
+    {
+      "blob_oid": "c5977a082da08403f55f17748d2bbf885f43c8fb",
+      "content_sha256": "f39df5a2f4d7f1734d5074de22c13bacd119548ab2500b837db1f4d81aa84db6",
       "mode": "100644",
       "path": "tools/beta-release-gate.mjs"
+    },
+    {
+      "blob_oid": "2375b03c13ed53e21d104063fbe754845bd0130d",
+      "content_sha256": "4c870ad0c26e81c0493de39445aa6124fb2bc949fa26a63d273a818b19226b40",
+      "mode": "100644",
+      "path": "tools/beta-release-status-state.mjs"
+    },
+    {
+      "blob_oid": "8c98d7d816c01e1d25999dc06e3ffe8f5058eee8",
+      "content_sha256": "db0425a32e11c436ab25ed6a9d158169f40308eac841cb9718ec9e5337850e26",
+      "mode": "100644",
+      "path": "tools/beta-release-status.mjs"
     },
     {
       "blob_oid": "f09a6defd3f4fecd2b6139f497619713f272ca90",
@@ -91,8 +115,8 @@
       "path": "tools/generate-extraction-baseline.mjs"
     },
     {
-      "blob_oid": "afc002a8cc11557dc1b74a8b7d488987a4a09c5d",
-      "content_sha256": "8f4f53381689e1eabb334643e20ec7785245587fc00b8f73a65b3108ba4804e7",
+      "blob_oid": "f835feca35f74581315d93208b475fd0b10651d9",
+      "content_sha256": "cd458d44a8129fdb269232bb6e23dbed4941b5f8c5db2646bf7798a0ed02408b",
       "mode": "100755",
       "path": "tools/install-gitleaks.sh"
     },
@@ -6099,7 +6123,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "061e91ad3ab3ad3003d30e65351ff204664d427a19029f7cc141b4c47ede04b6",
+  "package_json_sha256": "9d28bebbd554f5d803ea99fdd9d7e40826368692783a3312b7cb90b9863865a6",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {
@@ -6128,6 +6152,14 @@
       "command": "node tools/beta-release-gate.mjs stage",
       "executable": "node",
       "name": "beta:stage"
+    },
+    {
+      "argv": [
+        "tools/beta-release-status.mjs"
+      ],
+      "command": "node tools/beta-release-status.mjs",
+      "executable": "node",
+      "name": "beta:status"
     },
     {
       "argv": [
