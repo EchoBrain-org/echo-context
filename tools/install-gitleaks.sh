@@ -7,11 +7,11 @@ if [ "$#" -ne 1 ]; then
 fi
 
 version=8.30.1
-os=$(uname -s | tr '[:upper:]' '[:lower:]')
-machine=$(uname -m)
+os=$(node -p 'process.platform')
+machine=$(node -p 'process.arch')
 case "$machine" in
-  arm64|aarch64) archive_arch=arm64; contract_arch=arm64 ;;
-  x86_64|amd64) archive_arch=x64; contract_arch=x64 ;;
+  arm64) archive_arch=arm64; contract_arch=arm64 ;;
+  x64) archive_arch=x64; contract_arch=x64 ;;
   *) echo "unsupported gitleaks architecture: $machine" >&2; exit 1 ;;
 esac
 case "$os-$archive_arch" in

@@ -277,6 +277,24 @@ smoke-tested tarball. It does not publish to npm and it does not promote or cut
 over a live daemon. `0.1.0-beta.6` predates this gate;
 `0.1.0-beta.7` is the first candidate governed by it.
 
+Start every release operation with the read-only status view:
+
+```sh
+npm run beta:status
+# Machine-readable form:
+npm run beta:status -- --json
+```
+
+It reconciles the checkout, local and GitHub `main`, the candidate tag, durable
+local stage, draft, hosted gate, latest published beta, and live daemon. It
+distinguishes an absent object from unavailable evidence and prints one next
+safe action plus the exact command when that action is mechanical. A GitHub 404
+counts as an absent release only when the current viewer can see drafts. Local
+stage bytes, draft bindings, release metadata and assets, hosted approval, and
+publication records must all agree before the view says publish, promote, or
+complete. It never fetches, tags, pushes, creates a release, dispatches a
+workflow, publishes, installs, or cuts over a daemon.
+
 The one-time repository policy is part of the gate: create a `beta-release`
 environment with at least one named user reviewer, prevent self-review, disable
 administrator bypass, add exactly one selected tag rule named
@@ -289,21 +307,28 @@ are available only while this repository is public; re-check the account plan
 before making it private.
 
 First update the package, lockfile, shrinkwrap, and `src/version.ts` to one new
-beta version. Merge its feature branch only after GitHub's `verify` check and an
-independent approval pass on the exact branch-head commit. Once that commit is
-reachable from `origin/main`, check out that reviewed commit and stage it:
+beta version, and add its human-written release body at
+`release-notes/<version>.md`. Release-note files are reviewed, append-only
+release identity; they are not embedded in the executable gate or included in
+the installable tarball. Merge the feature branch only after GitHub's `verify`
+check and an independent approval pass on the exact branch-head commit. Once
+that commit is reachable from `origin/main`, check out that reviewed commit and
+stage it:
 
 ```sh
 npm run beta:stage
 ```
 
-`beta:stage` refuses a dirty tree, an unmerged or unreviewed source commit, a
-stale approval, a failed or foreign `verify` check, a reused version, or an
-existing release directory. It runs canonical CI, invokes `npm pack` exactly
-once, and installs and smokes that tarball exactly once in a new durable prefix.
-The command prints a canonical result containing the release root, source SHA,
-artifact SHA-256, and promotion-receipt SHA-256. A failed root is preserved as
-evidence and cannot silently be rebuilt under the same identity.
+`beta:stage` refuses missing or malformed reviewed notes, a dirty tree, an
+unmerged or unreviewed source commit, a stale approval, a failed or foreign
+`verify` check, drifted release policy, an inactive hosted gate, a reused
+version, or an existing release directory. It checks those read-only
+prerequisites before CI and again before creating durable state. It then invokes
+`npm pack` exactly once and installs and smokes that tarball exactly once in a
+new durable prefix. The command prints a canonical result containing the
+release root, source SHA, artifact SHA-256, and promotion-receipt SHA-256. A
+failed root is preserved as evidence and cannot silently be rebuilt under the
+same identity.
 
 Create a GitHub draft from those exact local bytes, substituting the absolute
 `release_root` emitted above:
@@ -312,8 +337,9 @@ Create a GitHub draft from those exact local bytes, substituting the absolute
 npm run beta:draft -- --release-root /absolute/path/from/beta-stage
 ```
 
-This re-verifies the local tarball, installed tree, receipt, review, and CI
-evidence; creates and pushes the exact annotated beta tag; creates a draft
+This re-verifies the local tarball, installed tree, receipt, review, CI evidence,
+reviewed release notes, environment, immutable-release policy, and active
+hosted workflow before any tag mutation. It then creates and pushes the exact annotated beta tag; creates a draft
 prerelease containing only the tarball, checksum, and sanitized
 `beta-release-manifest.v1.json`; downloads those assets again to verify the
 remote draft; then dispatches the hosted gate and records the exact returned run

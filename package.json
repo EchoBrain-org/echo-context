@@ -34,6 +34,7 @@
     "beta:draft": "node tools/beta-release-gate.mjs draft",
     "beta:publish": "node tools/beta-release-gate.mjs publish",
     "beta:stage": "node tools/beta-release-gate.mjs stage",
+    "beta:status": "node tools/beta-release-status.mjs",
     "beta:validate": "node tools/beta-release-gate.mjs validate-hosted",
     "ci": "node tools/run-ci.mjs",
     "build": "node tools/build-package.mjs",
