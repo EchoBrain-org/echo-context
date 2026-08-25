@@ -635,12 +635,14 @@ export async function searchMemories(
   // (by elimination) which one was applied.
   let effectiveSource: string | undefined;
   let effectivePrefix: string | undefined;
+  let effectiveSourceFamily: SourceApp | undefined;
   if (source !== undefined) {
     effectiveSource = source;
   } else if (source_prefix !== undefined) {
     effectivePrefix = source_prefix;
   } else if (source_app !== undefined) {
     effectivePrefix = SOURCE_APP_MAP[source_app];
+    effectiveSourceFamily = source_app;
   }
 
   // Item 038 / AC0: validate + merge `metadata_match`. The storage seam ALSO
@@ -690,6 +692,9 @@ export async function searchMemories(
   const filter: QueryFilter = withFsExclusion({});
   if (effectiveSource !== undefined) filter.source = effectiveSource;
   if (effectivePrefix !== undefined) filter.source_prefix = effectivePrefix;
+  if (effectiveSourceFamily !== undefined) {
+    filter.source_family = effectiveSourceFamily;
+  }
   // 057a AC1 non-pollution: search_memories() with no filter MUST NOT
   // return coord atoms by default — they're substrate plumbing, not
   // user-facing knowledge. The dedicated exclusion lives here (NOT in

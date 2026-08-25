@@ -1,3 +1,5 @@
+import type { SourceFamily } from './source-match.js';
+
 export type EventId = string;
 
 export interface CaptureEvent {
@@ -75,6 +77,11 @@ export interface CaptureCheckpointPage {
 export interface QueryFilter {
   source?: string;
   source_prefix?: string;
+  /** Internal finite candidate dimension for app-scoped prefix retrieval.
+   * When present it composes as an AND with source_prefix. SQLite can seek an
+   * order-compatible partial index; the source_prefix predicate remains the
+   * authoritative result filter. */
+  source_family?: SourceFamily;
   since?: string;
   until?: string;
   /** Maximum returned rows. Omitted uses the storage default; adapters enforce

@@ -62,7 +62,12 @@ import {
   pathEqualsOrDescendsFrom,
   preserveUndefinedProjectIdentityForJson,
 } from "./project-filter.js";
-import { normalizePathLikeSource, sourceHasPrefix } from "./source-match.js";
+import {
+  isSourceFamily,
+  normalizePathLikeSource,
+  SOURCE_FAMILY_BITS,
+  sourceHasPrefix,
+} from "./source-match.js";
 import { canonicalizeTimestamp } from "../util/timestamp.js";
 
 const MIGRATIONS_DIR = join(
@@ -607,6 +612,14 @@ export class SqliteStorage implements Storage {
     if (filter?.source_prefix !== undefined) {
       assertStorageDescriptorField("query", "source", filter.source_prefix);
     }
+    if (
+      filter?.source_family !== undefined &&
+      !isSourceFamily(filter.source_family)
+    ) {
+      throw new RangeError(
+        `QueryFilter.source_family is invalid: ${String(filter.source_family)}`,
+      );
+    }
     if (filter?.since !== undefined) {
       assertStorageDescriptorField("query", "timestamp", filter.since);
     }
@@ -649,9 +662,9 @@ export class SqliteStorage implements Storage {
     const postDescriptorSqlPredicates: string[] = [];
     const params: Record<string, unknown> = {};
     // Exact path-like sources use a persisted normalized key and composite
-    // index. Prefixes are semantically richer (component boundaries and raw
-    // case-sensitive fallback), so they are applied to bounded timestamp
-    // descriptor pages in JS; scan exhaustion is explicit and resumable.
+    // index. Explicit app families use order-compatible partial indexes as a
+    // conservative candidate bound. Prefix semantics remain authoritative in
+    // JS; arbitrary prefixes retain the timestamp-ordered bounded scan.
     let jsSourcePredicate: ((source: string) => boolean) | undefined;
     if (filter?.source !== undefined) {
       const source = filter.source;
@@ -666,6 +679,12 @@ export class SqliteStorage implements Storage {
         clauses.push("source_key = @source_key");
         params["source_key"] = normalizedSource;
       }
+    }
+    if (filter?.source_family !== undefined) {
+      const familyBit = SOURCE_FAMILY_BITS[filter.source_family];
+      // The finite, validated bit is literal so SQLite can prove the query's
+      // WHERE predicate implies the corresponding partial-index predicate.
+      clauses.push(`(source_family_mask & ${familyBit}) != 0`);
     }
     if (
       filter?.source_prefix !== undefined &&

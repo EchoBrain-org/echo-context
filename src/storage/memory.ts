@@ -31,7 +31,12 @@ import {
   STORAGE_PAYLOAD_PAGE_BYTES,
   StorageBudgetExceededError,
 } from './budgets.js';
-import { sourceEquals, sourceHasPrefix } from './source-match.js';
+import {
+  isSourceFamily,
+  sourceBelongsToFamily,
+  sourceEquals,
+  sourceHasPrefix,
+} from './source-match.js';
 import { canonicalizeTimestamp } from '../util/timestamp.js';
 import {
   isLegacyGitSourceForProject,
@@ -116,6 +121,7 @@ export class MemoryStorage implements Storage {
   async query(filter?: QueryFilter): Promise<CaptureEvent[]> {
     const source = filter?.source;
     const sourcePrefix = filter?.source_prefix;
+    const sourceFamily = filter?.source_family;
     if (source !== undefined && sourcePrefix !== undefined) {
       throw new Error('QueryFilter.source and source_prefix are mutually exclusive');
     }
@@ -133,6 +139,9 @@ export class MemoryStorage implements Storage {
     if (source !== undefined) assertStorageDescriptorField('query', 'source', source);
     if (sourcePrefix !== undefined) {
       assertStorageDescriptorField('query', 'source', sourcePrefix);
+    }
+    if (sourceFamily !== undefined && !isSourceFamily(sourceFamily)) {
+      throw new RangeError(`QueryFilter.source_family is invalid: ${String(sourceFamily)}`);
     }
     if (filter?.since !== undefined) {
       assertStorageDescriptorField('query', 'timestamp', filter.since);
@@ -202,6 +211,8 @@ export class MemoryStorage implements Storage {
     const filtered: InternalEvent[] = [];
     for (const event of this.events) {
       if (source !== undefined && !sourceEquals(event.source, source)) continue;
+      if (sourceFamily !== undefined && !sourceBelongsToFamily(event.source, sourceFamily))
+        continue;
       if (sourcePrefix !== undefined && !sourceHasPrefix(event.source, sourcePrefix)) continue;
       if (since !== undefined && event.timestamp < since) continue;
       if (until !== undefined && event.timestamp >= until) continue;
