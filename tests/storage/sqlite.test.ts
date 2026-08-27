@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CaptureEvent } from '../../src/storage/interface.js';
 import { loadMigrations, migrate } from '../../src/storage/migrate.js';
+import { normalizePathLikeSource } from '../../src/storage/source-match.js';
 import { SqliteStorage } from '../../src/storage/sqlite.js';
 
 const MIGRATIONS_DIR = new URL('../../src/storage/migrations/', import.meta.url).pathname;
@@ -374,6 +375,65 @@ describe('migration runner', () => {
     expect(latest).toBe(LATEST_SCHEMA_VERSION);
     expect(db.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
     db.close();
+  });
+
+  it('upgrades a version-5 ledger with generated overlapping source-family indexes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'echo-source-family-migration-'));
+    const dbPath = join(root, 'context.db');
+    try {
+      const legacy = new Database(dbPath);
+      legacy.function(
+        'echo_normalize_path_like_source',
+        { deterministic: true },
+        (source: string) => normalizePathLikeSource(source),
+      );
+      for (const migration of MIGRATIONS.slice(0, 5)) {
+        legacy.transaction(() => {
+          legacy.exec(migration.sql);
+          legacy.pragma(`user_version = ${migration.version}`);
+        })();
+      }
+      legacy
+        .prepare(
+          `INSERT INTO events (id, source, source_key, timestamp, content)
+           VALUES (?, ?, ?, ?, 'legacy overlap')`,
+        )
+        .run(
+          'overlap',
+          'fs:/home/.codex/sessions/nested/.claude/projects/a.jsonl',
+          normalizePathLikeSource('fs:/home/.codex/sessions/nested/.claude/projects/a.jsonl'),
+          '2026-04-30T12:00:00.000Z',
+        );
+      legacy.close();
+
+      new SqliteStorage(dbPath).close();
+      const inspect = new Database(dbPath, { readonly: true });
+      expect(inspect.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
+      expect(
+        inspect
+          .prepare('SELECT source_family_mask FROM events WHERE id = ?')
+          .pluck()
+          .get('overlap'),
+      ).toBe(6);
+      const indexes = inspect
+        .prepare(
+          `SELECT name FROM sqlite_master
+            WHERE type = 'index' AND name LIKE 'idx_events_source_family_%'
+            ORDER BY name`,
+        )
+        .pluck()
+        .all();
+      expect(indexes).toEqual([
+        'idx_events_source_family_claude_code_timestamp_id',
+        'idx_events_source_family_codex_timestamp_id',
+        'idx_events_source_family_cursor_timestamp_id',
+        'idx_events_source_family_git_timestamp_id',
+        'idx_events_source_family_granola_timestamp_id',
+      ]);
+      inspect.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('fails closed when user_version is newer than the package schema', () => {

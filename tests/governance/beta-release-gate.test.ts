@@ -534,6 +534,13 @@ describe('beta release manifest and assets', () => {
         version: '0.1.0-beta.8',
       }),
     ).toThrow(/reviewed release notes are missing/u);
+
+    const beta9Notes = betaReleaseNotes({
+      ...manifestFixture(),
+      version: '0.1.0-beta.9',
+    });
+    expect(beta9Notes).toContain('## ECHO Context 0.1.0-beta.9 — technical preview');
+    expect(beta9Notes).toContain('conservative SQLite family indexes');
   });
 
   it('treats the reviewed release body as immutable release identity', () => {

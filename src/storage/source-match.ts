@@ -60,29 +60,54 @@ export function sourceHasPrefix(source: string, prefix: string): boolean {
   return source.startsWith(prefix);
 }
 
-/** Coarse SQL prefilter for SqliteStorage's authoritative scalar predicate:
- *  the portion of a source /
- *  source_prefix filter value before its first path separator (`/` or
- *  `\`), e.g. `fs:` from `fs:/a/b`, `C:` from `C:/Users/me/`, the whole
- *  string from separator-free values like `coord:`. Matching it with an
- *  ASCII-case-insensitive `LIKE chunk%` is provably a SUPERSET of the JS
- *  predicates above: normalization never alters the pre-separator chunk
- *  except by case-folding (backslash→slash and trailing-slash stripping
- *  only touch the path part at/after the first separator), and SQLite
- *  LIKE's case-insensitivity covers both the Windows case-fold and the
- *  case-sensitive raw-startsWith fallback. Returns null (no usable
- *  prefilter — caller must full-scan) when the value starts with a
- *  separator, or when the chunk contains non-ASCII characters (LIKE's
- *  case-insensitivity is ASCII-only, so it could NOT cover a win32
- *  case-fold of a non-ASCII letter and the superset guarantee would
- *  break). The JS predicate remains authoritative; this only narrows
- *  the candidate rows. */
-export function likePrefilterChunk(value: string): string | null {
-  const sep = value.search(/[\\/]/);
-  if (sep === 0) return null;
-  const chunk = sep === -1 ? value : value.slice(0, sep);
-  for (let i = 0; i < chunk.length; i++) {
-    if (chunk.charCodeAt(i) > 0x7f) return null;
+export const SOURCE_FAMILY_VALUES = ['cursor', 'claude_code', 'codex', 'git', 'granola'] as const;
+
+export type SourceFamily = (typeof SOURCE_FAMILY_VALUES)[number];
+
+/** Stable bits persisted by migration 0006's generated source-family mask.
+ * A mask, rather than one enum-valued column, is deliberate: a synthetic or
+ * moved path can contain more than one app marker and must remain a candidate
+ * for every matching family. */
+export const SOURCE_FAMILY_BITS: Readonly<Record<SourceFamily, number>> = {
+  cursor: 1,
+  claude_code: 2,
+  codex: 4,
+  git: 8,
+  granola: 16,
+};
+
+const SOURCE_FAMILY_SET = new Set<string>(SOURCE_FAMILY_VALUES);
+
+export function isSourceFamily(value: unknown): value is SourceFamily {
+  return typeof value === 'string' && SOURCE_FAMILY_SET.has(value);
+}
+
+/** Conservative, platform-invariant source-family membership. Filesystem
+ * markers are separator-normalized and ASCII case-folded on every platform,
+ * so the result is a superset of platform-specific `sourceHasPrefix` matches.
+ * The authoritative prefix predicate still decides which candidates return.
+ * Raw git and Granola families remain BINARY/case-sensitive, matching their
+ * non-path source-prefix semantics. */
+export function sourceFamilyMask(source: string): number {
+  let mask = 0;
+  const normalized = source.replace(/\\/g, '/').toLowerCase();
+  if (normalized.startsWith('fs:')) {
+    const withTerminator = `${normalized}/`;
+    if (withTerminator.includes('/library/application support/cursor/')) {
+      mask |= SOURCE_FAMILY_BITS.cursor;
+    }
+    if (withTerminator.includes('/.claude/projects/')) {
+      mask |= SOURCE_FAMILY_BITS.claude_code;
+    }
+    if (withTerminator.includes('/.codex/sessions/')) {
+      mask |= SOURCE_FAMILY_BITS.codex;
+    }
   }
-  return chunk;
+  if (source.startsWith('git:')) mask |= SOURCE_FAMILY_BITS.git;
+  if (source.startsWith('api:granola')) mask |= SOURCE_FAMILY_BITS.granola;
+  return mask;
+}
+
+export function sourceBelongsToFamily(source: string, family: SourceFamily): boolean {
+  return (sourceFamilyMask(source) & SOURCE_FAMILY_BITS[family]) !== 0;
 }

@@ -47,6 +47,22 @@ describe('SqliteStorage hard read budgets', () => {
         content: 'wanted',
         metadata: JSON.stringify({ composer_id: 'wanted' }),
       });
+      insert.run({
+        id: 'codex-wanted',
+        source: 'fs:/benchmark-home/.codex/sessions/wanted.jsonl',
+        source_key: normalizePathLikeSource('fs:/benchmark-home/.codex/sessions/wanted.jsonl'),
+        timestamp: timestampAt(0),
+        content: 'codex wanted',
+        metadata: JSON.stringify({ composer_id: 'codex-wanted' }),
+      });
+      insert.run({
+        id: 'other-home-codex',
+        source: 'fs:/other-home/.codex/sessions/newer.jsonl',
+        source_key: normalizePathLikeSource('fs:/other-home/.codex/sessions/newer.jsonl'),
+        timestamp: timestampAt(STORAGE_MAX_SCANNED_ROWS + 1),
+        content: 'same family, wrong prefix',
+        metadata: JSON.stringify({ composer_id: 'other-home' }),
+      });
       for (let i = 1; i <= STORAGE_MAX_SCANNED_ROWS; i += 1) {
         const source = `fs:/other/session-${i}.jsonl`;
         insert.run({
@@ -92,7 +108,7 @@ describe('SqliteStorage hard read budgets', () => {
     storage.close();
   });
 
-  it('stops a sparse source-prefix scan at the descriptor budget and exposes lossless continuation', async () => {
+  it('keeps an arbitrary sparse source-prefix scan bounded and resumable', async () => {
     const observations: StorageSelectPageObservation[] = [];
     const storage = new SqliteStorage(dbPath, {
       onSelectPage: (observation) => observations.push(observation),
@@ -124,6 +140,89 @@ describe('SqliteStorage hard read budgets', () => {
     });
     expect(resumed.map((row) => row.id)).toEqual(['wanted']);
     storage.close();
+  });
+
+  it('uses the source-family index to reach a sparse old app prefix directly', async () => {
+    const observations: StorageSelectPageObservation[] = [];
+    const storage = new SqliteStorage(dbPath, {
+      onSelectPage: (observation) => observations.push(observation),
+    });
+
+    const rows = await storage.query({
+      source_family: 'codex',
+      source_prefix: 'fs:/benchmark-home/.codex/sessions',
+      limit: 1,
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(['codex-wanted']);
+    expect(observations.filter((item) => item.phase === 'descriptor')).toHaveLength(1);
+    expect(observations.find((item) => item.phase === 'descriptor')?.rows).toBe(2);
+    expect(observations.filter((item) => item.phase === 'payload')).toHaveLength(1);
+    storage.close();
+  });
+
+  it('uses the source-family index to prove an app prefix is absent', async () => {
+    const observations: StorageSelectPageObservation[] = [];
+    const storage = new SqliteStorage(dbPath, {
+      onSelectPage: (observation) => observations.push(observation),
+    });
+
+    expect(
+      await storage.query({
+        source_family: 'granola',
+        source_prefix: 'api:granola',
+        limit: 1,
+      }),
+    ).toEqual([]);
+    expect(observations.filter((item) => item.phase === 'descriptor')).toHaveLength(1);
+    expect(observations.find((item) => item.phase === 'descriptor')?.rows).toBe(0);
+    expect(observations.filter((item) => item.phase === 'payload')).toHaveLength(0);
+    storage.close();
+  });
+
+  it('keeps a broad source-family candidate page on its ordered partial index', () => {
+    const planPath = join(dir, 'source-family-plan.db');
+    new SqliteStorage(planPath).close();
+    const db = new Database(planPath);
+    const insert = db.prepare(
+      `INSERT INTO events (id, source, timestamp, content)
+       VALUES (?, ?, ?, 'wide family')`,
+    );
+    const seed = db.transaction(() => {
+      for (let i = 0; i < STORAGE_DESCRIPTOR_PAGE_ROWS * 4; i += 1) {
+        insert.run(
+          `wide-${i.toString().padStart(5, '0')}`,
+          `fs:/home/.codex/sessions/${i}.jsonl`,
+          timestampAt(i),
+        );
+      }
+    });
+    seed();
+
+    let visits = 0;
+    db.function('echo_probe', (source: unknown) => {
+      void source;
+      visits += 1;
+      return 1;
+    });
+    const candidateSql = `SELECT rowid, id, source, timestamp
+                            FROM events
+                           WHERE (source_family_mask & 4) != 0
+                             AND echo_probe(source) = 1
+                           ORDER BY timestamp DESC, id DESC
+                           LIMIT ${STORAGE_DESCRIPTOR_PAGE_ROWS}`;
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${candidateSql}`).all() as Array<{
+      detail: string;
+    }>;
+    const rows = db.prepare(candidateSql).all();
+
+    expect(rows).toHaveLength(STORAGE_DESCRIPTOR_PAGE_ROWS);
+    expect(visits).toBe(STORAGE_DESCRIPTOR_PAGE_ROWS);
+    expect(plan.map((row) => row.detail).join('\n')).toMatch(
+      /idx_events_source_family_codex_timestamp_id/,
+    );
+    expect(plan.map((row) => row.detail).join('\n')).not.toMatch(/TEMP B-TREE FOR ORDER BY/);
+    db.close();
   });
 
   it('bounds sparse JSON metadata work to the same resumable descriptor window', async () => {
@@ -326,6 +425,34 @@ describe('SqliteStorage hard read budgets', () => {
     expect(() => new SqliteStorage(poisonPath)).toThrow(/CHECK constraint failed/);
     const unchanged = new Database(poisonPath);
     expect(unchanged.pragma('user_version', { simple: true })).toBe(4);
+    unchanged.close();
+  });
+
+  it('fails the source-family migration before an oversized v5 descriptor is classified', () => {
+    const poisonPath = join(dir, 'legacy-v5-huge-source.db');
+    const db = new Database(poisonPath);
+    db.exec(`
+      CREATE TABLE events (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata TEXT,
+        embedding BLOB,
+        source_key TEXT
+      );
+      PRAGMA user_version = 5;
+    `);
+    db.prepare(
+      `INSERT INTO events (id, source, timestamp, content) VALUES (?, ?, ?, 'poison')`,
+    ).run('legacy', 's'.repeat(STORAGE_DESCRIPTOR_SOURCE_BYTES + 1), timestampAt(0));
+    db.close();
+
+    expect(() => new SqliteStorage(poisonPath)).toThrow(/CHECK constraint failed/);
+    const unchanged = new Database(poisonPath);
+    expect(unchanged.pragma('user_version', { simple: true })).toBe(5);
+    const columns = unchanged.pragma('table_xinfo(events)') as Array<{ name: string }>;
+    expect(columns.some((column) => column.name === 'source_family_mask')).toBe(false);
     unchanged.close();
   });
 

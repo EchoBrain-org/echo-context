@@ -73,6 +73,82 @@ describe.each(backends)('source matching conformance — $name', ({ create }) =>
     });
   });
 
+  describe('source-family candidates', () => {
+    it('keeps the finite app-family vocabulary aligned across adapters', async () => {
+      const cases = [
+        ['cursor', 'fs:/home/Library/Application Support/Cursor/session.jsonl'],
+        ['claude_code', 'fs:/home/.claude/projects/session.jsonl'],
+        ['codex', 'fs:/home/.codex/sessions/session.jsonl'],
+        ['git', 'git:/repo'],
+        ['granola', 'api:granola'],
+      ] as const;
+      for (const [index, [family, source]] of cases.entries()) {
+        await store.append(
+          eventInput({
+            source,
+            timestamp: `2026-04-30T12:0${index}:00.000Z`,
+            content: family,
+          }),
+        );
+      }
+      for (const [family] of cases) {
+        expect((await store.query({ source_family: family })).map((e) => e.content)).toEqual([
+          family,
+        ]);
+      }
+    });
+
+    it('classifies a backslash-stored app source without changing prefix authority', async () => {
+      await store.append(
+        eventInput({
+          source: 'fs:C:\\Users\\me\\.codex\\sessions\\a.jsonl',
+          content: 'windows-codex',
+        }),
+      );
+      const r = await store.query({
+        source_family: 'codex',
+        source_prefix: 'fs:C:/Users/me/.codex/sessions',
+      });
+      expect(r.map((e) => e.content)).toEqual(['windows-codex']);
+    });
+
+    it('keeps the canonical prefix authoritative over same-family candidates', async () => {
+      await store.append(
+        eventInput({
+          source: 'fs:/other-home/.codex/sessions/newer.jsonl',
+          timestamp: '2026-04-30T12:01:00.000Z',
+          content: 'wrong-home',
+        }),
+      );
+      await store.append(
+        eventInput({
+          source: 'fs:/current-home/.codex/sessions/wanted.jsonl',
+          content: 'wanted-home',
+        }),
+      );
+      const r = await store.query({
+        source_family: 'codex',
+        source_prefix: 'fs:/current-home/.codex/sessions',
+      });
+      expect(r.map((e) => e.content)).toEqual(['wanted-home']);
+    });
+
+    it('allows synthetic paths to belong to every embedded app family', async () => {
+      await store.append(
+        eventInput({
+          source: 'fs:/home/.codex/sessions/nested/.claude/projects/a.jsonl',
+          content: 'overlapping-markers',
+        }),
+      );
+      expect((await store.query({ source_family: 'codex' })).map((e) => e.content)).toEqual([
+        'overlapping-markers',
+      ]);
+      expect((await store.query({ source_family: 'claude_code' })).map((e) => e.content)).toEqual([
+        'overlapping-markers',
+      ]);
+    });
+  });
+
   describe('component-boundary prefix matching (divergence class: raw LIKE prefix%)', () => {
     it('source_prefix "fs:/a/b" does NOT match "fs:/a/bc" (boundary enforced)', async () => {
       await store.append(eventInput({ source: 'fs:/a/bc', content: 'sibling' }));

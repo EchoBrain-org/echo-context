@@ -302,4 +302,31 @@ describe('search_memories bounded storage scan', () => {
     expect(second.matches.map((match) => match.content)).toEqual(['needle']);
     storage.close();
   });
+
+  it('uses the indexed SQLite source family to skip dense unrelated history', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'echo-context-source-family-search-'));
+    roots.push(root);
+    const storage = new SqliteStorage(join(root, 'context.db'));
+    for (let rank = 0; rank < STORAGE_MAX_SCANNED_ROWS; rank += 1) {
+      await storage.append({
+        source: `fs:/noise/${rank}`,
+        timestamp: timestampForRank(rank),
+        content: 'noise',
+      });
+    }
+    await storage.append({
+      source: `fs:${homedir()}/.codex/sessions/needle.jsonl`,
+      timestamp: timestampForRank(STORAGE_MAX_SCANNED_ROWS + 1),
+      content: 'needle',
+    });
+
+    const result = await searchMemories(storage, {
+      source_app: 'codex',
+      limit: 1,
+    });
+    expect(result.matches.map((match) => match.content)).toEqual(['needle']);
+    expect(result.next_cursor).toBeNull();
+    expect(result.warnings.join('\n')).not.toMatch(/scan budget reached/);
+    storage.close();
+  });
 });
