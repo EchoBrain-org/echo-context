@@ -49,6 +49,33 @@ describe('copyDatabaseForContext', () => {
     expect(() => assertCopyContainsCurrentLegacy(source, destination)).not.toThrow();
   });
 
+  it('copies a database that migrate itself produced and carries its lineage forward', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'echo-context-copy-recopy-'));
+    roots.push(root);
+    const legacy = join(root, 'legacy.db');
+    const first = join(root, 'first', 'context.db');
+    const second = join(root, 'second', 'context.db');
+    const seed = new SqliteStorage(legacy);
+    await seed.append({
+      source: 'fs:/tmp/recopy.jsonl',
+      timestamp: '2026-07-20T12:00:00.000Z',
+      content: 'first generation',
+    });
+    seed.close();
+
+    await copyDatabaseForContext(legacy, first);
+    const firstLineage = readCopyLineage(first);
+    expect(firstLineage.previousSourceDatabaseDigest).toBeNull();
+
+    const result = await copyDatabaseForContext(first, second);
+    expect(result).toMatchObject({ events: 1, integrity: 'ok' });
+    const secondLineage = readCopyLineage(second);
+    expect(secondLineage.sourceEventCount).toBe(1);
+    expect(secondLineage.sourceDatabaseDigest).not.toBe(firstLineage.sourceDatabaseDigest);
+    expect(secondLineage.previousSourceDatabaseDigest).toBe(firstLineage.sourceDatabaseDigest);
+    expect(() => assertCopyContainsCurrentLegacy(first, second)).not.toThrow();
+  });
+
   it('never overwrites an existing destination', async () => {
     const root = mkdtempSync(join(tmpdir(), 'echo-context-copy-'));
     roots.push(root);
