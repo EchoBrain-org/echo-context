@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { copyDatabaseForContext } from '../../src/migration/copy-database.js';
 import {
@@ -74,6 +75,31 @@ describe('copyDatabaseForContext', () => {
     expect(secondLineage.sourceDatabaseDigest).not.toBe(firstLineage.sourceDatabaseDigest);
     expect(secondLineage.previousSourceDatabaseDigest).toBe(firstLineage.sourceDatabaseDigest);
     expect(() => assertCopyContainsCurrentLegacy(first, second)).not.toThrow();
+  });
+
+  it('rejects an inherited lineage table whose singleton record is missing', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'echo-context-copy-corrupt-'));
+    roots.push(root);
+    const legacy = join(root, 'legacy.db');
+    const first = join(root, 'first', 'context.db');
+    const second = join(root, 'second', 'context.db');
+    const seed = new SqliteStorage(legacy);
+    await seed.append({
+      source: 'fs:/tmp/corrupt.jsonl',
+      timestamp: '2026-07-20T12:00:00.000Z',
+      content: 'lineage row about to vanish',
+    });
+    seed.close();
+
+    await copyDatabaseForContext(legacy, first);
+    const corrupt = new Database(first);
+    corrupt.exec('DELETE FROM context_copy_lineage');
+    corrupt.close();
+
+    await expect(copyDatabaseForContext(first, second)).rejects.toThrow(
+      /missing its singleton record/,
+    );
+    expect(existsSync(second)).toBe(false);
   });
 
   it('never overwrites an existing destination', async () => {

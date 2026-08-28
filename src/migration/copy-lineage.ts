@@ -47,7 +47,14 @@ export function writeCopyLineage(
       const row = db
         .prepare('SELECT source_database_digest AS digest FROM context_copy_lineage WHERE singleton_id = 1')
         .get() as { digest: string } | undefined;
-      previousSourceDatabaseDigest = row?.digest ?? null;
+      if (row === undefined) {
+        // A lineage table with no record is corruption evidence, not a
+        // first-generation copy; never launder it into a clean origin.
+        throw new Error(
+          'inherited context_copy_lineage table is missing its singleton record',
+        );
+      }
+      previousSourceDatabaseDigest = row.digest;
       db.exec('DROP TABLE context_copy_lineage');
     }
     db.exec(`
