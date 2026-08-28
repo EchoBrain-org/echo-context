@@ -1135,6 +1135,17 @@ const BETA_RELEASE_CHANGES = Object.freeze({
     '',
     'Technical-preview limits: distribution is a GitHub prerelease tarball, not an npm registry package. Cross-platform operation uses the foreground `daemon run` path. Managed installation remains macOS launchd-only; there is no systemd or Windows Service installer. Agent sync installs instructions and banners but does not configure MCP clients.',
   ]),
+  '0.1.0-beta.10': Object.freeze([
+    'This prerelease keeps the beta.7 seven-tool read-only MCP contract. Beta.9 was staged from reviewed source and passed its gate, but could not be activated against a founder-live database and is intentionally not retagged.',
+    '',
+    'What changed:',
+    '',
+    '- `echo-context migrate` now succeeds on a database that migrate itself produced. The copy-lineage record inherited from the source is replaced by this copy\'s own record, and the inherited source digest is carried forward in a new `previous_source_database_digest` column so the copy chain stays recoverable.',
+    '- Lineage records written before that column existed read back as first-generation copies, so existing founder-live databases remain valid `migrate` and `cutover` inputs.',
+    '- Everything staged for beta.9 is included: bounded source-app family-index searches and schema migration 0006.',
+    '',
+    'Technical-preview limits: distribution is a GitHub prerelease tarball, not an npm registry package. Cross-platform operation uses the foreground `daemon run` path. Managed installation remains macOS launchd-only; there is no systemd or Windows Service installer. Agent sync installs instructions and banners but does not configure MCP clients.',
+  ]),
 });
 
 export function betaReleaseNotes(manifest) {
