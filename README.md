@@ -150,11 +150,11 @@ package.
 
 The beta is distributed from the
 [GitHub prereleases](https://github.com/EchoBrain-org/echo-context/releases),
-not from the npm registry. For `0.1.0-beta.9`, download all three assets from
+not from the npm registry. For `0.1.0-beta.10`, download all three assets from
 the same release:
 
-- `echo-context-0.1.0-beta.9.tgz`
-- `echo-context-0.1.0-beta.9.tgz.sha256`
+- `echo-context-0.1.0-beta.10.tgz`
+- `echo-context-0.1.0-beta.10.tgz.sha256`
 - `beta-release-manifest.v1.json`
 
 The manifest binds the version and tag to the reviewed source commit, tarball
@@ -163,15 +163,15 @@ Verify the downloaded tarball before installing it. On Linux use
 `sha256sum -c`; on macOS use `shasum -a 256 -c`:
 
 ```sh
-sha256sum -c echo-context-0.1.0-beta.9.tgz.sha256
-# macOS: shasum -a 256 -c echo-context-0.1.0-beta.9.tgz.sha256
+sha256sum -c echo-context-0.1.0-beta.10.tgz.sha256
+# macOS: shasum -a 256 -c echo-context-0.1.0-beta.10.tgz.sha256
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$expected = (Get-Content .\echo-context-0.1.0-beta.9.tgz.sha256).Split()[0].ToLower()
-$actual = (Get-FileHash .\echo-context-0.1.0-beta.9.tgz -Algorithm SHA256).Hash.ToLower()
+$expected = (Get-Content .\echo-context-0.1.0-beta.10.tgz.sha256).Split()[0].ToLower()
+$actual = (Get-FileHash .\echo-context-0.1.0-beta.10.tgz -Algorithm SHA256).Hash.ToLower()
 if ($actual -ne $expected) { throw "ECHO Context tarball checksum mismatch" }
 ```
 
@@ -184,7 +184,7 @@ npm --version
 mkdir echo-context-preview
 cd echo-context-preview
 npm init -y
-npm install --save-exact /absolute/path/to/echo-context-0.1.0-beta.9.tgz
+npm install --save-exact /absolute/path/to/echo-context-0.1.0-beta.10.tgz
 ./node_modules/.bin/echo-context version
 ./node_modules/.bin/echo-context daemon run
 ```
