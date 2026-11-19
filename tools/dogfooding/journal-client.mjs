@@ -519,7 +519,7 @@ export function renderEntry(entry, identity) {
   const returned = compact(entry.returned, "returned", 4_000);
   const sources = compact(entry.sources, "sources", 3_000);
   const verdict = compact(entry.verdict, "verdict", 1_000);
-  if (!/^(right|partial|wrong)(?:\s|$|—|-)/u.test(verdict)) {
+  if (!/^(right|partial|wrong)(?:\s|$|[—–:-])/u.test(verdict)) {
     fail("verdict must begin with right, partial, or wrong");
   }
   const note = compact(entry.note, "note", 4_000);

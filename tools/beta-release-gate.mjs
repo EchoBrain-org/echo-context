@@ -1151,6 +1151,8 @@ const BETA_RELEASE_CHANGES = Object.freeze({
     '',
     'The change applies to newly processed turns. For older captures, the usage skill explains how to recover split observations from the exact session source. It also describes how to locate a recent discussion with a named app through thread discovery.',
     '',
+    'Grouped discovery now pages all projects and threads admitted by the storage scan. Text-only batch reads use spare response space for complete turns. Stale cursor errors explain how to restart the request. The usage guide is shorter, and the founder journal accepts a colon after a verdict label.',
+    '',
     'This release uses the existing database schema and seven read-only MCP tools.',
   ]),
 });

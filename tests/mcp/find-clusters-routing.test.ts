@@ -363,7 +363,7 @@ describe('find_clusters grouped routing contract', () => {
     });
     await expect(
       findClusters(staleFixture.store, { cursor: staleFirst.next_cursor! }),
-    ).rejects.toThrow(/FIND_CLUSTERS_CURSOR_STALE/);
+    ).rejects.toThrow(/FIND_CLUSTERS_CURSOR_STALE.*without a cursor/);
 
     await expect(
       findClusters(fixture.store, {
@@ -431,7 +431,7 @@ describe('find_clusters grouped routing contract', () => {
     expect(hydrated).toHaveLength(group.unique_turn_count);
   });
 
-  it('marks grouped counts incomplete when the bounded logical-turn cap fires', async () => {
+  it('pages every admitted group even when the ranked view drops turns', async () => {
     const store = new MemoryStorage();
     for (let index = 0; index < 510; index += 1) {
       await appendRoutingTurn(store, {
@@ -453,14 +453,19 @@ describe('find_clusters grouped routing contract', () => {
     });
 
     expect(result.result_caps).toMatchObject({
-      groups_total: 500,
-      unique_turns_total: 500,
+      groups_total: 510,
+      unique_turns_total: 510,
       atoms_total_in_window: 510,
-      counts_complete: false,
-      truncated: true,
+      counts_complete: true,
+      truncated: false,
     });
     expect(result.next_cursor).not.toBeNull();
-    expect(result.warnings.join('\n')).toMatch(/limit dropped|truncat/i);
+    const pages = await collectGroupPages(store, result.next_cursor ?? null);
+    const allIds = [...result.groups!.map((group) => group.group_id), ...pages];
+    expect(allIds).toHaveLength(510);
+    expect(new Set(allIds).size).toBe(510);
+    const ranked = await findClusters(store, { since: SINCE, until: UNTIL });
+    expect(ranked.result_caps.truncated).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(
       FIND_CLUSTERS_RESPONSE_BYTE_CEILING,
     );

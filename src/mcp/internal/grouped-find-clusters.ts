@@ -425,7 +425,7 @@ export async function findGroupedClusters(
   }
 
   const request = groupedRecentWorkParams(params, cursor);
-  const response = await getRecentWorkContext(storage, request.recent, now);
+  const response = await getRecentWorkContext(storage, request.recent, now, 'grouped');
   const models = buildDiscoveryGroups(
     response,
     request.group_by,

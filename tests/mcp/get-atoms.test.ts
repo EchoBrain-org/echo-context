@@ -56,6 +56,28 @@ describe('get_atoms', () => {
     expect(r.atoms[0]!.content_bytes_elided).toBeGreaterThan(0);
   });
 
+  it.each(['compact', 'rich'] as const)('recovers whole content in spare space for %s text-only reads', async (view) => {
+    const store = new MemoryStorage();
+    // Escape-heavy content looks small in memory but exceeds the serialized page.
+    const oversized = String.fromCharCode(1).repeat(8_000);
+    const text = 'prefix ' + 'é'.repeat(1_500) + ' exact middle ' + '文'.repeat(800);
+    const large = await store.append(evShape(1, { content: oversized }));
+    const small = await store.append(evShape(2, { content: text }));
+    const result = await getAtoms(store, { atom_ids: [large, small, small], fields: ['content'], view });
+
+    expect(result.atoms.map((atom) => atom.id)).toEqual([large, small, small]);
+    expect(result.atoms[0]?.truncations).toContain('content');
+    for (const atom of result.atoms.slice(1)) {
+      expect(atom.content).toBe(text);
+      expect(atom.truncations).toEqual(['fields_omitted']);
+      expect(atom.content_bytes_elided).toBeUndefined();
+    }
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(25_000);
+    expect(result.next_cursor).toBeNull();
+    const preview = await getAtoms(store, { atom_ids: [small], view });
+    expect(preview.atoms[0]?.truncations).toContain('content');
+  });
+
   it('projector reshape (tool_calls) → truncations contains "metadata.tool_calls:projected" (NOT "metadata.tool_calls")', async () => {
     const store = new MemoryStorage();
     const id1 = await store.append(

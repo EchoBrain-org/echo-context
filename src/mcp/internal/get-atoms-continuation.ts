@@ -23,9 +23,10 @@ interface CompactGetAtomsCursor extends CompactGetAtomsCursorBody {
 
 export class GetAtomsCursorError extends Error {
   constructor(code: 'INVALID' | 'MISMATCH' | 'STALE', detail: string) {
-    super(
-      `[GET_ATOMS_CURSOR_${code}] ${detail}; repeat the original atom_ids and projection options with the prior next_cursor verbatim`,
-    );
+    const recovery = code === 'STALE'
+      ? 'restart the original request without a cursor'
+      : 'repeat the original atom_ids and projection options with the returned next_cursor';
+    super(`[GET_ATOMS_CURSOR_${code}] ${detail}. ${recovery}`);
     this.name = 'GetAtomsCursorError';
   }
 }

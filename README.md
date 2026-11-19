@@ -80,14 +80,17 @@ are unchanged. Agents may opt into a lean routing projection:
   collapsed-copy count, source coverage, a time range, and a small set of
   stored representative IDs.
 
-Grouped header pages use top-level `next_cursor`. A group whose membership is
+Grouped discovery includes every logical turn admitted by the bounded storage scan.
+Ranking applies to the ungrouped view. Grouped header pages use top-level `next_cursor`. A group whose membership is
 larger than its representative preview has `membership_cursor`; concatenate
 the representative IDs with each returned member page for complete,
 duplicate-free membership. Group cursors freeze the resolved time window and
 fail closed if delayed capture changes the bounded result set.
 
-`get_atoms` remains capped at 50 requested IDs and 25,000 response bytes. When
-that byte budget defers existing atoms, repeat the same IDs and projection
+`get_atoms` remains capped at 50 requested IDs and 25,000 response bytes. For text alone, pass
+`fields: ["content"]`. ECHO uses spare page space for whole bodies in processing
+order. Check each returned atom for a `content` truncation before quoting it.
+When the byte budget defers existing atoms, repeat the same IDs and projection
 options with `next_cursor`. `atoms_missing` is terminal absence;
 `atoms_deferred` is recoverable work, and their sum is the compatibility
 `atoms_dropped` count for that page.

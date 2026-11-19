@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "cdc7cd62ca425c5732f38efb280a4f9b27bde176",
-      "content_sha256": "529cda1adfad3c3a3125bb140a040a68656e9c7262ea0f4f2b4f88a0238bbf8f",
+      "blob_oid": "6228a751c350371dfbb23d24ffef9c30f149fb92",
+      "content_sha256": "56d057e10ac1a39c4748bd3fc6b7115fc1503b41a1657a15d52aca2be931a2e4",
       "mode": "100644",
       "path": "tools/beta-release-gate.mjs"
     },
@@ -55,8 +55,8 @@
       "path": "tools/check-runtime-inventory.mjs"
     },
     {
-      "blob_oid": "b673b38190dea580675575a16354c2fd8cac2a29",
-      "content_sha256": "a3a622c1f81759e657ce70ffcd3bc1fabeb138eca2f122b3dd73c73e88c0ad0a",
+      "blob_oid": "9257cf22aebd3e8542878c1a8e08879d4beec07d",
+      "content_sha256": "ec64198c4af26b507f989558b4564bddbcfbcb8b440aa046c4550077726137fc",
       "mode": "100644",
       "path": "tools/dogfooding/journal-client.mjs"
     },

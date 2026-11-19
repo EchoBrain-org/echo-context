@@ -631,6 +631,15 @@ describe('bounded sparse-scan MCP consumers', () => {
     expect(result.warnings.join('\n')).toMatch(
       /STORAGE_INPUT_BUDGET.*raw observations/,
     );
+
+    const grouped = await findClusters(storage, {
+      since: '2026-05-09T00:00:00.000Z',
+      until: '2026-05-10T00:00:00.000Z',
+      group_by: 'thread',
+    });
+    expect(grouped.result_caps.counts_complete).toBe(false);
+    expect(grouped.result_caps.raw_observations_total).toBe(CLUSTER_MAX_RAW_OBSERVATIONS);
+    expect(grouped.warnings.join('\n')).toMatch(/STORAGE_INPUT_BUDGET.*raw observations/);
   });
 
   it('cluster discovery caps retained raw bytes even when row count is small', async () => {

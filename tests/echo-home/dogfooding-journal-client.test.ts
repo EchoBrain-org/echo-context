@@ -258,7 +258,7 @@ describe("version-bound dogfooding journal client", () => {
         query_inputs: "health preflight; find_clusters grouped by project",
         returned: "one project group and two representative IDs",
         sources: "Codex and Claude Code",
-        verdict: "right — the active thread surfaced first",
+        verdict: "right: the active thread surfaced first",
         note: "The grouped result was concise.",
       },
     });
@@ -269,6 +269,7 @@ describe("version-bound dogfooding journal client", () => {
     });
     const shard = readFileSync(join(journalDir, "claude.md"), "utf8");
     expect(shard).toContain("Founder asked for current context");
+    expect(shard).toContain("right: the active thread surfaced first");
     expect(shard).toContain(`\`${DIGEST}\``);
     expect(statSync(join(journalDir, "claude.md")).mode & 0o777).toBe(0o600);
     expect(readdirSync(journalDir)).not.toContain(".append.lock");

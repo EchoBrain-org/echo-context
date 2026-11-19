@@ -1,162 +1,46 @@
 ---
 name: using-echo-mcp
-description: Use the ECHO context MCP server to recover prior work, decisions, and live cross-tool activity through bounded grouped retrieval, disciplined continuation, and explicit trust signals. On founder-live machines, bind every ECHO-using turn to the live runtime's versioned dogfooding journal.
+description: Retrieve prior work and decisions from the read-only ECHO context server. Record founder-live calls in the live version's dogfooding journal.
 ---
 
 # Use ECHO MCP
 
-## Select the right server
+Use the `echo` MCP server. The `echo-memory` server is a separate, write-capable product. Apply the founder-live journal check below before the first call in each user turn.
 
-Use only the `echo` MCP server and its `mcp__echo__*` tools:
-`echo_ping`, `echo_resolve_mru`, `find_clusters`, `get_atom`, `get_atoms`,
-`search_memories`, and `wait_for_new_turns`.
+## Find the evidence
 
-Do not substitute `echo-memory` or `mcp__echo-memory__*`. That is a different,
-write-capable product.
+- For a repository handoff, use `find_clusters({group_by: "project", repo_path: "/absolute/repo/root"})`. For a discussion, group by `"thread"` and use the known time window. Read representative IDs with `get_atoms`. Add `fields: ["content"]` for the conversation text, or request metadata for thread lineage.
+- For a literal phrase, SHA, path, or error, use `search_memories` with the narrowest known source, repo, or dates. For a named app’s latest session, `echo_resolve_mru` gives a source and filter to pass to search. Check the topic against the returned turns.
+- Read one known ID with `get_atom` when the exact wording matters. If the body exceeds its wire limit, use the returned source pointer where accessible. In older Codex captures, an opening update and final answer can be separate observations. Search the exact session around that time and compare logical turn IDs.
+- To watch for new turns, use `wait_for_new_turns` with a source selector and an offset-bearing `since`. Poll from the returned `next_since`, including after timeout. On `[NEXT_SINCE_CLAMP]`, retry from the intended non-future time. Use explicit offsets throughout and preserve returned timestamps. Use `echo_ping` for connectivity.
 
-## Bind founder-live calls to a version journal
+Stop when the evidence answers the question. For exhaustive coverage, continue the relevant pages.
 
-Apply this gate only when
-`~/.local/share/echo-context/state/dogfooding-journals.json` exists and contains
-`"enabled": true`. If the file is absent or explicitly disabled, skip the gate;
-customer installs do not require dogfooding state. If the user explicitly
-requires the call to be recorded, however, report that founder-live journaling
-is not enabled and make no ECHO call. If the registry exists but is unreadable
-or malformed, report the failure and make no ECHO call.
+| Tool | Continuation |
+| --- | --- |
+| `find_clusters` | Send only `cursor`. Use a group's `membership_cursor` for members after its representatives, or the top-level `next_cursor` for the next page. |
+| `search_memories`, `get_atoms` | Repeat the original arguments and add `cursor` set to the returned `next_cursor`. |
 
-Codex uses actor `codex`; Claude Code uses actor `claude`. Before the first ECHO
-call in each user turn, run:
+A zero-match search with `[SEARCH_SCAN_BUDGET]` leaves older candidates unscanned. Skip missing IDs and read deferred IDs on the next page. Cite the source and mention any clipping, missing coverage, or freshness limit that affects the answer.
+
+## Founder-live journal
+
+Check `~/.local/share/echo-context/state/dogfooding-journals.json`. If absent or disabled, skip journaling. If the user requires recording, report that it is disabled and make no ECHO call. On unreadable or malformed state, stop and report the error.
+
+When enabled, use the installed helper before retrieval. Set `<actor>` to `codex` or `claude`.
 
 ```sh
 node ~/.local/share/echo-context/tools/journal-client.mjs resolve --actor <actor>
 ```
 
-The helper reads the live version and artifact digest from `/healthz`; validates
-the exact registry mapping, path containment, journal index, and actor shard;
-and updates `current_version` only as a convenience pointer. Never infer live
-identity from package metadata, this skill, or a cached install record.
-Specifically, it requires `components.runtime.details.version` and
-`components.runtime.details.artifact_digest`.
+The helper verifies live `components.runtime.details.version` and `components.runtime.details.artifact_digest` and selects `codex.md` or `claude.md`. Proceed on `ready`. For `disabled`, apply the rule above. On error, make no ECHO call. For `needs_confirmation`, show the exact prompt below.
 
-- `ready`: proceed and retain the returned version and shard.
-- `disabled`: proceed without founder-live journaling.
-- `needs_confirmation`: make no ECHO call and show the helper's exact prompt:
-  `ECHO runtime <version> has no dogfooding journal. Create it now and make it current?`
-- Any error: report it and make no ECHO call.
+`ECHO runtime <version> has no dogfooding journal. Create it now and make it current?`
 
-If the founder answers yes, run the helper's `create --journal-dir <path>`
-operation with an explicit dogfooding directory inside the exact accepted
-release evidence. Never invent a generic version directory. If that exact
-release path is not known, ask for it. Creation writes only `JOURNAL.md`,
-`codex.md`, and `claude.md`, records the live artifact digest, and uses
-directory mode `0700` and file mode `0600`. Then run `resolve --actor <actor>`
+If the founder answers yes, use `create --journal-dir <path>` inside the exact accepted release evidence. Ask for the path if unknown. The helper sets directory mode `0700` and file mode `0600`. Then run `resolve --actor <actor>`
 again and proceed only when it returns `ready`.
 
-After the last ECHO call in the turn, send one JSON object on standard input to
-the helper's `append --actor <actor>` operation. Include `timestamp`, `trigger`,
-`query_inputs`, `returned`, `sources`, `verdict`, `note`, and optional
-`conjecture`. Every supplied value must be a non-empty string. `timestamp` must
-carry an explicit offset. `verdict` must begin with `right`, `partial`, or
-`wrong`, followed by the reason; use `partial` for useful but incomplete,
-zero-result, or error outcomes. The helper revalidates live identity and
-serializes the append. One entry may cover several calls. Include the health
-preflight in `query_inputs`; log errors and zero-result calls. Never paste large
-raw payloads, secrets, credentials, or sensitive returned prose.
+After the last call, pipe one JSON object to the same helper's `append --actor <actor>`. Include `timestamp` with offset, `trigger`, `query_inputs` including preflight, `returned`, `sources`, `verdict`, and `note`. Use `conjecture` for an optional hypothesis. Every supplied value must be a non-empty string. `verdict` must begin with `right`, `partial`, or
+`wrong`, followed by the reason. Use `partial` for incomplete, empty, or failed retrieval. Summarize without secrets or raw payloads.
 
-The turn is recorded only when append returns `status: "appended"`. If it
-returns another status, resolve again and retry after satisfying that status.
-If append itself errors, inspect the actor shard tail before retrying so an
-uncertain successful write is not duplicated. If it still cannot be appended,
-tell the user that the ECHO call was not recorded; never claim success merely
-because the ECHO call completed. A stale-lock error requires operator
-inspection; do not delete the lock until confirming that no writer is active
-and checking the shard tail for a completed append.
-
-## Preserve timestamps
-
-Send explicit offsets (`Z`, `±HH:MM`, or `±HHMM`) and copy response timestamps
-verbatim. The strict runtime rejects an offset-less `since` for
-`wait_for_new_turns`; `search_memories` and `find_clusters` accept one with a
-`[TZ]` warning.
-
-Never send a future `since` to `wait_for_new_turns`. If an accidental future
-input produces `[NEXT_SINCE_CLAMP]`, retry from the intended non-future bound
-before continuing from the returned watermark.
-
-## Continue with the right contract
-
-- `find_clusters` grouped pages: send the returned `membership_cursor` or
-  `next_cursor` value as the only input key, `cursor`.
-- `search_memories`: send `next_cursor` as `cursor` and repeat the original
-  query, source selector, repo path, metadata match, time bounds, and limit.
-- `get_atoms`: repeat the original IDs, fields, preference, and view with
-  `cursor`.
-
-Never send `membership_cursor` or `next_cursor` as input keys. They are response
-field names. All seven tools reject unknown top-level keys.
-
-## Resume a repository
-
-Call `find_clusters({group_by: "project", repo_path: "/absolute/repo/root"})`,
-then hydrate `representative_atom_ids` with
-`get_atoms({atom_ids, view: "compact"})`. Use the legacy ungrouped flow only
-when grouped routing cannot answer the task.
-
-For thread topology, call `find_clusters({group_by: "thread"})`, then hydrate
-with `view: "rich"` or `fields: ["metadata"]`; compact view omits topology.
-
-When asked for a recent discussion with a named app, resolve the most recent
-source with `echo_resolve_mru` and use `find_clusters({group_by: "thread"})`
-to identify the discussion from representative turns. Include the known repo
-and time window where supported. The most recent source is a lead. Check the
-topic before selecting that thread.
-
-In older Codex captures, a user clarification could split one turn into two
-observations. If a grouped turn stops at an opening update, use
-`search_memories` with the exact session source and a narrow time window to
-recover the follow-up and final answer. Check their logical turn IDs before
-attributing both observations to one exchange.
-
-For all members of one group:
-
-1. Hydrate representatives first.
-2. Send that group's `membership_cursor` value as `cursor`, alone.
-3. Continue with each returned `next_cursor` until it is null.
-4. Treat representatives plus membership pages as the complete set.
-
-`atoms_total` includes representatives, so a final membership page can return
-fewer atoms than `atoms_total` without losing data.
-
-## Interpret hydration honestly
-
-- `atoms_missing`: the ID does not exist; stop retrying it.
-- `atoms_deferred`: the atom exists but did not fit; continue with
-  `next_cursor`.
-- `atoms_dropped`: compatibility sum of missing plus deferred; do not treat the
-  whole field as terminal loss.
-- Inspect each atom's `truncations` even when no IDs are deferred.
-
-Use compact views and field projection as the primary cost controls. MCP
-dual-encoding makes wire cost roughly twice the JSON budget.
-
-## Search and freshness
-
-Use `search_memories` for exact tokens such as SHAs, paths, error strings, and
-quoted phrases. Matching is case-insensitive literal substring, not semantic.
-A zero-match response with `[SEARCH_SCAN_BUDGET]` is incomplete; continue with
-the same search shape and its cursor when the answer matters.
-
-Use `wait_for_new_turns` with an offset-bearing `since`, a non-empty source
-selector, and a short timeout. Feed its `next_since` into the next poll. Fetch
-bodies with `get_atoms`.
-
-Use `get_atom` only to recover one truncated or over-wire atom. Use
-`echo_resolve_mru` to resolve an app or exact source into search filters.
-Use `echo_ping` only for connectivity.
-
-## Report trust signals
-
-State what ECHO returned, which sources supported it, and whether warnings,
-unconsumed cursors, or truncation make the result partial. If the first chain is
-thin, make one disciplined fallback by widening the time window or relaxing the
-narrowest filter before asking the user for more clues.
+Recording succeeds when append returns `status: "appended"`. For another status, resolve and satisfy it before retrying. After an append error, inspect the shard tail for an existing entry before retrying. A stale lock requires operator inspection of the writer and shard. If recording still fails, report that the ECHO call was not recorded.

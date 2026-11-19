@@ -37,7 +37,7 @@ export const ECHO_RESOLVE_MRU_MAX_SCAN_WINDOWS = 4;
 const ECHO_RESOLVE_MRU_CANDIDATES_PER_WINDOW = 8;
 
 export const ECHO_RESOLVE_MRU_DESCRIPTION =
-  'Resolve each requested app or exact source to one most-recently-active exact source; no bodies are fetched. App names (`cursor`, `claude_code`, `codex`, `git`, `granola`) search across that app, while other strings are exact-source lookups. Optional `repo_path` restricts eligible activity. Each non-null result is a `search_memories` descriptor: pass its `source` and spread its `filter`. This tool selects one newest source; use `wait_for_new_turns` when you need to watch all sessions for an app.';
+  "Resolve an app or exact source to its most-recently-active source, optionally within repo_path. Pass the returned descriptor’s source and filter to search_memories. Use wait_for_new_turns to watch multiple sessions.";
 
 /** The descriptor returned for a resolved source. `filter` encodes the
  *  scoping predicates the caller MUST spread through to `search_memories`
