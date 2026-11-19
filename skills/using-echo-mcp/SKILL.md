@@ -105,6 +105,18 @@ when grouped routing cannot answer the task.
 For thread topology, call `find_clusters({group_by: "thread"})`, then hydrate
 with `view: "rich"` or `fields: ["metadata"]`; compact view omits topology.
 
+When asked for a recent discussion with a named app, resolve the most recent
+source with `echo_resolve_mru` and use `find_clusters({group_by: "thread"})`
+to identify the discussion from representative turns. Include the known repo
+and time window where supported. The most recent source is a lead. Check the
+topic before selecting that thread.
+
+In older Codex captures, a user clarification could split one turn into two
+observations. If a grouped turn stops at an opening update, use
+`search_memories` with the exact session source and a narrow time window to
+recover the follow-up and final answer. Check their logical turn IDs before
+attributing both observations to one exchange.
+
 For all members of one group:
 
 1. Hydrate representatives first.

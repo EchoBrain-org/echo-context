@@ -352,6 +352,7 @@ function assistantMsg(
   text: string,
   ts = "2026-05-01T10:00:02.000Z",
   turnId?: string,
+  phase?: "commentary" | "final_answer",
 ): CodexLine {
   return {
     timestamp: ts,
@@ -359,6 +360,7 @@ function assistantMsg(
     payload: {
       type: "message",
       role: "assistant",
+      ...(phase !== undefined ? { phase } : {}),
       content: [{ type: "output_text", text }],
       ...(turnId !== undefined
         ? { internal_chat_message_metadata_passthrough: { turn_id: turnId } }
@@ -1766,6 +1768,85 @@ describe("extractCodexTurns (pure)", () => {
         observation_kind: "unknown",
       });
     }
+  });
+
+  it("retains same-turn user steering and the final answer across a checkpoint restart", async () => {
+    const id = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const header = sessionMeta();
+    writeJsonl(path, [
+      header,
+      userMsg("Initial question", undefined, id),
+      userMsg("Additional detail", undefined, id),
+      assistantMsg("Checking", undefined, id, "commentary"),
+      userMsg("Clarification", undefined, id),
+    ]);
+
+    const open = await extractCodexTurns(path, 0);
+    expect(open.turns).toEqual([]);
+    appendJsonl(path, [
+      assistantMsg("Final answer", undefined, id, "final_answer"),
+      taskComplete("2026-05-01T10:00:05.000Z"),
+    ]);
+
+    const resumed = await extractCodexTurns(path, open.newOffset, {
+      lastKnownCwd: open.cwd,
+      lastKnownCodex: open.codex,
+    });
+    expect(resumed.turns).toHaveLength(1);
+    expect(resumed.turns[0]).toMatchObject({
+      logical_turn_id: id,
+      user_message: "Initial question\n\nAdditional detail\n\nClarification",
+      assistant_message: "Checking\n\nFinal answer",
+      byte_offset: readFileSync(path).length,
+    });
+    const onePass = await extractCodexTurns(path, 0);
+    expect(resumed.turns).toEqual(onePass.turns);
+    expect((await extractCodexTurns(path, resumed.newOffset)).turns).toEqual([]);
+  });
+
+  it("checkpoints through the last clarification when the next user closes the turn", async () => {
+    const id = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("First question", undefined, id),
+      assistantMsg("Progress", undefined, id, "commentary"),
+      userMsg("Additional detail", undefined, id),
+    ]);
+    const endOfFirst = readFileSync(path).length;
+    appendJsonl(path, [
+      userMsg("Next question without an ID"),
+      assistantMsg("Next answer"),
+      taskComplete("2026-05-01T10:01:00.000Z"),
+    ]);
+
+    const { turns } = await extractCodexTurns(path, 0);
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toMatchObject({
+      user_message: "First question\n\nAdditional detail",
+      byte_offset: endOfFirst,
+    });
+    const restart = await extractCodexTurns(path, turns[0]!.byte_offset);
+    expect(restart.turns).toHaveLength(1);
+    expect(restart.turns[0]?.user_message).toBe("Next question without an ID");
+  });
+
+  it("keeps a steering message separate when the assistant supplied a conflicting ID", async () => {
+    const id = "019f8b24-7fd7-79d2-831e-ebeb897a19a6";
+    const other = "019f8b24-7fd7-79d2-831e-ebeb897a19a7";
+    writeJsonl(path, [
+      sessionMeta(),
+      userMsg("First question", undefined, id),
+      assistantMsg("Unattributed reply", undefined, other, "commentary"),
+      userMsg("Second question", undefined, id),
+      assistantMsg("Second answer", undefined, id),
+      taskComplete("2026-05-01T10:00:05.000Z"),
+    ]);
+    const { turns } = await extractCodexTurns(path, 0);
+    expect(turns.map((turn) => turn.user_message)).toEqual([
+      "First question",
+      "Second question",
+    ]);
+    expect(turns.map((turn) => turn.logical_turn_id)).toEqual([undefined, id]);
   });
 
   it("reconciles turn_context identity with only the turn it precedes", async () => {
