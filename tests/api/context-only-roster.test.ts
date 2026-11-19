@@ -88,7 +88,7 @@ describe('AC3 — context-only MCP roster', () => {
         arguments: { since: '2026-07-21T11:00:00.000Z', until: '2026-07-21T13:00:00.000Z' },
       },
       { name: 'get_atom', arguments: { id: atomId } },
-      { name: 'get_atoms', arguments: { atom_ids: [atomId], format: 'minimal' } },
+      { name: 'get_atoms', arguments: { atom_ids: [atomId] } },
       { name: 'search_memories', arguments: { query: 'alpha', limit: 10 } },
       {
         name: 'wait_for_new_turns',

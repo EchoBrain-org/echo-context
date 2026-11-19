@@ -19,7 +19,7 @@ import {
 } from '../../storage/budgets.js';
 import type { CaptureEvent, QueryFilter, Storage } from '../../storage/interface.js';
 import { noUsefulCluster } from '../../trace/auto-expand.js';
-import { buildRecentWorkContext, rankClusters, rankReasonsFor } from '../../trace/index.js';
+import { buildRecentWorkContext, rankClusters, rankReasonsFor, type ClusterMode } from '../../trace/index.js';
 import type {
   ArtifactHint,
   Query,
@@ -516,6 +516,7 @@ async function runRecentWorkContextPass(
   format: ResponseFormat,
   artifactHint: ArtifactHint | undefined,
   repoPath: ResolvedRepoPath | null,
+  mode: ClusterMode,
 ): Promise<RecentWorkContextResponse> {
   const storageCap = limit * STORAGE_OVERFETCH;
   // Historical raw-fs exclusion uses one shared retrieval helper.
@@ -551,7 +552,7 @@ async function runRecentWorkContextPass(
     query.repo_path = repoPath.normalized_path;
   }
 
-  const response = buildRecentWorkContext(events, query, normalizeEvent);
+  const response = buildRecentWorkContext(events, query, normalizeEvent, mode);
 
   // Storage-cap silent-truncation guard. When the storage query returned
   // exactly `limit * STORAGE_OVERFETCH` rows, additional in-window atoms may
@@ -616,6 +617,7 @@ export async function getRecentWorkContext(
   storage: Storage,
   params: RecentWorkContextParams,
   now: Date = new Date(),
+  mode: ClusterMode = 'ranked',
 ): Promise<RecentWorkContextResponse> {
   const limit = clampLimit(params.limit);
   const windowMs = DEFAULT_WINDOW_HOURS * 60 * 60 * 1000;
@@ -645,6 +647,7 @@ export async function getRecentWorkContext(
     format,
     params.artifact_hint,
     repoPath,
+    mode,
   );
 
   // V1.5.7 polish (2026-05-09) + item 032 (2026-05-10): no-args auto-expand
@@ -676,11 +679,12 @@ export async function getRecentWorkContext(
         format,
         params.artifact_hint,
         repoPath,
+        mode,
       );
 
       // Apply the rank demotion ONLY when the single-source-recent trigger
       // fired. Strict-partition rank rule from item 032.
-      if (trigger === 'single-source-recent') {
+      if (mode === 'ranked' && trigger === 'single-source-recent') {
         const atomsById24h = atomsByIdFor(response);
         const queryEcho: Query = {
           since: response.query.since,

@@ -25,8 +25,8 @@ import {
 } from '../internal/get-atoms-continuation.js';
 import { strictInputSchema } from '../util/strict-input.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
-import { compactAtom, type CompactAtom, type ViewMode } from '../wire-shape/compact.js';
-import { projectMatch, type ProjectedMatch } from '../wire-shape/match.js';
+import { compactAtom, type ViewMode } from '../wire-shape/compact.js';
+import { projectMatch } from '../wire-shape/match.js';
 
 const SCHEMA_VERSION = 1;
 
@@ -42,10 +42,8 @@ export const GET_ATOMS_RESPONSE_BYTE_CEILING = 25_000;
 export const GET_ATOMS_MAX_IDS = 50;
 
 export const GET_ATOMS_DESCRIPTION =
-  'Fetch bodies for known atom IDs from `find_clusters` or `search_memories`. Send 1–50 IDs per call; chunk larger cluster lists. The default `prefer="as_requested"` preserves input order and duplicates. Use `prefer="newest_first"` for resume flows; it de-duplicates, sorts newest first, and puts missing IDs last.\n\n' +
-  '`fields` accepts only `content` and `metadata`; identity fields and `truncations` are always returned. `view="rich"` is the default; `compact` removes low-value metadata. `format="minimal"` is accepted only for compatibility and can be omitted. The complete JSON result is capped at 25,000 UTF-8 bytes. On overflow, the tool keeps a deterministic atom prefix and returns `next_cursor`. Repeat the exact same atom_ids, fields, view, and prefer with that cursor until it becomes null. `atoms_missing` is terminal absence; `atoms_deferred` is recoverable continuation work; their sum equals legacy `atoms_dropped`. `atoms_dropped_ids` remains a bounded process-order prefix. Inspect coded warnings and per-atom `truncations`. Use `get_atom(id)` when one atom’s verbatim content is required; its metadata remains projected.';
+  "Read 1–50 known atom IDs. Request fields=[\"content\"] to read complete conversation text when it fits on the page. Identity, source, time and truncations always return. With no fields filter, both text previews and metadata return. For deferred IDs, repeat the original arguments with next_cursor as cursor. Missing IDs are terminal. Use get_atom for a single verbatim body.";
 
-const formatSchema = z.enum(['minimal']);
 const preferSchema = z.enum(['as_requested', 'newest_first']);
 const viewSchema = z.enum(['compact', 'rich']);
 
@@ -54,7 +52,6 @@ export type GetAtomsPrefer = 'as_requested' | 'newest_first';
 export interface GetAtomsParams {
   atom_ids: string[];
   fields?: string[];
-  format?: 'minimal';
   prefer?: GetAtomsPrefer;
   view?: ViewMode;
   /** Request-bound continuation. The original atom_ids and projection options
@@ -151,24 +148,18 @@ function buildBoundedResult(
   return result;
 }
 
-const ALWAYS_KEEP_FIELDS = new Set(['id', 'source', 'timestamp', 'truncations']);
-
 function validateView(view: unknown): ViewMode {
   if (view === undefined) return 'rich';
   if (view === 'compact' || view === 'rich') return view;
   throw new Error('get_atoms: view must be one of "compact" or "rich"');
 }
 
-/** Project a CaptureEvent through the shared `projectMatch` (so caps +
- *  projector reshapes match search/tail), then optionally narrow to the
- *  caller's `fields[]`. Returns the atom shape AND its serialized byte
- *  cost so the caller can make budget decisions without re-stringifying. */
 function projectAtom(
   e: CaptureEvent,
   fields: Set<string> | undefined,
   view: ViewMode,
-): { atom: GetAtomsAtom; bytes: number } {
-  const projected: ProjectedMatch = projectMatch(e);
+): GetAtomsAtom {
+  const projected = projectMatch(e);
 
   const truncations: string[] = [...projected.truncations];
 
@@ -196,7 +187,7 @@ function projectAtom(
 
   let fieldsOmitted = false;
   if (fields !== undefined) {
-    if (fields.has('content') || ALWAYS_KEEP_FIELDS.has('content')) {
+    if (fields.has('content')) {
       atom.content = fullContent;
     } else {
       fieldsOmitted = true;
@@ -213,33 +204,29 @@ function projectAtom(
 
   if (fieldsOmitted) atom.truncations.push('fields_omitted');
 
-  const shaped: GetAtomsAtom =
-    view === 'compact' ? applyCompactFields(compactAtom(atom), fields) : atom;
-  const bytes = jsonByteLength(shaped);
-  return { atom: shaped, bytes };
+  return view === 'compact' ? compactAtom(atom) : atom;
 }
 
-function applyCompactFields(atom: CompactAtom, fields: Set<string> | undefined): GetAtomsAtom {
-  if (fields === undefined) return atom;
-  const out: CompactAtom = {
-    id: atom.id,
-    source: atom.source,
-    timestamp: atom.timestamp,
-    truncations: [...atom.truncations],
-  };
-  let fieldsOmitted = false;
-  if (fields.has('content')) {
-    if (atom.content !== undefined) out.content = atom.content;
-  } else if (atom.content !== undefined) {
-    fieldsOmitted = true;
+/** Restore whole bodies in request processing order using only space left
+ * after page membership, warnings, and the continuation have been decided. */
+function restoreContentThatFits(result: GetAtomsResult, fetched: Map<string, CaptureEvent>): void {
+  let available = GET_ATOMS_RESPONSE_BYTE_CEILING - jsonByteLength(result);
+  for (const [index, preview] of result.atoms.entries()) {
+    if (!preview.truncations.includes('content')) continue;
+    const content = fetched.get(preview.id)!.content;
+    // JSON uses at least one byte per UTF-16 code unit.
+    if (content.length > GET_ATOMS_RESPONSE_BYTE_CEILING) continue;
+    const full = {
+      ...preview,
+      content,
+      truncations: preview.truncations.filter((field) => field !== 'content'),
+    };
+    delete full.content_bytes_elided;
+    const extra = jsonByteLength(full) - jsonByteLength(preview);
+    if (extra > available) continue;
+    result.atoms[index] = full;
+    available -= extra;
   }
-  if (fields.has('metadata')) {
-    if (atom.metadata !== undefined) out.metadata = atom.metadata;
-  } else if (atom.metadata !== undefined) {
-    fieldsOmitted = true;
-  }
-  if (fieldsOmitted) out.truncations.push('fields_omitted');
-  return out;
 }
 
 /** Build the iteration order for the prefix-drop loop, given the caller's
@@ -323,7 +310,7 @@ async function getByIdsByteAdaptive(
 }
 
 export async function getAtoms(storage: Storage, params: GetAtomsParams): Promise<GetAtomsResult> {
-  const { atom_ids, fields, format, prefer: preferIn } = params;
+  const { atom_ids, fields, prefer: preferIn } = params;
   // Schema-side validation runs at registerTool boundary; defense-in-depth
   // here for in-process callers (tests, future programmatic callers).
   if (atom_ids === undefined) {
@@ -342,10 +329,6 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       }
     }
   }
-  // V1.6 only ships 'minimal' — `format` is essentially a future-proofing
-  // marker today.
-  void format;
-
   const prefer: GetAtomsPrefer = preferIn ?? 'as_requested';
   const view = validateView(params.view);
 
@@ -421,7 +404,7 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       continue;
     }
 
-    const { atom } = projectAtom(ev, fieldsSet, view);
+    const atom = projectAtom(ev, fieldsSet, view);
 
     // Tentatively add; check envelope.
     atoms.push(atom);
@@ -502,7 +485,7 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
     warnings.push(`[GET_ATOMS_MISSING_IDS] ${missingCount} requested ID entries were not found`);
   }
 
-  return buildBoundedResult(
+  const result = buildBoundedResult(
     atoms,
     atomsDroppedIds,
     warnings,
@@ -513,6 +496,10 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       next_cursor: nextCursor,
     },
   );
+  if (fieldsSet?.size === 1 && fieldsSet.has('content')) {
+    restoreContentThatFits(result, fetchedById);
+  }
+  return result;
 }
 
 const getAtomsAtomSchema = z.object({
@@ -548,9 +535,6 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
       inputSchema: strictInputSchema('get_atoms', {
         atom_ids: z.array(z.string().min(1).max(128)).min(1).max(GET_ATOMS_MAX_IDS),
         fields: z.array(z.enum(['content', 'metadata'])).max(2).optional(),
-        format: formatSchema
-          .optional()
-          .describe('Compatibility-only singleton; omit it. Minimal projection is always applied.'),
         prefer: preferSchema
           .optional()
           .describe('as_requested (default) or newest_first for resume-style hydration.'),

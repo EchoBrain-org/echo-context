@@ -94,9 +94,10 @@ interface MutableGroup {
 
 export class DiscoveryCursorError extends Error {
   constructor(code: 'INVALID' | 'STALE', detail: string) {
-    super(
-      `[FIND_CLUSTERS_CURSOR_${code}] ${detail}; pass back the prior cursor verbatim`,
-    );
+    const recovery = code === 'STALE'
+      ? 'restart the original discovery query without a cursor'
+      : 'pass back the returned cursor verbatim';
+    super(`[FIND_CLUSTERS_CURSOR_${code}] ${detail}. ${recovery}`);
     this.name = 'DiscoveryCursorError';
   }
 }

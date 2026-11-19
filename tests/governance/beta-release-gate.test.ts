@@ -548,6 +548,9 @@ describe('beta release manifest and assets', () => {
     });
     expect(beta10Notes).toContain('## ECHO Context 0.1.0-beta.10 — technical preview');
     expect(beta10Notes).toContain('previous_source_database_digest');
+
+    const beta11Notes = betaReleaseNotes({ ...manifestFixture(), version: '0.1.0-beta.11' });
+    expect(beta11Notes).toContain('same-turn user clarifications');
   });
 
   it('treats the reviewed release body as immutable release identity', () => {

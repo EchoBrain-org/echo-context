@@ -34,9 +34,7 @@ import { CursorDecodeError, decodeCursor, emitCursor, encodeCursor } from './_cu
 export { CursorDecodeError, decodeCursor, encodeCursor, type DecodedCursor } from './_cursor.js';
 
 export const SEARCH_MEMORIES_DESCRIPTION =
-  "Search the user's captured ECHO memories with case-insensitive literal substring matching; this is NOT a semantic search. Use exact phrases, paths, SHAs, IDs, or error text. Results are newest first and the complete JSON result is capped at 25,000 UTF-8 bytes.\n\n" +
-  'Choose at most one source selector: `source` (one exact captured source), `source_prefix` (all sources beginning with a prefix), or `source_app` (`cursor`, `claude_code`, `codex`, `git`, `granola`). `cursor` covers historical Cursor records; this runtime does not capture new ones. For compatibility, multiple selectors still use `source > source_prefix > source_app` and emit a warning naming ignored selectors. `repo_path` and `metadata_match` add AND filters.\n\n' +
-  'Pass `next_cursor` back unchanged as `cursor`. A non-null cursor can mean more matches, a bounded scan continuation, or response-budget trimming; inspect coded `warnings`. `next_cursor: null` means the scanned window ended, but a manifest-cap warning can still make older Granola coverage incomplete. Per-match `truncations` and metadata omission fields are trust signals; use `get_atom(id)` for verbatim content when it fits, but remember its metadata remains projected.';
+  "Search the user's captured ECHO memories by case-insensitive literal substring, newest first. This is NOT a semantic search. Scope with source, source_prefix, or source_app (including historical Cursor). Add repo_path or metadata_match to narrow results. A scan-budget warning with zero matches leaves older history unsearched. To continue, repeat the original arguments with next_cursor as cursor. Inspect per-match truncations when exact wording matters.";
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;

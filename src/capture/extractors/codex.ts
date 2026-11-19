@@ -148,6 +148,7 @@ interface ParsedLine {
     | "task_complete"
     | "other";
   role?: "user" | "assistant" | "agent";
+  commentary?: boolean;
   text?: string;
   turn_id?: string;
   logical_identity_conflict?: boolean;
@@ -595,6 +596,7 @@ function parseLine(line: string): ParsedLine | null {
   return {
     kind: "message",
     role,
+    commentary: p["phase"] === "commentary",
     text: extractMessageText(p["content"]),
     timestamp,
     ...(identity.turnId !== undefined ? { turn_id: identity.turnId } : {}),
@@ -632,7 +634,8 @@ interface PendingCluster {
   userText: string;
   userTimestamp: string;
   assistantTexts: string[];
-  assistantLastLineEndOffset: number;
+  acceptsUserSteering: boolean;
+  lastMessageEndOffset: number;
   hadTool: boolean;
   timestamp: string;
   cwd?: string;
@@ -1189,7 +1192,7 @@ export async function extractCodexTurns(
       mtime: fileMtime,
       timestamp: pending.timestamp,
       had_tool_use: pending.hadTool,
-      byte_offset: pending.assistantLastLineEndOffset,
+      byte_offset: pending.lastMessageEndOffset,
     };
     const logicalIds = [
       pending.contextTurnId,
@@ -1248,7 +1251,7 @@ export async function extractCodexTurns(
       turn.thinking = t.value;
     }
     turns.push(turn);
-    confirmedThroughOffset = pending.assistantLastLineEndOffset;
+    confirmedThroughOffset = pending.lastMessageEndOffset;
   }
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -1454,7 +1457,7 @@ export async function extractCodexTurns(
       // Emitted after the assistant's final message lands in the file, so it's
       // safe to close the cluster without waiting for a next-user line.
       if (pending !== null && pending.assistantTexts.length > 0) {
-        pending.assistantLastLineEndOffset = lineEndOffset;
+        pending.lastMessageEndOffset = lineEndOffset;
         emitPendingIfComplete();
         pending = null;
       }
@@ -1526,7 +1529,27 @@ export async function extractCodexTurns(
       let contextIdentity = queuedTurnIdentity;
       queuedTurnIdentity = undefined;
       queuedTurnIdentityIsAgentAssociated = false;
-      // A new user closes any prior cluster.
+      // Codex can deliver further human input while the same turn is running.
+      // Only join before an answer or after explicit commentary. Older
+      // unphased replies may be separate observations with the same turn ID.
+      if (
+        pending !== null &&
+        initiator === "human" &&
+        pending.initiator === "human" &&
+        pending.acceptsUserSteering &&
+        parsed.turn_id !== undefined &&
+        parsed.turn_id === pending.userTurnId &&
+        !pending.logicalIdentityConflict &&
+        contextIdentity === undefined &&
+        [pending.contextTurnId, pending.assistantTurnId].every(
+          (id) => id === undefined || id === parsed.turn_id,
+        )
+      ) {
+        pending.userText += `\n\n${parsed.text ?? ""}`;
+        pending.lastMessageEndOffset = lineEndOffset;
+        if (parsed.timestamp !== undefined) pending.timestamp = parsed.timestamp;
+        continue;
+      }
       if (pending !== null) {
         if (pending.assistantTexts.length > 0) {
           emitPendingIfComplete();
@@ -1558,7 +1581,8 @@ export async function extractCodexTurns(
         userText: parsed.text ?? "",
         userTimestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         assistantTexts: [],
-        assistantLastLineEndOffset: lineEndOffset,
+        acceptsUserSteering: true,
+        lastMessageEndOffset: lineEndOffset,
         hadTool: false,
         timestamp: parsed.timestamp ?? new Date(fileMtime).toISOString(),
         toolCalls: [],
@@ -1587,7 +1611,8 @@ export async function extractCodexTurns(
         markSafeThrough(lineEndOffset);
       } else if ((parsed.text ?? "").length > 0) {
         pending.assistantTexts.push(parsed.text!);
-        pending.assistantLastLineEndOffset = lineEndOffset;
+        if (!parsed.commentary) pending.acceptsUserSteering = false;
+        pending.lastMessageEndOffset = lineEndOffset;
         if (parsed.timestamp !== undefined)
           pending.timestamp = parsed.timestamp;
         if (

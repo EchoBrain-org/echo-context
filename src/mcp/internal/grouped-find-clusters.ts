@@ -23,7 +23,6 @@ export interface GroupedFindClustersParams {
   since?: string;
   until?: string;
   window_hours?: number;
-  format?: 'skeleton';
   view?: 'compact' | 'rich';
   repo_path?: string;
   group_by?: DiscoveryGroupBy;
@@ -92,7 +91,6 @@ function assertCursorOnly(params: GroupedFindClustersParams): void {
       'since',
       'until',
       'window_hours',
-      'format',
       'view',
       'repo_path',
       'group_by',
@@ -425,7 +423,7 @@ export async function findGroupedClusters(
   }
 
   const request = groupedRecentWorkParams(params, cursor);
-  const response = await getRecentWorkContext(storage, request.recent, now);
+  const response = await getRecentWorkContext(storage, request.recent, now, 'grouped');
   const models = buildDiscoveryGroups(
     response,
     request.group_by,

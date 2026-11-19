@@ -51,7 +51,7 @@ describe('recent MCP request log', () => {
   it('appends calls and reads back in insertion order with redacted shapes', () => {
     const first = beginRecentMcpCall('search_memories', { query: 'secret query', limit: 3 }, 100);
     finishRecentMcpCall(first, 'search_memories', okResult({ matches: [], total_returned: 0, limit_applied: 3, warnings: [] }), 120);
-    const second = beginRecentMcpCall('get_atoms', { atom_ids: ['atom-a', 'atom-b'], format: 'minimal' }, 130);
+    const second = beginRecentMcpCall('get_atoms', { atom_ids: ['atom-a', 'atom-b'], prefer: 'newest_first' }, 130);
     finishRecentMcpCall(second, 'get_atoms', okResult({ atoms: [], atoms_dropped: 2, atoms_dropped_ids: ['atom-a', 'atom-b'], warnings: [] }), 140);
 
     const calls = readRecentMcpCalls();
@@ -59,7 +59,7 @@ describe('recent MCP request log', () => {
     expect(calls[0]?.status).toBe('ok');
     expect(calls[0]?.duration_ms).toBe(20);
     expect(calls[0]?.args_shape).toMatchObject({ query_length: 12, limit: 3 });
-    expect(calls[1]?.args_shape).toMatchObject({ atom_ids_count: 2, format: 'minimal' });
+    expect(calls[1]?.args_shape).toMatchObject({ atom_ids_count: 2, prefer: 'newest_first' });
     expect(JSON.stringify(calls)).not.toContain('secret query');
     expect(JSON.stringify(calls)).not.toContain('atom-a');
   });

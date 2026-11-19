@@ -39,7 +39,7 @@ const SCHEMA_VERSION = 1;
 export const GET_ATOM_RESPONSE_BYTE_CEILING = 25_000;
 
 export const GET_ATOM_DESCRIPTION =
-  'Fetch one known atom with verbatim content. Use this only after `search_memories` or `get_atoms` reports truncation; routine hydration belongs in `get_atoms`. Source descriptors and metadata remain bounded/projected, and embeddings are omitted. If the full result cannot fit the 25,000-byte budget, `error_code="atom_too_large_for_wire"` returns a bounded source pointer. `atom_not_found` means the ID is stale or invalid.';
+  "Read one known atom with verbatim content and projected metadata. If it exceeds the 25,000-byte envelope, atom_too_large_for_wire returns a source pointer. atom_not_found means the ID is absent.";
 
 export interface GetAtomParams {
   id: string;

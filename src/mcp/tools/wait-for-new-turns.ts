@@ -64,8 +64,7 @@ export const WAIT_MAX_STORAGE_SCAN_WINDOWS = 4;
 const SOURCE_APP_SET = new Set<string>(SOURCE_APP_VALUES);
 
 export const WAIT_FOR_NEW_TURNS_DESCRIPTION =
-  'Long-poll for newly completed context atoms. Provide non-empty `sources`, non-empty `source_prefix`, or both. In `sources`, app names (`cursor`, `claude_code`, `codex`, `git`, `granola`) match every captured source for that app; other strings are exact sources. `source_prefix` is additive, so combining it with `sources` returns their union. Duplicate selectors are de-duplicated.\n\n' +
-  '`since` is exclusive and must carry an explicit UTC offset (`Z` or `±HH:MM`) — offset-less timestamps are rejected, because a local-time misparse feeds a future watermark into the `next_since` loop and silently hides every new turn. The response contains oldest-first `turn_ids`; fetch bodies with `get_atoms`. Always pass the returned `next_since` into the next call, including after an empty timeout. At most 20 IDs normally return per wake, with coded warnings for backlog, timestamp-tie, or storage-scan limits. `timeout` defaults to 30 seconds and is capped at 60. Client cancellation stops polling promptly.';
+  "Watch for newly completed turns from sources (app names or exact sources), source_prefix, or their union. Supply an exclusive since with an explicit UTC offset. Fetch returned turn_ids with get_atoms. Reuse next_since even after an empty timeout. Warnings report backlog and scan limits.";
 
 export interface WaitForNewTurnsParams {
   /** Optional under AC4 (057a). At least one of `sources` (non-empty) or

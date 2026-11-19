@@ -1,12 +1,12 @@
 {
   "name": "echo-context",
-  "version": "0.1.0-beta.10",
+  "version": "0.1.0-beta.11",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "echo-context",
-      "version": "0.1.0-beta.10",
+      "version": "0.1.0-beta.11",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "ajv": "^8.17.1",

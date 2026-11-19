@@ -28,7 +28,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Storage } from '../../storage/interface.js';
-import type { Cluster, ResponseFormat } from '../../trace/types.js';
+import type { Cluster } from '../../trace/types.js';
 import {
   DiscoveryCursorError,
   FIND_CLUSTERS_CURSOR_MAX_CHARS,
@@ -40,15 +40,12 @@ import {
 import { findGroupedClusters } from '../internal/grouped-find-clusters.js';
 import { jsonByteLength } from '../wire-shape/bytes.js';
 import { compactCluster, type ViewMode } from '../wire-shape/compact.js';
-// Item 038 / AC3: find_clusters calls the canonical cluster engine directly
-// (skeleton wire-shape constants still come from the deprecated tool shim
-// — they describe the MCP-tool surface, not the engine).
 import { getRecentWorkContext, MAX_LIMIT } from '../internal/cluster-engine.js';
 import { isoString } from '../util/iso8601.js';
 import { strictInputSchema } from '../util/strict-input.js';
-import { SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP } from './recent-work-context.js';
 
 const SCHEMA_VERSION = 1;
+const SKELETON_CLUSTER_OPEN_LOOP_HINTS_CAP = 30;
 
 // Hard interactive ceiling for `JSON.stringify(result)`. Same 25k convention
 // used by search/tail/recent-work-context tests. find_clusters is the cheap
@@ -66,11 +63,9 @@ export const FIND_CLUSTERS_RESPONSE_BYTE_CEILING = 25_000;
 export const PER_CLUSTER_ATOM_IDS_HARD_CAP = 200;
 
 export const FIND_CLUSTERS_DESCRIPTION =
-  'Discover recent work threads across captured sources without fetching atom bodies. Use `since`/`until` for the lookback. `window_hours` explicitly overrides the fixed 4-hour maximum gap used to join atoms; it is not the lookback. With no time bounds, an unhelpful 4-hour result may auto-expand once to 24 hours and emits `[AUTO_EXPAND]`.\n\n' +
-  'Omit `group_by` for the unchanged ranked-cluster response. Use `group_by="project"` for canonical project routes or `group_by="thread"` for provider-scoped root threads. Grouped mode returns unique-turn versus raw-observation counts, a few directly hydratable representative IDs, and opaque cursors. `cursor` is the only continuation input: to continue group headers, pass the top-level `next_cursor` value in the `cursor` parameter, by itself. For complete membership, hydrate the representatives first, then pass that group’s `membership_cursor` value in the `cursor` parameter, by itself; member pages continue by passing each new top-level `next_cursor` value in `cursor`, without repeating IDs.\n\n' +
-  '`view="rich"` is the legacy default; `compact` keeps ranking, IDs, source counts, time range, and trust signals while dropping low-value detail. Group headers have one fixed lean shape. `format="skeleton"` is compatibility-only and can be omitted. The 25,000-byte result budget never silently drops a grouped header or member ID: shortened pages always carry a cursor. In legacy mode, inspect `atom_ids_truncated`, `atom_ids_total`, `result_caps`, and coded warnings before claiming full coverage.';
+  "Discover recent project or thread activity and representative atom IDs. Choose `group_by=\"project\"` for a repository handoff or `group_by=\"thread\"` for a conversation. Use since/until for lookback. window_hours controls the gap between clustered turns. Omit group_by for legacy ranked clusters.\n\n" +
+  "Read representatives with get_atoms. For more groups, pass the `next_cursor` value in the `cursor` parameter alone. For the remaining members of a group, pass its `membership_cursor` value in the `cursor` parameter alone. Check result_caps and warnings before claiming complete coverage.";
 
-const formatSchema = z.enum(['skeleton']);
 const viewSchema = z.enum(['compact', 'rich']);
 const groupBySchema = z.enum(['project', 'thread']);
 
@@ -78,7 +73,6 @@ export interface FindClustersParams {
   since?: string;
   until?: string;
   window_hours?: number;
-  format?: 'skeleton';
   view?: ViewMode;
   /** Item 037 / AC4: absolute project root path. Pass-through to the
    *  underlying cluster query; scopes the candidate set cross-source by
@@ -126,6 +120,7 @@ export interface FindClustersResult {
     since: string;
     until: string;
     window_hours: number;
+    /** Constant kept so schema_version 1 response validators still pass. */
     format: 'skeleton';
     /** Item 037 / AC4: echoes the normalized canonical-project filter.
      * `null` when not passed. */
@@ -267,11 +262,6 @@ export async function findClusters(
   // window above this limit remains explicitly partial through
   // result_caps.truncated; the trace builder rebuilds every returned cluster
   // summary from the membership it actually retained.
-  //
-  // `format: 'skeleton'` is passed through as a marker for the query echo,
-  // even though we don't use the skeleton wire shape ourselves — atoms
-  // map is computed but discarded; cost is bounded by MAX_LIMIT events.
-  const format: ResponseFormat = params.format ?? 'skeleton';
   const view = validateView(params.view);
   const rwc = await getRecentWorkContext(
     storage,
@@ -285,7 +275,7 @@ export async function findClusters(
       // and is re-surfaced in find_clusters' own envelope below.
       ...(params.repo_path !== undefined ? { repo_path: params.repo_path } : {}),
       limit: MAX_LIMIT,
-      format,
+      format: 'skeleton',
     },
     now,
   );
@@ -320,7 +310,7 @@ export async function findClusters(
         since: rwc.query.since,
         until: rwc.query.until,
         window_hours: rwc.query.window_hours,
-        format,
+        format: 'skeleton',
         // Item 037 / AC4: surface the same normalised path the underlying
         // storage filter saw, so callers see what scoped their result set
         // (and can detect a trailing-slash normalisation).
@@ -458,9 +448,6 @@ export function registerFindClusters(server: McpServer, storage: Storage): void 
         since: isoString.optional(),
         until: isoString.optional(),
         window_hours: z.number().min(0.1).max(168).optional(),
-        format: formatSchema
-          .optional()
-          .describe('Compatibility-only singleton; omit it. Discovery is always bodyless.'),
         view: viewSchema
           .optional()
           .describe(

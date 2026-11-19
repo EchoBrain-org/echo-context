@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "00e2901c3cd81b5525b9e0949eadc9316c53f805",
-      "content_sha256": "364ce0982b3ed43c1e1fb172334139e03b3ea395d1a9da682db8533152da30b7",
+      "blob_oid": "8fdb6e3f98df46aafb969c2a51549daad5ff4c24",
+      "content_sha256": "dea93b3fa5363da973bb2fe4505da371a22eb030f1c67c7a989191cf4215d1d4",
       "mode": "100644",
       "path": "tools/beta-release-gate.mjs"
     },
@@ -55,8 +55,8 @@
       "path": "tools/check-runtime-inventory.mjs"
     },
     {
-      "blob_oid": "b673b38190dea580675575a16354c2fd8cac2a29",
-      "content_sha256": "a3a622c1f81759e657ce70ffcd3bc1fabeb138eca2f122b3dd73c73e88c0ad0a",
+      "blob_oid": "9257cf22aebd3e8542878c1a8e08879d4beec07d",
+      "content_sha256": "ec64198c4af26b507f989558b4564bddbcfbcb8b440aa046c4550077726137fc",
       "mode": "100644",
       "path": "tools/dogfooding/journal-client.mjs"
     },
@@ -187,7 +187,7 @@
       "path": "vitest.operator.config.ts"
     }
   ],
-  "lock_sha256": "6f3f56e7f5fa17786dc61401a218f28717bda642f4b3d459c759b8debf80c079",
+  "lock_sha256": "9a687f8b95262262453101198a33f2843021ad49187c00dd867cdcb8a1ce8544",
   "npm_closure": [
     {
       "cpu": [
@@ -6099,7 +6099,7 @@
       "version": "3.25.2"
     }
   ],
-  "package_json_sha256": "c9fe9ca991e7df586c3372e9e95237b3deccb7b678e18c1fd32af50cd8686c95",
+  "package_json_sha256": "4dd3e1699f2132724d021c7fa43e26ced307a4ba4bffeafeeed19b04b9a7d296",
   "schema": "runtime-inventory.v2",
   "scripts": [
     {

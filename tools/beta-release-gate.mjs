@@ -1146,6 +1146,15 @@ const BETA_RELEASE_CHANGES = Object.freeze({
     '',
     'Technical-preview limits: distribution is a GitHub prerelease tarball, not an npm registry package. Cross-platform operation uses the foreground `daemon run` path. Managed installation remains macOS launchd-only; there is no systemd or Windows Service installer. Agent sync installs instructions and banners but does not configure MCP clients.',
   ]),
+  '0.1.0-beta.11': Object.freeze([
+    'Codex capture now keeps a question, same-turn user clarifications, and the final answer together when the clarification arrives before an answer or during assistant commentary and the turn IDs agree. This fixes grouped retrieval returning only the opening assistant update for some steered conversations.',
+    '',
+    'The change applies to newly processed turns. For older captures, the usage skill explains how to recover split observations from the exact session source. It also describes how to locate a recent discussion with a named app through thread discovery.',
+    '',
+    'Grouped discovery now pages all projects and threads admitted by the storage scan. Text-only batch reads use spare response space for complete turns. Stale cursor errors explain how to restart the request. The usage guide is shorter, and the founder journal accepts a colon after a verdict label. `find_clusters` and `get_atoms` no longer accept the `format` input, which had no effect. Responses are unchanged.',
+    '',
+    'This release uses the existing database schema and seven read-only MCP tools.',
+  ]),
 });
 
 export function betaReleaseNotes(manifest) {

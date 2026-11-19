@@ -54,10 +54,13 @@ export type { ArtifactRole } from './role.js';
 
 const SCHEMA_VERSION = 1;
 
+export type ClusterMode = 'ranked' | 'grouped';
+
 export function buildRecentWorkContext(
   events: CaptureEvent[],
   query: Query,
   normalize: (event: CaptureEvent) => NormalizedContextEvent | null,
+  mode: ClusterMode = 'ranked',
 ): RecentWorkContextResponse {
   const sinceMs = Date.parse(query.since);
   const untilMs = Date.parse(query.until);
@@ -126,25 +129,24 @@ export function buildRecentWorkContext(
     });
   }
 
-  // 5. Rank
-  clusters = rankAndAnnotate(clusters, atomsById, query);
-
+  // Grouped discovery pages the bounded storage window itself. Applying the
+  // ranked response limit here would make lower-ranked groups unreachable.
   const clustersTotal = clusters.length;
-
-  // 6. Truncate by atom limit (lowest-rank cluster atoms drop first)
-  const truncated = truncate(clusters, atomsById, limit);
-  // A partially retained cluster is a new membership set. Rebuild every
-  // membership-derived field rather than leaving labels, hints, counts, time
-  // bounds, rank signals, or cluster identity pointing at removed atoms.
-  const returnedClusters = truncated.didTruncate
-    ? rankAndAnnotate(
-        truncated.clusters.map((cluster) =>
-          deriveCluster(cluster.atom_ids, cluster.edges, atomsById),
-        ),
-        atomsById,
-        query,
-      )
-    : truncated.clusters;
+  let returnedClusters = clusters;
+  let didTruncate = false;
+  if (mode === 'ranked') {
+    const ranked = rankAndAnnotate(clusters, atomsById, query);
+    const page = truncate(ranked, atomsById, limit);
+    didTruncate = page.didTruncate;
+    // Recompute labels, hints, edge membership and rank for partial clusters.
+    returnedClusters = didTruncate
+      ? rankAndAnnotate(
+          page.clusters.map((cluster) => deriveCluster(cluster.atom_ids, cluster.edges, atomsById)),
+          atomsById,
+          query,
+        )
+      : page.clusters;
+  }
 
   // 7. Build atoms map (only those still referenced)
   const atomsMap: Record<string, NormalizedContextEvent> = {};
@@ -188,7 +190,7 @@ export function buildRecentWorkContext(
       atoms_total_in_window: atomsTotalInWindow,
       clusters_returned: returnedClusters.length,
       clusters_total: clustersTotal,
-      truncated: truncated.didTruncate,
+      truncated: didTruncate,
       source_breakdown: windowSourceBreakdown,
     },
     warnings,
