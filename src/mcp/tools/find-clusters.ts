@@ -120,6 +120,8 @@ export interface FindClustersResult {
     since: string;
     until: string;
     window_hours: number;
+    /** Constant kept so schema_version 1 response validators still pass. */
+    format: 'skeleton';
     /** Item 037 / AC4: echoes the normalized canonical-project filter.
      * `null` when not passed. */
     repo_path: string | null;
@@ -308,6 +310,7 @@ export async function findClusters(
         since: rwc.query.since,
         until: rwc.query.until,
         window_hours: rwc.query.window_hours,
+        format: 'skeleton',
         // Item 037 / AC4: surface the same normalised path the underlying
         // storage filter saw, so callers see what scoped their result set
         // (and can detect a trailing-slash normalisation).
@@ -378,6 +381,7 @@ const findClustersOutputSchema = {
       since: z.string(),
       until: z.string(),
       window_hours: z.number(),
+      format: z.literal('skeleton'),
       repo_path: z.string().nullable(),
       group_by: groupBySchema.optional(),
       page_size: z.number().int().positive().optional(),

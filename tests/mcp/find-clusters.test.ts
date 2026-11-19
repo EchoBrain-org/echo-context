@@ -255,7 +255,7 @@ describe('find_clusters', () => {
       view: 'compact',
     });
 
-    expect(r.query).toMatchObject({ repo_path: null });
+    expect(r.query).toMatchObject({ format: 'skeleton', repo_path: null });
     expect(r.result_caps).toMatchObject({ truncated: false });
     expect(r.warnings).toEqual([]);
     expect(r.clusters.length).toBeGreaterThan(0);
@@ -743,5 +743,103 @@ describe('Item 038 / AC3 — find_clusters({repo_path}) inherits 037 forwarding'
     expect(rA.result_caps.atoms_returned).toBeGreaterThan(0);
     expect(rA.result_caps.atoms_returned).toBeLessThanOrEqual(3);
     expect(allAtomIdsA.length).toBeLessThanOrEqual(3);
+  });
+});
+
+// Engine behavior reached through find_clusters. These were previously
+// covered only by tests of the removed get_recent_work_context wrapper.
+describe('find_clusters — cluster engine contract', () => {
+  const file = `${PROJECT_ECHO}/src/gap.ts`;
+
+  async function sixHoursApart(): Promise<MemoryStorage> {
+    const store = new MemoryStorage();
+    await store.append(claudeCodeTurn(1, file, '2026-05-09T02:00:00.000Z'));
+    await store.append(claudeCodeTurn(2, file, '2026-05-09T08:00:00.000Z'));
+    return store;
+  }
+
+  it('keeps the four-hour grouping gap whatever the lookback span', async () => {
+    const store = await sixHoursApart();
+    for (const since of ['2026-05-09T00:00:00.000Z', '2026-05-03T00:00:00.000Z']) {
+      const r = await findClusters(store, { since, until: '2026-05-10T00:00:00.000Z' });
+      expect(r.query.window_hours).toBe(4);
+      expect(r.clusters).toHaveLength(2);
+    }
+  });
+
+  it('lets explicit window_hours widen the grouping gap', async () => {
+    const r = await findClusters(await sixHoursApart(), {
+      since: '2026-05-09T00:00:00.000Z',
+      until: '2026-05-10T00:00:00.000Z',
+      window_hours: 8,
+    });
+    expect(r.query.window_hours).toBe(8);
+    expect(r.clusters).toHaveLength(1);
+  });
+
+  it('does not auto-expand when the caller passed since', async () => {
+    const now = new Date('2026-05-09T20:00:00.000Z');
+    const store = new MemoryStorage();
+    await store.append(claudeCodeTurn(1, file, '2026-05-09T14:00:00.000Z'));
+    const r = await findClusters(store, { since: '2026-05-09T16:00:00.000Z' }, now);
+    expect(r.clusters).toHaveLength(0);
+    expect(r.warnings.some((w) => w.includes('[AUTO_EXPAND]'))).toBe(false);
+  });
+
+  it('rejects a relative repo_path', async () => {
+    await expect(
+      findClusters(new MemoryStorage(), { repo_path: 'Desktop/Project_echo' }),
+    ).rejects.toThrow(/repo_path/);
+  });
+
+  it('warns on offset-less timestamps and stays quiet on explicit offsets', async () => {
+    const store = new MemoryStorage();
+    const naive = await findClusters(store, {
+      since: '2026-05-09T00:00:00',
+      until: '2026-05-10T00:00:00.000Z',
+    });
+    expect(naive.warnings.filter((w) => w.startsWith('[TZ]'))).toHaveLength(1);
+    const explicit = await findClusters(store, {
+      since: '2026-05-09T00:00:00.000Z',
+      until: '2026-05-10T00:00:00+00:00',
+    });
+    expect(explicit.warnings.some((w) => w.startsWith('[TZ]'))).toBe(false);
+  });
+
+  it('counts every source in the window', async () => {
+    const store = new MemoryStorage();
+    for (let i = 0; i < 3; i++) {
+      await store.append(claudeCodeTurn(i, file, `2026-05-09T10:0${i}:00.000Z`));
+    }
+    await store.append(gitCommit(1, file, '2026-05-09T10:30:00.000Z'));
+    const r = await findClusters(store, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T12:00:00.000Z',
+    });
+    expect(r.result_caps.source_breakdown).toEqual({ claude_code: 3, git: 1 });
+  });
+
+  it('keeps raw file-watcher events from crowding turns out of the bounded scan', async () => {
+    // More newer raw events than the 16 x 500-row storage scan admits. If they were not
+    // excluded at the query, the three older turns would never be read.
+    const store = new MemoryStorage();
+    for (let i = 0; i < 3; i++) {
+      await store.append(claudeCodeTurn(i, file, `2026-05-09T10:0${i}:00.000Z`));
+    }
+    const base = Date.parse('2026-05-09T11:00:00.000Z');
+    for (let i = 0; i < 8_100; i++) {
+      await store.append({
+        source: `fs:/Users/redacted/Library/Application Support/Cursor/x/${i}.vscdb`,
+        timestamp: new Date(base + i * 100).toISOString(),
+        content: JSON.stringify({ event_type: 'change', path: `/Users/redacted/x/${i}` }),
+        metadata: { surface: 'fs', file_kind: 'cursor-workspace' },
+      });
+    }
+    const r = await findClusters(store, {
+      since: '2026-05-09T09:00:00.000Z',
+      until: '2026-05-09T12:00:00.000Z',
+    });
+    expect(r.result_caps.atoms_total_in_window).toBe(3);
+    expect(r.result_caps.truncated).toBe(false);
   });
 });

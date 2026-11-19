@@ -13,8 +13,8 @@
       "path": "tools/audit-pinned-extraction.mjs"
     },
     {
-      "blob_oid": "107f36ce91b34defe21a8a9640c7b88f2e975f49",
-      "content_sha256": "7c89dd5f7e8c063f8c4a7bad0f326f017c346a084be06128e5df7bd46cdc2e2a",
+      "blob_oid": "8fdb6e3f98df46aafb969c2a51549daad5ff4c24",
+      "content_sha256": "dea93b3fa5363da973bb2fe4505da371a22eb030f1c67c7a989191cf4215d1d4",
       "mode": "100644",
       "path": "tools/beta-release-gate.mjs"
     },
