@@ -44,7 +44,6 @@ export const GET_ATOMS_MAX_IDS = 50;
 export const GET_ATOMS_DESCRIPTION =
   "Read 1–50 known atom IDs. Request fields=[\"content\"] to read complete conversation text when it fits on the page. Identity, source, time and truncations always return. With no fields filter, both text previews and metadata return. For deferred IDs, repeat the original arguments with next_cursor as cursor. Missing IDs are terminal. Use get_atom for a single verbatim body.";
 
-const formatSchema = z.enum(['minimal']);
 const preferSchema = z.enum(['as_requested', 'newest_first']);
 const viewSchema = z.enum(['compact', 'rich']);
 
@@ -53,7 +52,6 @@ export type GetAtomsPrefer = 'as_requested' | 'newest_first';
 export interface GetAtomsParams {
   atom_ids: string[];
   fields?: string[];
-  format?: 'minimal';
   prefer?: GetAtomsPrefer;
   view?: ViewMode;
   /** Request-bound continuation. The original atom_ids and projection options
@@ -312,7 +310,7 @@ async function getByIdsByteAdaptive(
 }
 
 export async function getAtoms(storage: Storage, params: GetAtomsParams): Promise<GetAtomsResult> {
-  const { atom_ids, fields, format, prefer: preferIn } = params;
+  const { atom_ids, fields, prefer: preferIn } = params;
   // Schema-side validation runs at registerTool boundary; defense-in-depth
   // here for in-process callers (tests, future programmatic callers).
   if (atom_ids === undefined) {
@@ -331,10 +329,6 @@ export async function getAtoms(storage: Storage, params: GetAtomsParams): Promis
       }
     }
   }
-  // V1.6 only ships 'minimal' — `format` is essentially a future-proofing
-  // marker today.
-  void format;
-
   const prefer: GetAtomsPrefer = preferIn ?? 'as_requested';
   const view = validateView(params.view);
 
@@ -541,9 +535,6 @@ export function registerGetAtoms(server: McpServer, storage: Storage): void {
       inputSchema: strictInputSchema('get_atoms', {
         atom_ids: z.array(z.string().min(1).max(128)).min(1).max(GET_ATOMS_MAX_IDS),
         fields: z.array(z.enum(['content', 'metadata'])).max(2).optional(),
-        format: formatSchema
-          .optional()
-          .describe('Compatibility-only singleton; omit it. Minimal projection is always applied.'),
         prefer: preferSchema
           .optional()
           .describe('as_requested (default) or newest_first for resume-style hydration.'),

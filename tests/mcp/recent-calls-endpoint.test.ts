@@ -62,7 +62,7 @@ function minimalArgs(tool: string): Record<string, unknown> {
     case 'find_clusters':
       return {};
     case 'get_atoms':
-      return { atom_ids: ['missing'], format: 'minimal' };
+      return { atom_ids: ['missing'] };
     case 'wait_for_new_turns':
       return { source_prefix: 'test:', since: new Date().toISOString(), timeout: 0 };
     case 'get_atom':

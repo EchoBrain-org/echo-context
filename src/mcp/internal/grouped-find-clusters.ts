@@ -23,7 +23,6 @@ export interface GroupedFindClustersParams {
   since?: string;
   until?: string;
   window_hours?: number;
-  format?: 'skeleton';
   view?: 'compact' | 'rich';
   repo_path?: string;
   group_by?: DiscoveryGroupBy;
@@ -46,7 +45,6 @@ export interface GroupedFindClustersResult {
     since: string;
     until: string;
     window_hours: number;
-    format: 'skeleton';
     repo_path: string | null;
     group_by: DiscoveryGroupBy;
     page_size: number;
@@ -92,7 +90,6 @@ function assertCursorOnly(params: GroupedFindClustersParams): void {
       'since',
       'until',
       'window_hours',
-      'format',
       'view',
       'repo_path',
       'group_by',
@@ -221,7 +218,6 @@ function groupedResult(input: {
       since: input.response.query.since,
       until: input.response.query.until,
       window_hours: input.response.query.window_hours,
-      format: 'skeleton',
       repo_path: input.response.query.repo_path,
       group_by: input.group_by,
       page_size: input.page_size,

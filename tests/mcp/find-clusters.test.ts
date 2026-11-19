@@ -255,7 +255,7 @@ describe('find_clusters', () => {
       view: 'compact',
     });
 
-    expect(r.query).toMatchObject({ format: 'skeleton', repo_path: null });
+    expect(r.query).toMatchObject({ repo_path: null });
     expect(r.result_caps).toMatchObject({ truncated: false });
     expect(r.warnings).toEqual([]);
     expect(r.clusters.length).toBeGreaterThan(0);

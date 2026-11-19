@@ -88,7 +88,6 @@ describe('find_clusters grouped routing contract', () => {
       'warnings',
     ]);
     expect(Object.keys(result.query).sort()).toEqual([
-      'format',
       'repo_path',
       'since',
       'until',

@@ -205,7 +205,6 @@ function projectArgs(tool: string, args: unknown): Record<string, unknown> {
         since: stringValue(obj['since']),
         until: stringValue(obj['until']),
         window_hours: numberValue(obj['window_hours']),
-        format: stringValue(obj['format']),
         repo_path_present: isPresent(obj['repo_path']),
         group_by: stringValue(obj['group_by']),
         page_size: numberValue(obj['page_size']),
@@ -217,7 +216,6 @@ function projectArgs(tool: string, args: unknown): Record<string, unknown> {
         ...base,
         atom_ids_count: arrayLength(obj['atom_ids']),
         fields_count: arrayLength(obj['fields']),
-        format: stringValue(obj['format']),
         prefer: stringValue(obj['prefer']),
         cursor_present: isPresent(obj['cursor']),
       };
